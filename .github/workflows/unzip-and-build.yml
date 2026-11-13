@@ -1,5 +1,5 @@
-name:
-IDRAAK QUANTUM CORE APK Build
+
+name: IDRAAK QUANTUM CORE APK Build
 
 on:
   push:
@@ -29,22 +29,46 @@ jobs:
           mkdir -p source
           unzip -oq IDRAAK-QUANTUM-CORE.zip -d source
           test -d source/IDRAAK-QUANTUM-CORE/app
-          echo "Project extracted successfully."
+          cp -a source/IDRAAK-QUANTUM-CORE/. .
+          echo "Project extracted."
+
+      - name: Fix Chaquopy NDK ABI filters
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("app/build.gradle")
+          content = path.read_text()
+
+          if "abiFilters" not in content:
+              needle = "versionName '1.2.0'"
+              if needle not in content:
+                  raise SystemExit("Could not find versionName in app/build.gradle")
+
+              replacement = needle + """
+
+                  ndk {
+                      abiFilters 'arm64-v8a', 'armeabi-v7a'
+                  }"""
+
+              content = content.replace(needle, replacement, 1)
+              path.write_text(content)
+
+          print("NDK ABI filters are configured.")
+          PY
 
       - name: Publish project files to GitHub
         run: |
-          cp -a source/IDRAAK-QUANTUM-CORE/. .
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add -A app settings.gradle build.gradle gradle.properties .gitignore README.md .github/workflows/build-apk.yml
+          git add -A app settings.gradle build.gradle gradle.properties .gitignore README.md .github/workflows
 
           if ! git diff --cached --quiet; then
-            git commit -m "Extract IDRAAK Android project files"
+            git commit -m "Publish IDRAAK project files and fix NDK configuration"
             git push
           else
-            echo "Project files are already published."
+            echo "No project file changes."
           fi
 
       - name: Set up Java
@@ -67,3 +91,4 @@ jobs:
           name: IDRAAK-QUANTUM-CORE-debug-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          
