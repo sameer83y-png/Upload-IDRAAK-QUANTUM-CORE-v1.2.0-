@@ -1,5 +1,5 @@
-
-name: IDRAAK QUANTUM CORE APK Build
+name:
+IDRAAK QUANTUM CORE APK Build
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Check ZIP file
         run: |
@@ -25,9 +27,25 @@ jobs:
       - name: Extract Android project
         run: |
           mkdir -p source
-          unzip -q IDRAAK-QUANTUM-CORE.zip -d source
+          unzip -oq IDRAAK-QUANTUM-CORE.zip -d source
           test -d source/IDRAAK-QUANTUM-CORE/app
           echo "Project extracted successfully."
+
+      - name: Publish project files to GitHub
+        run: |
+          cp -a source/IDRAAK-QUANTUM-CORE/. .
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A app settings.gradle build.gradle gradle.properties .gitignore README.md .github/workflows/build-apk.yml
+
+          if ! git diff --cached --quiet; then
+            git commit -m "Extract IDRAAK Android project files"
+            git push
+          else
+            echo "Project files are already published."
+          fi
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -41,13 +59,11 @@ jobs:
           gradle-version: '8.9'
 
       - name: Build Debug APK
-        working-directory: source/IDRAAK-QUANTUM-CORE
         run: gradle --no-daemon assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: IDRAAK-QUANTUM-CORE-debug-APK
-          path: source/IDRAAK-QUANTUM-CORE/app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          
