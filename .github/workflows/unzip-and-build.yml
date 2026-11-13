@@ -1,0 +1,52 @@
+
+name: IDRAAK QUANTUM CORE APK Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check ZIP file
+        run: |
+          test -f IDRAAK-QUANTUM-CORE.zip
+          echo "Project ZIP found."
+
+      - name: Extract Android project
+        run: |
+          mkdir -p source
+          unzip -q IDRAAK-QUANTUM-CORE.zip -d source
+          ls -la source
+          test -d source/IDRAAK-QUANTUM-CORE/app
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build Debug APK
+        working-directory: source/IDRAAK-QUANTUM-CORE
+        run: gradle --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: IDRAAK-QUANTUM-CORE-debug-APK
+          path: source/IDRAAK-QUANTUM-CORE/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
