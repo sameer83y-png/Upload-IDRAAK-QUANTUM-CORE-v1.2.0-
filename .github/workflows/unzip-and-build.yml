@@ -26,8 +26,8 @@ jobs:
         run: |
           mkdir -p source
           unzip -q IDRAAK-QUANTUM-CORE.zip -d source
-          ls -la source
           test -d source/IDRAAK-QUANTUM-CORE/app
+          echo "Project extracted successfully."
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -38,7 +38,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
+          gradle-version: '8.9'
 
       - name: Build Debug APK
         working-directory: source/IDRAAK-QUANTUM-CORE
@@ -50,3 +50,4 @@ jobs:
           name: IDRAAK-QUANTUM-CORE-debug-APK
           path: source/IDRAAK-QUANTUM-CORE/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          
