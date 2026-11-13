@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">IDRAAK QUANTUM CORE</string>
+    <string name="accessibility_description">IDRAAK user-controlled accessibility assistant. It reads visible interface text when enabled by the user.</string>
+</resources>
