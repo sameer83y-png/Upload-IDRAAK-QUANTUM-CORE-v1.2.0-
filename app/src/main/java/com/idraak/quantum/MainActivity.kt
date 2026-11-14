@@ -32,19 +32,75 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private var assistantActive = false
     private var voiceRunning = false
+    private var voiceEnabled = true
+    private var voiceStartRequested = false
     private var permissionRequestInProgress = false
+    private var ttsReady = false
+    private var pendingSpeech: String? = null
 
     private val bg = Color.rgb(3, 7, 28)
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
 
-            val spoken = intent?.getStringExtra(
-                VoiceForegroundService.EXTRA_TEXT
-            ) ?: return
+            when (intent?.action) {
 
-            runOnUiThread {
-                handleVoiceInput(spoken)
+                VoiceForegroundService.ACTION_RESULT -> {
+                    val spoken = intent.getStringExtra(
+                        VoiceForegroundService.EXTRA_TEXT
+                    ) ?: return
+
+                    runOnUiThread {
+                        handleVoiceInput(spoken)
+                    }
+                }
+
+                VoiceForegroundService.ACTION_STATE -> {
+                    val running = intent.getBooleanExtra(
+                        VoiceForegroundService.EXTRA_RUNNING,
+                        false
+                    )
+
+                    val userStopped = intent.getBooleanExtra(
+                        VoiceForegroundService.EXTRA_USER_STOPPED,
+                        false
+                    )
+
+                    runOnUiThread {
+
+                        voiceRunning = running
+                        voiceStartRequested = false
+
+                        if (userStopped) {
+                            voiceEnabled = false
+                            assistantActive = false
+                            savePrefs()
+                            launcherView.setLiveStatus(
+                                "● MICROPHONE STOPPED"
+                            )
+                        } else if (running) {
+                            voiceEnabled = true
+                            launcherView.setLiveStatus(
+                                if (assistantActive) {
+                                    "● IDRAAK ACTIVE"
+                                } else {
+                                    "● IDRAAK STANDBY"
+                                }
+                            )
+                        } else {
+                            voiceEnabled = false
+                            assistantActive = false
+                            savePrefs()
+                            launcherView.setLiveStatus(
+                                "● VOICE SERVICE UNAVAILABLE"
+                            )
+                        }
+
+                        launcherView.setVoiceStatus(
+                            voiceRunning || voiceStartRequested
+                        )
+                    }
+                }
             }
         }
     }
@@ -63,20 +119,21 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         loadPrefs()
         buildUI()
+        registerVoiceReceiver()
+    }
 
-        val filter = IntentFilter(
-            VoiceForegroundService.ACTION_RESULT
-        )
+    private fun registerVoiceReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(VoiceForegroundService.ACTION_RESULT)
+            addAction(VoiceForegroundService.ACTION_STATE)
+        }
 
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
         } else {
+            @Suppress("DEPRECATION")
             registerReceiver(receiver, filter)
         }
-
-        Handler(Looper.getMainLooper()).postDelayed({
-            ensureVoicePermissionAndStart()
-        }, 700)
     }
 
     private fun loadPrefs() {
@@ -91,6 +148,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         gender = prefs.getString("gender", "Female") ?: "Female"
         language = prefs.getString("language", "Hindi") ?: "Hindi"
+
+        // First launch: enabled by default.
+        // After the user stops the microphone, keep it disabled.
+        voiceEnabled = prefs.getBoolean("voice_enabled", true)
     }
 
     private fun savePrefs() {
@@ -99,6 +160,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             .putString("model", model)
             .putString("gender", gender)
             .putString("language", language)
+            .putBoolean("voice_enabled", voiceEnabled)
             .apply()
     }
 
@@ -117,6 +179,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         )
 
         launcherView.setAvatarGender(gender)
+        launcherView.setVoiceStatus(voiceRunning)
+        launcherView.setLiveStatus("● IDRAAK STANDBY")
+
         setContentView(launcherView)
     }
 
@@ -212,6 +277,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private fun ensureVoicePermissionAndStart() {
 
         if (isFinishing || isDestroyed) return
+        if (!voiceEnabled) return
+
+        if (voiceRunning || voiceStartRequested) return
 
         if (
             checkSelfPermission(Manifest.permission.RECORD_AUDIO)
@@ -270,6 +338,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             ) {
                 requestNotificationPermissionIfNeeded()
             } else {
+                voiceEnabled = false
+                savePrefs()
+
                 launcherView.setLiveStatus(
                     "● MICROPHONE PERMISSION REQUIRED"
                 )
@@ -284,11 +355,16 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
 
         if (requestCode == 102) {
+            // Android may still allow a foreground service
+            // when notification permission is denied.
+            // Continue, but Android controls notification visibility.
             startVoiceService()
         }
     }
 
     private fun startVoiceService() {
+
+        if (!voiceEnabled) return
 
         if (
             checkSelfPermission(Manifest.permission.RECORD_AUDIO)
@@ -300,7 +376,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             return
         }
 
+        if (voiceRunning || voiceStartRequested) return
+
         try {
+            voiceStartRequested = true
+            launcherView.setVoiceStatus(true)
+            launcherView.setLiveStatus("● IDRAAK VOICE STARTING")
+
             val intent = Intent(
                 this,
                 VoiceForegroundService::class.java
@@ -317,12 +399,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 startService(intent)
             }
 
-            voiceRunning = true
-            launcherView.setVoiceStatus(true)
-            launcherView.setLiveStatus("● IDRAAK VOICE STARTING")
-
         } catch (e: Exception) {
+            voiceStartRequested = false
             voiceRunning = false
+            voiceEnabled = false
+            savePrefs()
+
+            launcherView.setVoiceStatus(false)
             launcherView.setLiveStatus("● VOICE START FAILED")
 
             Toast.makeText(
@@ -335,6 +418,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private fun stopVoiceService() {
 
+        voiceEnabled = false
+        voiceRunning = false
+        voiceStartRequested = false
+        assistantActive = false
+        savePrefs()
+
         try {
             val intent = Intent(
                 this,
@@ -345,10 +434,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
             startService(intent)
         } catch (_: Exception) {
+            stopService(
+                Intent(this, VoiceForegroundService::class.java)
+            )
         }
-
-        voiceRunning = false
-        assistantActive = false
 
         launcherView.setVoiceStatus(false)
         launcherView.setLiveStatus("● MICROPHONE STOPPED")
@@ -356,30 +445,41 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private fun restartVoiceService() {
 
-        try {
-            stopService(
-                Intent(this, VoiceForegroundService::class.java)
-            )
-        } catch (_: Exception) {
-        }
+        if (!voiceEnabled) return
 
         voiceRunning = false
+        voiceStartRequested = false
         assistantActive = false
 
         launcherView.setVoiceStatus(false)
         launcherView.setLiveStatus("● UPDATING VOICE LANGUAGE")
 
+        stopService(
+            Intent(this, VoiceForegroundService::class.java)
+        )
+
         Handler(Looper.getMainLooper()).postDelayed({
-            if (!isFinishing && !isDestroyed) {
+            if (
+                !isFinishing &&
+                !isDestroyed &&
+                voiceEnabled
+            ) {
                 startVoiceService()
             }
         }, 700)
     }
 
     private fun toggleVoiceService() {
-        if (voiceRunning) {
+
+        if (
+            voiceRunning ||
+            voiceStartRequested ||
+            voiceEnabled
+        ) {
             stopVoiceService()
         } else {
+            voiceEnabled = true
+            savePrefs()
             ensureVoicePermissionAndStart()
         }
     }
@@ -610,6 +710,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         launcherView.setLiveStatus("● COMMAND RECEIVED")
 
+        val currentApiKey = apiKey
+        val currentModel = model
+
         executor.execute {
 
             try {
@@ -641,7 +744,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                                 launcherView.setLiveStatus(
                                     "● ACTION ACCEPTED"
                                 )
-                                speak("$target खोलने का अनुरोध भेज दिया गया है।")
+                                speak(
+                                    "$target खोलने का अनुरोध भेज दिया गया है।"
+                                )
                             } else {
                                 launcherView.setLiveStatus(
                                     "● ACTION FAILED"
@@ -669,8 +774,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                             module.callAttr(
                                 "reply",
                                 text,
-                                apiKey,
-                                model
+                                currentApiKey,
+                                currentModel
                             ).toString()
                         )
 
@@ -705,15 +810,32 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     // TEXT TO SPEECH
 
-    private fun speak(text: String) {
-
-        if (!::tts.isInitialized) return
-
-        tts.language = when (language) {
+    private fun selectedLocale(): Locale {
+        return when (language) {
             "Hindi" -> Locale("hi", "IN")
             "Urdu" -> Locale("ur", "PK")
             "Arabic" -> Locale("ar")
             else -> Locale.US
+        }
+    }
+
+    private fun speak(text: String) {
+
+        if (!::tts.isInitialized) return
+
+        if (!ttsReady) {
+            pendingSpeech = text
+            return
+        }
+
+        val locale = selectedLocale()
+
+        val availability = tts.isLanguageAvailable(locale)
+
+        if (availability >= TextToSpeech.LANG_AVAILABLE) {
+            tts.language = locale
+        } else {
+            tts.language = Locale.US
         }
 
         tts.speak(
@@ -725,23 +847,33 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     override fun onInit(statusCode: Int) {
+
         if (statusCode == TextToSpeech.SUCCESS) {
+            ttsReady = true
             applyVoice()
+
+            pendingSpeech?.let {
+                pendingSpeech = null
+                speak(it)
+            }
+        } else {
+            ttsReady = false
         }
     }
 
     private fun applyVoice() {
 
-        if (!::tts.isInitialized) return
+        if (!::tts.isInitialized || !ttsReady) return
 
-        val locale = when (language) {
-            "Hindi" -> Locale("hi", "IN")
-            "Urdu" -> Locale("ur", "PK")
-            "Arabic" -> Locale("ar")
-            else -> Locale.US
+        val locale = selectedLocale()
+
+        val availability = tts.isLanguageAvailable(locale)
+
+        if (availability >= TextToSpeech.LANG_AVAILABLE) {
+            tts.language = locale
+        } else {
+            tts.language = Locale.US
         }
-
-        tts.language = locale
 
         val voices = tts.voices?.filter {
             it.locale.language == locale.language
@@ -869,7 +1001,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
             setOnClickListener {
 
-                val restartVoice = voiceRunning
+                val oldLanguage = language
+                val wasVoiceEnabled = voiceEnabled
 
                 apiKey = key.text.toString().trim()
 
@@ -886,7 +1019,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                 launcherView.setLiveStatus("● SETTINGS SAVED")
 
-                if (restartVoice) {
+                if (
+                    wasVoiceEnabled &&
+                    oldLanguage != language
+                ) {
                     restartVoiceService()
                 }
 
@@ -911,7 +1047,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         layout.addView(accessibilityButton)
 
         val voiceButton = Button(this).apply {
-            text = if (voiceRunning) {
+            text = if (voiceEnabled) {
                 "STOP MICROPHONE"
             } else {
                 "START MICROPHONE"
@@ -920,7 +1056,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setOnClickListener {
                 toggleVoiceService()
 
-                this.text = if (voiceRunning) {
+                this.text = if (voiceEnabled) {
                     "STOP MICROPHONE"
                 } else {
                     "START MICROPHONE"
@@ -966,7 +1102,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             launcherView.reloadApps()
             launcherView.setAvatarGender(gender)
 
-            if (!voiceRunning) {
+            if (voiceEnabled && !voiceRunning && !voiceStartRequested) {
                 ensureVoicePermissionAndStart()
             }
         }
