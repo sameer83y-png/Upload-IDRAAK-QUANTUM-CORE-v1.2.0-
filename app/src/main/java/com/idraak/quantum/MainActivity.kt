@@ -43,6 +43,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private lateinit var homeView: LauncherHomeView
     private lateinit var tts: TextToSpeech
+    private lateinit var voiceManager: VoiceManager
 
     private lateinit var wakeWordController: WakeWordController
     private lateinit var softwareController: SoftwareController
@@ -65,16 +66,33 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private var speaking = false
     private var pendingSpeech: String? = null
 
+    private var utteranceSequence = 0
+    private var activeUtteranceId: String? = null
+
+    private val wakeAcknowledgement = Runnable {
+        if (
+            !isFinishing &&
+            !isDestroyed &&
+            wakeWordController.isActive() &&
+            wakeWordController.getState() ==
+                WakeWordController.VoiceState.ACTIVE
+        ) {
+            speak("जी, मैं सक्रिय हूँ। बताइए।")
+        }
+    }
+
     private val prefs by lazy {
         getSharedPreferences("idraak", MODE_PRIVATE)
     }
 
     private val voiceReceiver = object : BroadcastReceiver() {
+
         override fun onReceive(context: Context?, intent: Intent?) {
 
             when (intent?.action) {
 
                 VoiceForegroundService.ACTION_RESULT -> {
+
                     val recognizedText =
                         intent.getStringExtra(
                             VoiceForegroundService.EXTRA_TEXT
@@ -82,7 +100,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                     if (
                         recognizedText.isNotBlank() &&
-                        !speaking
+                        !speaking &&
+                        !isFinishing &&
+                        !isDestroyed
                     ) {
                         wakeWordController.processRecognizedText(
                             recognizedText
@@ -91,6 +111,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 }
 
                 VoiceForegroundService.ACTION_STATE -> {
+
                     val userStopped = intent.getBooleanExtra(
                         VoiceForegroundService.EXTRA_USER_STOPPED,
                         false
@@ -103,13 +124,41 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                     if (running) {
                         voiceServiceStarted = true
-                    }
 
-                    if (userStopped) {
+                        if (!speaking) {
+                            homeView.setVoiceStatus(true)
+
+                            if (
+                                wakeWordController.getState() ==
+                                WakeWordController.VoiceState.SLEEPING
+                            ) {
+                                homeView.setLiveStatus(
+                                    "IDRAAK STANDBY • LISTENING"
+                                )
+                            }
+                        }
+
+                    } else if (userStopped) {
+
                         voiceServiceStarted = false
+
+                        if (!speaking) {
+                            homeView.setVoiceStatus(false)
+                            homeView.setLiveStatus(
+                                "IDRAAK VOICE PAUSED"
+                            )
+                        }
+
+                    } else if (!speaking) {
+
+                        // PAUSE के दौरान Service भी false state भेजती है।
+                        // उस समय speaking=true होता है, इसलिए उसे failure
+                        // नहीं माना जाएगा।
+                        voiceServiceStarted = false
+
                         homeView.setVoiceStatus(false)
                         homeView.setLiveStatus(
-                            "IDRAAK VOICE PAUSED"
+                            "VOICE SERVICE NOT READY"
                         )
                     }
                 }
@@ -122,11 +171,14 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         window.statusBarColor = Color.rgb(3, 7, 28)
         window.navigationBarColor = Color.rgb(3, 7, 28)
+
         window.addFlags(
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         )
 
         loadSettings()
+
+        voiceManager = VoiceManager(this)
 
         softwareController = SoftwareController(this)
         screenController = ScreenController()
@@ -179,20 +231,23 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     // -------------------------------------------------
 
     private fun buildInterface() {
+
         homeView = LauncherHomeView(
             this,
             onSettingsClick = {
                 openSettings()
             },
             onVoiceClick = {
-                // Voice is controlled by the IDRAAK wake word.
+                // Voice activation wake word से नियंत्रित होगी।
             }
         )
 
         homeView.setAvatarGender(gender)
+
         homeView.setLiveStatus(
             "IDRAAK SYSTEM INITIALIZING"
         )
+
         homeView.setVoiceStatus(false)
 
         setContentView(homeView)
@@ -211,26 +266,50 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     // -------------------------------------------------
 
     private fun setupWakeWordController() {
+
         wakeWordController = WakeWordController(
 
             {
                 runOnUiThread {
+
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+
+                    handler.removeCallbacks(wakeAcknowledgement)
+
                     homeView.setLiveStatus("IDRAAK ACTIVE")
                     homeView.setVoiceStatus(true)
-                    speak("जी, मैं सक्रिय हूँ। बताइए।")
+
+                    // Wake Word के साथ Command भी बोला गया हो,
+                    // तो executeCommand इस acknowledgement को cancel करेगा।
+                    handler.postDelayed(
+                        wakeAcknowledgement,
+                        300L
+                    )
                 }
             },
 
             { command ->
+
                 runOnUiThread {
+
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+
+                    handler.removeCallbacks(wakeAcknowledgement)
+
                     executeCommand(command)
                 }
             },
 
             {
                 runOnUiThread {
+
+                    handler.removeCallbacks(wakeAcknowledgement)
+
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+
                     homeView.setLiveStatus("IDRAAK STANDBY")
                     homeView.setVoiceStatus(false)
+
                     speak(
                         "ठीक है। मैं Standby में जा रहा हूँ।"
                     )
@@ -238,24 +317,28 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             },
 
             { state ->
-                runOnUiThread {
-                    when (state.toString()) {
 
-                        "SLEEPING" -> {
+                runOnUiThread {
+
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+
+                    when (state) {
+
+                        WakeWordController.VoiceState.SLEEPING -> {
                             homeView.setLiveStatus(
                                 "IDRAAK STANDBY"
                             )
                             homeView.setVoiceStatus(false)
                         }
 
-                        "ACTIVE" -> {
+                        WakeWordController.VoiceState.ACTIVE -> {
                             homeView.setLiveStatus(
                                 "IDRAAK ACTIVE"
                             )
                             homeView.setVoiceStatus(true)
                         }
 
-                        "PROCESSING" -> {
+                        WakeWordController.VoiceState.PROCESSING -> {
                             homeView.setLiveStatus(
                                 "IDRAAK THINKING"
                             )
@@ -272,25 +355,31 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     // -------------------------------------------------
 
     private fun registerVoiceReceiver() {
+
         if (receiverRegistered) return
 
         val filter = IntentFilter().apply {
             addAction(
                 VoiceForegroundService.ACTION_RESULT
             )
+
             addAction(
                 VoiceForegroundService.ACTION_STATE
             )
         }
 
         try {
+
             if (Build.VERSION.SDK_INT >= 33) {
+
                 registerReceiver(
                     voiceReceiver,
                     filter,
                     Context.RECEIVER_NOT_EXPORTED
                 )
+
             } else {
+
                 @Suppress("DEPRECATION")
                 registerReceiver(
                     voiceReceiver,
@@ -306,123 +395,79 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     // -------------------------------------------------
-    // VOICE FOREGROUND SERVICE
+    // VOICE MANAGER INTEGRATION
     // -------------------------------------------------
 
     private fun startVoiceService() {
+
         if (!permissionGranted || voiceServiceStarted) return
 
-        val serviceIntent = Intent(
-            this,
-            VoiceForegroundService::class.java
-        ).apply {
-            putExtra(
-                VoiceForegroundService.EXTRA_LANGUAGE,
+        try {
+
+            voiceManager.start(
                 selectedLocale().toLanguageTag()
             )
-        }
 
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
-            }
-
+            // यह provisional स्थिति है।
+            // वास्तविक Listening की पुष्टि ACTION_STATE से होगी।
             voiceServiceStarted = true
 
-            homeView.setVoiceStatus(true)
             homeView.setLiveStatus(
-                "IDRAAK STANDBY • LISTENING"
+                "IDRAAK VOICE STARTING"
             )
 
         } catch (_: Exception) {
+
             voiceServiceStarted = false
+
+            homeView.setVoiceStatus(false)
             homeView.setLiveStatus(
                 "VOICE SERVICE ERROR"
             )
         }
     }
 
-    /*
-     * Pause only the SpeechRecognizer.
-     * The foreground service and its notification remain active.
-     */
     private fun pauseVoiceService() {
-        if (!voiceServiceStarted) return
 
         try {
-            val intent = Intent(
-                this,
-                VoiceForegroundService::class.java
-            ).apply {
-                action = VoiceForegroundService.ACTION_PAUSE
-            }
 
-            startService(intent)
+            voiceManager.pause()
 
         } catch (_: Exception) {
+
             homeView.setLiveStatus(
                 "VOICE PAUSE ERROR"
             )
         }
     }
 
-    /*
-     * Resume the existing service.
-     * If it is not running, start it normally.
-     */
     private fun resumeVoiceService() {
+
         if (!permissionGranted) return
 
-        if (!voiceServiceStarted) {
-            startVoiceService()
-            return
-        }
-
         try {
-            val intent = Intent(
-                this,
-                VoiceForegroundService::class.java
-            ).apply {
-                action = VoiceForegroundService.ACTION_RESUME
-                putExtra(
-                    VoiceForegroundService.EXTRA_LANGUAGE,
-                    selectedLocale().toLanguageTag()
-                )
-            }
 
-            startService(intent)
-
-            homeView.setLiveStatus(
-                "IDRAAK STANDBY • LISTENING"
+            voiceManager.resume(
+                selectedLocale().toLanguageTag()
             )
 
+            voiceServiceStarted = true
+
         } catch (_: Exception) {
+
             voiceServiceStarted = false
+
+            homeView.setVoiceStatus(false)
             homeView.setLiveStatus(
                 "VOICE RESUME ERROR"
             )
         }
     }
 
-    /*
-     * Full stop is reserved for an explicit settings restart
-     * or when the user stops the voice service.
-     */
     private fun stopVoiceService() {
-        if (!voiceServiceStarted) return
 
         try {
-            val intent = Intent(
-                this,
-                VoiceForegroundService::class.java
-            ).apply {
-                action = VoiceForegroundService.ACTION_STOP
-            }
-
-            startService(intent)
-
+            voiceManager.stop()
         } catch (_: Exception) {
         }
 
@@ -434,14 +479,18 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     // -------------------------------------------------
 
     private fun checkAudioPermission() {
+
         permissionGranted =
             checkSelfPermission(
                 Manifest.permission.RECORD_AUDIO
             ) == PackageManager.PERMISSION_GRANTED
 
         if (permissionGranted) {
+
             startVoiceService()
+
         } else {
+
             requestPermissions(
                 arrayOf(Manifest.permission.RECORD_AUDIO),
                 REQUEST_AUDIO
@@ -454,6 +503,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
+
         super.onRequestPermissionsResult(
             requestCode,
             permissions,
@@ -463,33 +513,43 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         when (requestCode) {
 
             REQUEST_AUDIO -> {
+
                 permissionGranted =
                     grantResults.isNotEmpty() &&
                         grantResults[0] ==
                         PackageManager.PERMISSION_GRANTED
 
                 if (permissionGranted) {
+
                     startVoiceService()
+
                 } else {
+
                     homeView.setLiveStatus(
                         "MICROPHONE PERMISSION REQUIRED"
                     )
+
                     homeView.setVoiceStatus(false)
                 }
             }
 
             REQUEST_CAMERA -> {
+
                 val granted =
                     grantResults.isNotEmpty() &&
                         grantResults[0] ==
                         PackageManager.PERMISSION_GRANTED
 
                 if (granted) {
+
                     hardwareController.setFlashlight(true)
+
                     speak(
                         "फ्लैशलाइट चालू कर रहा हूँ।"
                     )
+
                 } else {
+
                     speak("कैमरा अनुमति नहीं मिली।")
                 }
             }
@@ -501,6 +561,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     // -------------------------------------------------
 
     private fun normalize(text: String): String {
+
         return text.lowercase(Locale.ROOT)
             .replace(
                 Regex("[^\\p{L}\\p{N}\\s]"),
@@ -511,10 +572,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun executeCommand(rawCommand: String) {
+
         val command = rawCommand.trim()
+
         if (command.isBlank()) return
 
+        handler.removeCallbacks(wakeAcknowledgement)
+
         wakeWordController.startProcessing()
+
         homeView.setLiveStatus(
             "IDRAAK • PROCESSING"
         )
@@ -545,26 +611,26 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
 
         if (openPrefix != null) {
+
             val appName = command
                 .removePrefix(openPrefix)
                 .trim()
 
             if (appName.isNotBlank()) {
+
                 val launched = invokeController(
                     softwareController,
                     listOf("openAppByName"),
                     arrayOf(appName)
                 )
 
-                if (launched) {
-                    speak(
+                speak(
+                    if (launched) {
                         "जी, ऐप खोलने की कोशिश कर रहा हूँ।"
-                    )
-                } else {
-                    speak(
+                    } else {
                         "मैं इस ऐप को नहीं खोल सका।"
-                    )
-                }
+                    }
+                )
             }
 
             return true
@@ -581,8 +647,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "ऐप दिखाओ"
             )
         ) {
+
             homeView.openAppDrawer()
+
             speak("आपके ऐप्स स्क्रीन पर हैं।")
+
             return true
         }
 
@@ -593,8 +662,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "होम पर जाओ"
             )
         ) {
+
             homeView.closeAppDrawer()
+
             speak("जी।")
+
             return true
         }
 
@@ -608,11 +680,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "स्क्रीन पर क्या लिखा है"
             )
         ) {
+
             if (!screenController.isAccessibilityEnabled()) {
+
                 speak(
                     "स्क्रीन पढ़ने के लिए IDRAAK Accessibility Service चालू करें।"
                 )
+
             } else {
+
                 val visibleText =
                     screenController.readScreen()
 
@@ -635,6 +711,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "नीचे जाओ"
             )
         ) {
+
             val done = screenController.scrollDown()
 
             speak(
@@ -655,6 +732,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "ऊपर जाओ"
             )
         ) {
+
             val done = screenController.scrollUp()
 
             speak(
@@ -678,6 +756,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "पीछे जाओ"
             )
         ) {
+
             val done = screenController.goBack()
 
             speak(
@@ -695,6 +774,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "होम स्क्रीन खोलो"
             )
         ) {
+
             val done = screenController.goHome()
 
             speak(
@@ -717,6 +797,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "नोटिफिकेशन खोलो"
             )
         ) {
+
             val done =
                 screenController.openNotifications()
 
@@ -738,6 +819,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "क्विक सेटिंग खोलो"
             )
         ) {
+
             val done =
                 screenController.openQuickSettings()
 
@@ -758,6 +840,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             command.startsWith("type ") ||
             command.startsWith("लिखो ")
         ) {
+
             val textToType =
                 rawText.substringAfter(" ", "")
 
@@ -786,11 +869,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "फ्लैशलाइट चालू करो"
             )
         ) {
+
             if (
                 checkSelfPermission(
                     Manifest.permission.CAMERA
                 ) == PackageManager.PERMISSION_GRANTED
             ) {
+
                 val done =
                     hardwareController.setFlashlight(true)
 
@@ -801,7 +886,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                         "फ्लैशलाइट चालू नहीं हो सकी।"
                     }
                 )
+
             } else {
+
                 requestPermissions(
                     arrayOf(Manifest.permission.CAMERA),
                     REQUEST_CAMERA
@@ -820,6 +907,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "फ्लैशलाइट बंद करो"
             )
         ) {
+
             val done =
                 hardwareController.setFlashlight(false)
 
@@ -843,6 +931,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "कैमरा खोलो"
             )
         ) {
+
             val done = hardwareController.openCamera()
 
             speak(
@@ -866,11 +955,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "सेटिंग खोलो"
             )
         ) {
+
             startActivity(
                 Intent(Settings.ACTION_SETTINGS)
             )
 
             speak("फोन की सेटिंग खोल रहा हूँ।")
+
             return true
         }
 
@@ -880,6 +971,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "वाईफाई सेटिंग खोलो"
             )
         ) {
+
             invokeController(
                 systemController,
                 listOf(
@@ -889,6 +981,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             )
 
             speak("वाईफाई सेटिंग खोल रहा हूँ।")
+
             return true
         }
 
@@ -898,12 +991,14 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "ब्लूटूथ सेटिंग खोलो"
             )
         ) {
+
             invokeController(
                 systemController,
                 listOf("openBluetoothSettings")
             )
 
             speak("ब्लूटूथ सेटिंग खोल रहा हूँ।")
+
             return true
         }
 
@@ -913,12 +1008,14 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "ब्राइटनेस सेटिंग खोलो"
             )
         ) {
+
             invokeController(
                 systemController,
                 listOf("openDisplaySettings")
             )
 
             speak("डिस्प्ले सेटिंग खोल रहा हूँ।")
+
             return true
         }
 
@@ -936,7 +1033,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     ): Boolean {
 
         for (methodName in methodNames) {
+
             try {
+
                 val method =
                     controller.javaClass.methods.firstOrNull {
                         it.name == methodName &&
@@ -962,18 +1061,23 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     // -------------------------------------------------
 
     private fun askGemini(prompt: String) {
+
         val currentKey = apiKey
         val currentModel = model
 
         if (currentKey.isBlank()) {
+
             speak(
                 "Gemini API Key दर्ज करने के लिए Settings खोलें।"
             )
+
             return
         }
 
         executor.execute {
+
             try {
+
                 val screenText =
                     if (screenController.isAccessibilityEnabled()) {
                         screenController.readScreen().take(3000)
@@ -989,17 +1093,23 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 )
 
                 runOnUiThread {
+
                     if (!isFinishing && !isDestroyed) {
+
                         homeView.setLiveStatus(
                             "IDRAAK • RESPONSE"
                         )
+
                         speak(answer)
                     }
                 }
 
             } catch (_: Exception) {
+
                 runOnUiThread {
+
                     if (!isFinishing && !isDestroyed) {
+
                         speak(
                             "माफ कीजिए, AI से कनेक्शन नहीं हो सका।"
                         )
@@ -1032,6 +1142,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             url.openConnection() as HttpURLConnection
 
         try {
+
             connection.requestMethod = "POST"
             connection.connectTimeout = 20000
             connection.readTimeout = 30000
@@ -1078,7 +1189,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     "contents",
                     JSONArray().put(
                         JSONObject().apply {
+
                             put("role", "user")
+
                             put(
                                 "parts",
                                 JSONArray().put(
@@ -1147,6 +1260,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             val result = StringBuilder()
 
             for (i in 0 until parts.length()) {
+
                 val part = parts.optJSONObject(i)
                 val text = part?.optString("text", "") ?: ""
 
@@ -1169,6 +1283,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     // -------------------------------------------------
 
     private fun selectedLocale(): Locale {
+
         return when (language) {
             "Hindi" -> Locale("hi", "IN")
             "English" -> Locale.US
@@ -1179,24 +1294,33 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     override fun onInit(status: Int) {
+
         if (status == TextToSpeech.SUCCESS) {
+
             ttsReady = true
+
             applyVoice()
             setupTtsListener()
 
             pendingSpeech?.let {
+
                 pendingSpeech = null
+
                 speak(it)
             }
+
         } else {
+
             ttsReady = false
         }
     }
 
     private fun applyVoice() {
+
         if (!ttsReady) return
 
         val locale = selectedLocale()
+
         val availability =
             tts.isLanguageAvailable(locale)
 
@@ -1211,6 +1335,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         } ?: emptyList()
 
         val selectedVoice = voices.firstOrNull {
+
             if (gender == "Female") {
                 it.name.contains("female", true)
             } else {
@@ -1225,6 +1350,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun speak(text: String) {
+
         if (text.isBlank()) return
 
         if (!ttsReady) {
@@ -1232,28 +1358,49 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             return
         }
 
+        // पुरानी pending acknowledgement हटाएँ।
+        handler.removeCallbacks(wakeAcknowledgement)
+
         speaking = true
 
-        // Do not stop the foreground service.
-        // Pause only the recognition session.
+        // Recognition रोकें, Foreground Service बंद न करें।
         pauseVoiceService()
 
         homeView.setLiveStatus(
             "IDRAAK • SPEAKING"
         )
+
         homeView.setVoiceStatus(false)
 
         applyVoice()
 
-        tts.speak(
+        val utteranceId =
+            "idraak_response_${++utteranceSequence}"
+
+        activeUtteranceId = utteranceId
+
+        val result = tts.speak(
             text,
             TextToSpeech.QUEUE_FLUSH,
             null,
-            "idraak_response"
+            utteranceId
         )
+
+        if (result == TextToSpeech.ERROR) {
+
+            speaking = false
+            activeUtteranceId = null
+
+            wakeWordController.finishProcessing()
+
+            if (!isFinishing && !isDestroyed) {
+                resumeVoiceService()
+            }
+        }
     }
 
     private fun setupTtsListener() {
+
         tts.setOnUtteranceProgressListener(
             object : UtteranceProgressListener() {
 
@@ -1265,12 +1412,22 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 override fun onDone(
                     utteranceId: String?
                 ) {
+
                     runOnUiThread {
+
+                        if (
+                            utteranceId != activeUtteranceId
+                        ) {
+                            return@runOnUiThread
+                        }
+
+                        activeUtteranceId = null
                         speaking = false
 
                         wakeWordController.finishProcessing()
 
                         if (!isFinishing && !isDestroyed) {
+
                             homeView.setLiveStatus(
                                 if (wakeWordController.isActive()) {
                                     "IDRAAK ACTIVE"
@@ -1287,7 +1444,42 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 override fun onError(
                     utteranceId: String?
                 ) {
+
                     runOnUiThread {
+
+                        if (
+                            utteranceId != activeUtteranceId
+                        ) {
+                            return@runOnUiThread
+                        }
+
+                        activeUtteranceId = null
+                        speaking = false
+
+                        wakeWordController.finishProcessing()
+
+                        if (!isFinishing && !isDestroyed) {
+                            resumeVoiceService()
+                        }
+                    }
+                }
+
+                override fun onStop(
+                    utteranceId: String?,
+                    interrupted: Boolean
+                ) {
+
+                    runOnUiThread {
+
+                        // QUEUE_FLUSH पुराने utterance को रोक सकता है।
+                        // केवल वर्तमान utterance की callback स्वीकार करें।
+                        if (
+                            utteranceId != activeUtteranceId
+                        ) {
+                            return@runOnUiThread
+                        }
+
+                        activeUtteranceId = null
                         speaking = false
 
                         wakeWordController.finishProcessing()
@@ -1306,6 +1498,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     // -------------------------------------------------
 
     private fun openSettings() {
+
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 20, 24, 20)
@@ -1357,6 +1550,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         )
 
         val genders = listOf("Male", "Female")
+
         val genderSpinner = Spinner(this)
 
         genderSpinner.adapter = ArrayAdapter(
@@ -1410,13 +1604,16 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     genderSpinner.selectedItem.toString()
 
                 saveSettings()
+
                 applyVoice()
 
                 homeView.setAvatarGender(gender)
 
-                // Language changed: restart service deliberately.
-                stopVoiceService()
-                startVoiceService()
+                // भाषा बदलने पर उसी Voice Service को नए locale
+                // के साथ resume करें।
+                if (permissionGranted) {
+                    resumeVoiceService()
+                }
 
                 Toast.makeText(
                     this,
@@ -1433,7 +1630,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     // -------------------------------------------------
 
     override fun onResume() {
+
         super.onResume()
+
+        permissionGranted =
+            checkSelfPermission(
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
 
         if (permissionGranted && !voiceServiceStarted) {
             startVoiceService()
@@ -1443,9 +1646,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
+
         handler.removeCallbacksAndMessages(null)
 
         if (receiverRegistered) {
+
             try {
                 unregisterReceiver(voiceReceiver)
             } catch (_: Exception) {
@@ -1466,7 +1671,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         executor.shutdownNow()
 
-        // The foreground service is not stopped here.
+        // Foreground Service को यहाँ जानबूझकर बंद नहीं किया गया है।
 
         super.onDestroy()
     }
