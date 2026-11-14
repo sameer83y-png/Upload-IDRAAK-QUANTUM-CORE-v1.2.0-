@@ -29,10 +29,7 @@ class LauncherHomeView(
     private lateinit var statusText: TextView
     private lateinit var voiceButton: TextView
     private lateinit var appGrid: GridView
-
-    private val backgroundColor = Color.rgb(5, 9, 25)
-    private val cyan = Color.rgb(0, 220, 255)
-    private val purple = Color.rgb(150, 75, 255)
+    private lateinit var orbView: LiveOrbView
 
     init {
         orientation = VERTICAL
@@ -57,7 +54,7 @@ class LauncherHomeView(
         val header = TextView(context).apply {
             text = "IDRAAK"
             textSize = 27f
-            setTextColor(cyan)
+            setTextColor(Color.rgb(0, 220, 255))
             typeface = Typeface.create(
                 "sans-serif-black",
                 Typeface.BOLD
@@ -91,24 +88,21 @@ class LauncherHomeView(
             )
         )
 
-        val orb = LiveOrbView(context)
+        orbView = LiveOrbView(context)
 
         val longPressHandler = Handler(Looper.getMainLooper())
-        var longPressTriggered = false
         var startX = 0f
         var startY = 0f
 
         val longPressAction = Runnable {
-            longPressTriggered = true
             onSettingsClick()
         }
 
-        orb.setOnTouchListener { view, event ->
+        orbView.setOnTouchListener { _, event ->
 
             when (event.action) {
 
                 MotionEvent.ACTION_DOWN -> {
-                    longPressTriggered = false
                     startX = event.x
                     startY = event.y
 
@@ -144,7 +138,7 @@ class LauncherHomeView(
         }
 
         addView(
-            orb,
+            orbView,
             LayoutParams(190, 190).apply {
                 gravity = Gravity.CENTER
                 topMargin = 5
@@ -261,14 +255,14 @@ class LauncherHomeView(
 
         val settingsButton = createActionButton(
             "⚙ SETTINGS",
-            purple
+            Color.rgb(155, 75, 255)
         ) {
             onSettingsClick()
         }
 
         voiceButton = createActionButton(
             "🎙 ACTIVATE",
-            cyan
+            Color.rgb(0, 220, 255)
         ) {
             onVoiceClick()
         }
@@ -324,6 +318,12 @@ class LauncherHomeView(
         }
     }
 
+    fun setAvatarGender(gender: String) {
+        if (::orbView.isInitialized) {
+            orbView.setAvatarGender(gender)
+        }
+    }
+
     fun reloadApps() {
         try {
             allApps = engine.getInstalledApps()
@@ -363,32 +363,24 @@ class LauncherHomeView(
 
 class LiveOrbView(context: Context) : View(context) {
 
-    private val orbPaint = Paint(
-        Paint.ANTI_ALIAS_FLAG
-    )
-
-    private val ringPaint = Paint(
-        Paint.ANTI_ALIAS_FLAG
-    ).apply {
+    private val orbPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 2.5f
     }
 
-    private val textPaint = Paint(
-        Paint.ANTI_ALIAS_FLAG
-    ).apply {
+    private val avatarPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         textAlign = Paint.Align.CENTER
         typeface = Typeface.create(
             "sans-serif-black",
             Typeface.BOLD
         )
-        textSize = 17f
+        textSize = 12f
     }
 
-    private val smallTextPaint = Paint(
-        Paint.ANTI_ALIAS_FLAG
-    ).apply {
+    private val smallTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(0, 225, 255)
         textAlign = Paint.Align.CENTER
         textSize = 8f
@@ -396,9 +388,22 @@ class LiveOrbView(context: Context) : View(context) {
     }
 
     private var rotation = 0f
+    private var avatarGender = "male"
 
     private val cyan = Color.rgb(0, 225, 255)
     private val purple = Color.rgb(155, 65, 255)
+
+    fun setAvatarGender(gender: String) {
+        avatarGender = if (
+            gender.equals("female", true) ||
+            gender.equals("महिला", true)
+        ) {
+            "female"
+        } else {
+            "male"
+        }
+        invalidate()
+    }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -406,8 +411,6 @@ class LiveOrbView(context: Context) : View(context) {
         val cx = width / 2f
         val cy = height / 2f
         val radius = min(width, height) * 0.37f
-
-        canvas.save()
 
         val glow = RadialGradient(
             cx,
@@ -471,15 +474,13 @@ class LiveOrbView(context: Context) : View(context) {
         ringPaint.alpha = 230
         ringPaint.strokeWidth = 2.2f
 
-        val ovalRect = RectF(
-            cx - radius * 1.25f,
-            cy - radius * 0.38f,
-            cx + radius * 1.25f,
-            cy + radius * 0.38f
-        )
-
         canvas.drawOval(
-            ovalRect,
+            RectF(
+                cx - radius * 1.25f,
+                cy - radius * 0.38f,
+                cx + radius * 1.25f,
+                cy + radius * 0.38f
+            ),
             ringPaint
         )
 
@@ -496,21 +497,25 @@ class LiveOrbView(context: Context) : View(context) {
             ringPaint
         )
 
+        drawAvatar(canvas, cx, cy, radius)
+
         canvas.drawText(
             "IDRAAK",
             cx,
-            cy + 5f,
+            cy + radius * 0.72f,
             textPaint
         )
 
         canvas.drawText(
-            "QUANTUM CORE",
+            if (avatarGender == "female") {
+                "FEMALE AI CORE"
+            } else {
+                "MALE AI CORE"
+            },
             cx,
-            cy + radius * 0.52f,
+            cy + radius * 0.93f,
             smallTextPaint
         )
-
-        canvas.restore()
 
         rotation += 1.2f
         if (rotation >= 360f) {
@@ -518,5 +523,124 @@ class LiveOrbView(context: Context) : View(context) {
         }
 
         postInvalidateDelayed(35)
+    }
+
+    private fun drawAvatar(
+        canvas: Canvas,
+        cx: Float,
+        cy: Float,
+        radius: Float
+    ) {
+        val scale = radius / 70f
+
+        canvas.save()
+        canvas.translate(cx, cy - radius * 0.12f)
+        canvas.scale(scale, scale)
+
+        avatarPaint.shader = LinearGradient(
+            -25f,
+            -35f,
+            25f,
+            50f,
+            intArrayOf(
+                Color.rgb(190, 250, 255),
+                Color.rgb(45, 175, 255),
+                Color.rgb(80, 70, 220)
+            ),
+            null,
+            Shader.TileMode.CLAMP
+        )
+
+        avatarPaint.style = Paint.Style.FILL
+
+        // Neck
+        canvas.drawRoundRect(
+            RectF(-9f, 19f, 9f, 38f),
+            5f,
+            5f,
+            avatarPaint
+        )
+
+        // Shoulders
+        val shoulders = Path().apply {
+            moveTo(-9f, 30f)
+            cubicTo(-28f, 32f, -38f, 43f, -40f, 55f)
+            lineTo(40f, 55f)
+            cubicTo(38f, 43f, 28f, 32f, 9f, 30f)
+            close()
+        }
+        canvas.drawPath(shoulders, avatarPaint)
+
+        // Head
+        canvas.drawOval(
+            RectF(-20f, -28f, 20f, 23f),
+            avatarPaint
+        )
+
+        avatarPaint.shader = null
+
+        // Hair style
+        avatarPaint.color = if (avatarGender == "female") {
+            Color.rgb(25, 35, 100)
+        } else {
+            Color.rgb(12, 30, 75)
+        }
+
+        val hair = Path()
+
+        if (avatarGender == "female") {
+            hair.moveTo(-20f, -4f)
+            hair.quadTo(-28f, -37f, 0f, -35f)
+            hair.quadTo(28f, -37f, 20f, -4f)
+            hair.lineTo(25f, 32f)
+            hair.quadTo(17f, 24f, 17f, 10f)
+            hair.lineTo(17f, -15f)
+            hair.quadTo(0f, -4f, -17f, -15f)
+            hair.lineTo(-17f, 10f)
+            hair.quadTo(-17f, 24f, -25f, 32f)
+            hair.close()
+        } else {
+            hair.moveTo(-20f, -10f)
+            hair.quadTo(-24f, -35f, 0f, -34f)
+            hair.quadTo(24f, -35f, 20f, -10f)
+            hair.quadTo(5f, -19f, -8f, -12f)
+            hair.close()
+        }
+
+        canvas.drawPath(hair, avatarPaint)
+
+        // Glowing eyes
+        avatarPaint.color = cyan
+        avatarPaint.strokeWidth = 2.5f
+        avatarPaint.style = Paint.Style.STROKE
+
+        canvas.drawLine(
+            -11f, 0f, -5f, 0f, avatarPaint
+        )
+        canvas.drawLine(
+            5f, 0f, 11f, 0f, avatarPaint
+        )
+
+        avatarPaint.style = Paint.Style.FILL
+        avatarPaint.color = Color.rgb(190, 250, 255)
+
+        canvas.drawCircle(-8f, 0f, 2f, avatarPaint)
+        canvas.drawCircle(8f, 0f, 2f, avatarPaint)
+
+        // Face light
+        avatarPaint.color = Color.argb(180, 0, 225, 255)
+        avatarPaint.strokeWidth = 1.2f
+        avatarPaint.style = Paint.Style.STROKE
+
+        canvas.drawArc(
+            RectF(-7f, 7f, 7f, 15f),
+            10f,
+            160f,
+            false,
+            avatarPaint
+        )
+
+        avatarPaint.style = Paint.Style.FILL
+        canvas.restore()
     }
 }
