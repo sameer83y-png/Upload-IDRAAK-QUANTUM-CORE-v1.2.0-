@@ -14,13 +14,13 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.animation.LinearInterpolator
 import android.widget.Button
 import android.widget.EditText
 import android.widget.GridView
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 
 class LauncherHomeView(
@@ -115,7 +115,7 @@ class LauncherHomeView(
             setHintTextColor(Color.rgb(140, 155, 190))
             setTextColor(Color.WHITE)
             textSize = 15f
-            singleLine = true
+            setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_SEARCH
             setPadding(18, 8, 18, 8)
 
