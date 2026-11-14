@@ -3,7 +3,6 @@ package com.idraak.quantum
 
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -15,8 +14,8 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewConfiguration
-import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -26,6 +25,7 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 
+@Suppress("UNUSED_PARAMETER")
 class LauncherHomeView(
     context: Context,
     private val onSettingsClick: () -> Unit,
@@ -33,27 +33,25 @@ class LauncherHomeView(
 ) : LinearLayout(context) {
 
     private val cyan = Color.rgb(0, 225, 255)
-    private val purple = Color.rgb(145, 75, 255)
-    private val backgroundColor = Color.rgb(3, 7, 22)
+    private val purple = Color.rgb(155, 65, 255)
 
-    private lateinit var mainContent: LinearLayout
+    private lateinit var homePanel: LinearLayout
     private lateinit var drawerPanel: LinearLayout
     private lateinit var statusText: TextView
     private lateinit var coreView: LiveOrbView
     private lateinit var appList: LinearLayout
-    private lateinit var appScrollView: ScrollView
+    private lateinit var appScroll: ScrollView
 
     private val handler = Handler(Looper.getMainLooper())
-    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private val touchSlop =
+        ViewConfiguration.get(context).scaledTouchSlop
 
-    private var downX = 0f
-    private var downY = 0f
-    private var longPressTriggered = false
-    private var gestureMoved = false
+    private var startX = 0f
+    private var startY = 0f
+    private var coreMoved = false
 
     private val longPressRunnable = Runnable {
-        if (!gestureMoved) {
-            longPressTriggered = true
+        if (!coreMoved) {
             onSettingsClick()
         }
     }
@@ -82,7 +80,7 @@ class LauncherHomeView(
     }
 
     private fun buildHome() {
-        mainContent = LinearLayout(context).apply {
+        homePanel = LinearLayout(context).apply {
             orientation = VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(18), dp(18), dp(18), dp(12))
@@ -98,10 +96,10 @@ class LauncherHomeView(
             )
             gravity = Gravity.CENTER
             letterSpacing = 0.20f
-            setShadowLayer(20f, 0f, 0f, cyan)
+            setShadowLayer(18f, 0f, 0f, cyan)
         }
 
-        mainContent.addView(
+        homePanel.addView(
             header,
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
@@ -114,11 +112,11 @@ class LauncherHomeView(
             textSize = 9f
             setTextColor(Color.rgb(145, 175, 220))
             gravity = Gravity.CENTER
-            letterSpacing = 0.18f
+            letterSpacing = 0.16f
             setPadding(0, dp(5), 0, dp(12))
         }
 
-        mainContent.addView(
+        homePanel.addView(
             subtitle,
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
@@ -129,10 +127,9 @@ class LauncherHomeView(
         coreView = LiveOrbView(context)
 
         coreView.setOnTouchListener { _, event ->
-            when (event.action) {
+            when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    gestureMoved = false
-                    longPressTriggered = false
+                    coreMoved = false
                     handler.removeCallbacks(longPressRunnable)
                     handler.postDelayed(longPressRunnable, 2000L)
                     true
@@ -143,7 +140,7 @@ class LauncherHomeView(
                         abs(event.x) > touchSlop ||
                         abs(event.y) > touchSlop
                     ) {
-                        gestureMoved = true
+                        coreMoved = true
                         handler.removeCallbacks(longPressRunnable)
                     }
                     true
@@ -164,7 +161,7 @@ class LauncherHomeView(
             dp(310)
         )
 
-        mainContent.addView(
+        homePanel.addView(
             coreView,
             LayoutParams(coreSize, coreSize).apply {
                 gravity = Gravity.CENTER
@@ -179,11 +176,11 @@ class LauncherHomeView(
             setTextColor(cyan)
             gravity = Gravity.CENTER
             typeface = Typeface.DEFAULT_BOLD
-            letterSpacing = 0.10f
+            letterSpacing = 0.08f
             setPadding(0, dp(10), 0, dp(6))
         }
 
-        mainContent.addView(
+        homePanel.addView(
             statusText,
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
@@ -196,11 +193,11 @@ class LauncherHomeView(
             textSize = 10f
             setTextColor(Color.rgb(130, 160, 205))
             gravity = Gravity.CENTER
-            letterSpacing = 0.15f
+            letterSpacing = 0.14f
             setPadding(0, dp(5), 0, dp(12))
         }
 
-        mainContent.addView(
+        homePanel.addView(
             instruction,
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
@@ -217,7 +214,7 @@ class LauncherHomeView(
             setPadding(0, dp(8), 0, dp(5))
         }
 
-        mainContent.addView(
+        homePanel.addView(
             swipeHint,
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
@@ -226,7 +223,7 @@ class LauncherHomeView(
         )
 
         addView(
-            mainContent,
+            homePanel,
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
                 0,
@@ -281,7 +278,7 @@ class LauncherHomeView(
             )
         )
 
-        appScrollView = ScrollView(context).apply {
+        appScroll = ScrollView(context).apply {
             isFillViewport = true
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
         }
@@ -290,16 +287,17 @@ class LauncherHomeView(
             orientation = VERTICAL
         }
 
-        appScrollView.addView(
+        // ScrollView child uses ViewGroup.LayoutParams.
+        appScroll.addView(
             appList,
-            ScrollView.LayoutParams(
-                ScrollView.LayoutParams.MATCH_PARENT,
-                ScrollView.LayoutParams.WRAP_CONTENT
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
 
         drawerPanel.addView(
-            appScrollView,
+            appScroll,
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
                 0,
@@ -337,16 +335,16 @@ class LauncherHomeView(
     }
 
     private fun showHome() {
-        mainContent.visibility = VISIBLE
+        homePanel.visibility = VISIBLE
         drawerPanel.visibility = GONE
         coreView.startAnimation()
     }
 
     private fun showDrawer() {
         handler.removeCallbacks(longPressRunnable)
-        mainContent.visibility = GONE
+        homePanel.visibility = GONE
         drawerPanel.visibility = VISIBLE
-        appScrollView.scrollTo(0, 0)
+        appScroll.scrollTo(0, 0)
         reloadApps()
     }
 
@@ -365,25 +363,25 @@ class LauncherHomeView(
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                downX = event.rawX
-                downY = event.rawY
+                startX = event.rawX
+                startY = event.rawY
             }
 
             MotionEvent.ACTION_UP -> {
-                val deltaX = event.rawX - downX
-                val deltaY = event.rawY - downY
+                val deltaX = event.rawX - startX
+                val deltaY = event.rawY - startY
 
-                val verticalSwipe =
+                val isVerticalSwipe =
                     abs(deltaY) > dp(85) &&
                     abs(deltaY) > abs(deltaX) * 1.25f
 
-                if (verticalSwipe) {
+                if (isVerticalSwipe) {
                     if (deltaY < 0 && !isAppDrawerOpen()) {
                         showDrawer()
                     } else if (
                         deltaY > 0 &&
                         isAppDrawerOpen() &&
-                        appScrollView.scrollY == 0
+                        appScroll.scrollY == 0
                     ) {
                         showHome()
                     }
@@ -403,13 +401,16 @@ class LauncherHomeView(
 
         appList.removeAllViews()
 
-        val intent = Intent(Intent.ACTION_MAIN).apply {
+        val launchIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_LAUNCHER)
         }
 
         val apps = try {
             @Suppress("DEPRECATION")
-            context.packageManager.queryIntentActivities(intent, 0)
+            context.packageManager.queryIntentActivities(
+                launchIntent,
+                0
+            )
         } catch (_: Exception) {
             emptyList()
         }.sortedBy {
@@ -419,7 +420,7 @@ class LauncherHomeView(
         }
 
         if (apps.isEmpty()) {
-            val empty = TextView(context).apply {
+            val emptyText = TextView(context).apply {
                 text = "No launchable apps found"
                 textSize = 14f
                 setTextColor(Color.LTGRAY)
@@ -428,7 +429,7 @@ class LauncherHomeView(
             }
 
             appList.addView(
-                empty,
+                emptyText,
                 LayoutParams(
                     LayoutParams.MATCH_PARENT,
                     LayoutParams.WRAP_CONTENT
@@ -438,9 +439,11 @@ class LauncherHomeView(
         }
 
         for (resolveInfo in apps) {
+            val activityInfo = resolveInfo.activityInfo ?: continue
+
             val appName = resolveInfo.loadLabel(
                 context.packageManager
-            )?.toString() ?: "Application"
+            ).toString()
 
             val appIcon = try {
                 resolveInfo.loadIcon(context.packageManager)
@@ -448,16 +451,12 @@ class LauncherHomeView(
                 null
             }
 
-            val appIntent = Intent(
-                Intent.ACTION_MAIN
-            ).apply {
+            val appIntent = Intent(Intent.ACTION_MAIN).apply {
                 addCategory(Intent.CATEGORY_LAUNCHER)
-                component = resolveInfo.activityInfo?.let {
-                    android.content.ComponentName(
-                        it.packageName,
-                        it.name
-                    )
-                }
+                component = android.content.ComponentName(
+                    activityInfo.packageName,
+                    activityInfo.name
+                )
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
@@ -465,6 +464,7 @@ class LauncherHomeView(
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(12), dp(9), dp(12), dp(9))
+
                 background = GradientDrawable().apply {
                     setColor(Color.argb(45, 30, 100, 150))
                     cornerRadius = dp(13).toFloat()
@@ -481,7 +481,7 @@ class LauncherHomeView(
                     try {
                         context.startActivity(appIntent)
                     } catch (_: Exception) {
-                        // App may not be available or launchable.
+                        // Launch failure is safely ignored.
                     }
                 }
             }
@@ -530,19 +530,20 @@ class LauncherHomeView(
                 LayoutParams(dp(28), dp(42))
             )
 
-            val rowParams = LayoutParams(
-                LayoutParams.MATCH_PARENT,
-                LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = dp(8)
-            }
-
-            appList.addView(row, rowParams)
+            appList.addView(
+                row,
+                LayoutParams(
+                    LayoutParams.MATCH_PARENT,
+                    LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(8)
+                }
+            )
         }
     }
 
     fun setAvatarGender(gender: String) {
-        // Human avatars are intentionally removed.
+        // Human avatar has been removed.
     }
 
     fun setLiveStatus(status: String) {
@@ -576,14 +577,14 @@ class LauncherHomeView(
 }
 
 /**
- * Abstract AI Core.
- * No human face, body, hair or humanoid avatar.
+ * Abstract IDRAAK AI Core.
+ * No human face, body or humanoid avatar.
  */
 class LiveOrbView(context: Context) : View(context) {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
     private val cyan = Color.rgb(0, 225, 255)
-    private val blue = Color.rgb(40, 120, 255)
     private val purple = Color.rgb(155, 65, 255)
 
     private var rotation = 0f
@@ -605,7 +606,7 @@ class LiveOrbView(context: Context) : View(context) {
 
     init {
         contentDescription =
-            "IDRAAK abstract AI control core. Long press for settings."
+            "IDRAAK AI Control Core. Long press for settings."
         startAnimation()
     }
 
@@ -635,10 +636,10 @@ class LiveOrbView(context: Context) : View(context) {
         val radius = min(width, height) * 0.29f
 
         drawGlow(canvas, cx, cy, radius)
-        drawOuterRings(canvas, cx, cy, radius)
+        drawRings(canvas, cx, cy, radius)
         drawCore(canvas, cx, cy, radius)
         drawWaveform(canvas, cx, cy, radius)
-        drawCoreText(canvas, cx, cy, radius)
+        drawText(canvas, cx, cy, radius)
     }
 
     private fun drawGlow(
@@ -648,12 +649,13 @@ class LiveOrbView(context: Context) : View(context) {
         radius: Float
     ) {
         paint.style = Paint.Style.FILL
+
         paint.shader = android.graphics.RadialGradient(
             cx,
             cy,
             radius * 2.15f,
             intArrayOf(
-                if (listening) Color.argb(100, 0, 255, 255)
+                if (listening) Color.argb(110, 0, 255, 255)
                 else Color.argb(65, 0, 160, 255),
                 Color.argb(25, 115, 50, 255),
                 Color.TRANSPARENT
@@ -666,7 +668,7 @@ class LiveOrbView(context: Context) : View(context) {
         paint.shader = null
     }
 
-    private fun drawOuterRings(
+    private fun drawRings(
         canvas: Canvas,
         cx: Float,
         cy: Float,
@@ -675,7 +677,7 @@ class LiveOrbView(context: Context) : View(context) {
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 1.5f
         paint.color = cyan
-        paint.alpha = 170
+        paint.alpha = 175
 
         canvas.drawCircle(
             cx,
@@ -719,6 +721,7 @@ class LiveOrbView(context: Context) : View(context) {
         paint.color = cyan
 
         val angle = Math.toRadians(rotation.toDouble())
+
         canvas.drawCircle(
             cx + cos(angle).toFloat() * radius * 1.65f,
             cy + sin(angle).toFloat() * radius * 0.55f,
@@ -736,6 +739,7 @@ class LiveOrbView(context: Context) : View(context) {
         val breathing = 1f + 0.035f * sin(pulse)
 
         paint.style = Paint.Style.FILL
+
         paint.shader = android.graphics.RadialGradient(
             cx - radius * 0.25f,
             cy - radius * 0.3f,
@@ -802,27 +806,24 @@ class LiveOrbView(context: Context) : View(context) {
 
         for (i in 0 until count) {
             val angle = i * (Math.PI * 2.0 / count)
+
             val wave = sin(
                 angle * 5.0 + pulse * 2.0
             ).toFloat()
 
-            val activeBoost = if (listening) 1.7f else 1f
-            val length = (5f + abs(wave) * 11f) * activeBoost
+            val boost = if (listening) 1.7f else 1f
+            val length = (5f + abs(wave) * 11f) * boost
 
-            val startR = baseRadius
-            val endR = baseRadius + length
+            val x1 = cx + cos(angle).toFloat() * baseRadius
+            val y1 = cy + sin(angle).toFloat() * baseRadius
 
-            val x1 = cx + cos(angle).toFloat() * startR
-            val y1 = cy + sin(angle).toFloat() * startR
-            val x2 = cx + cos(angle).toFloat() * endR
-            val y2 = cy + sin(angle).toFloat() * endR
+            val x2 = cx + cos(angle).toFloat() *
+                (baseRadius + length)
 
-            paint.color = if (i % 4 == 0) {
-                purple
-            } else {
-                cyan
-            }
+            val y2 = cy + sin(angle).toFloat() *
+                (baseRadius + length)
 
+            paint.color = if (i % 4 == 0) purple else cyan
             paint.alpha = if (listening) 255 else 175
 
             canvas.drawLine(x1, y1, x2, y2, paint)
@@ -832,7 +833,7 @@ class LiveOrbView(context: Context) : View(context) {
         paint.alpha = 255
     }
 
-    private fun drawCoreText(
+    private fun drawText(
         canvas: Canvas,
         cx: Float,
         cy: Float,
