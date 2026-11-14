@@ -16,15 +16,19 @@ class VoiceForegroundService : Service() {
     private lateinit var manager: NotificationManager
 
     private val handler = Handler(Looper.getMainLooper())
+
     private var listening = false
     private var activeLanguage = "hi-IN"
+    private var retryDelay = 1500L
 
     private val prefs by lazy {
         getSharedPreferences("idraak_voice_service", MODE_PRIVATE)
     }
 
     private val restartRunnable = Runnable {
-        if (listening) createRecognizer()
+        if (listening) {
+            createRecognizer()
+        }
     }
 
     companion object {
@@ -84,8 +88,8 @@ class VoiceForegroundService : Service() {
         }
 
         return builder
-            .setContentTitle("IDRAAK is listening")
-            .setContentText("Microphone active — tap Stop to pause")
+            .setContentTitle("IDRAAK Microphone")
+            .setContentText("Voice service active — tap Stop to pause")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setOngoing(true)
             .addAction(
@@ -96,13 +100,16 @@ class VoiceForegroundService : Service() {
             .build()
     }
 
-    private fun sendState(running: Boolean, userStopped: Boolean) {
-        val intent = Intent(ACTION_STATE)
+    private fun sendState(
+        running: Boolean,
+        userStopped: Boolean
+    ) {
+        val stateIntent = Intent(ACTION_STATE)
             .setPackage(packageName)
             .putExtra(EXTRA_RUNNING, running)
             .putExtra(EXTRA_USER_STOPPED, userStopped)
 
-        sendBroadcast(intent)
+        sendBroadcast(stateIntent)
     }
 
     override fun onStartCommand(
@@ -119,11 +126,10 @@ class VoiceForegroundService : Service() {
             stopListening()
             sendState(false, true)
             stopSelf()
+
             return START_NOT_STICKY
         }
 
-        // Android द्वारा Service Restart होने पर
-        // User की पिछली Stop पसंद का सम्मान करें।
         if (intent == null &&
             !prefs.getBoolean(PREF_ENABLED, false)
         ) {
@@ -134,13 +140,19 @@ class VoiceForegroundService : Service() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
-            prefs.edit().putBoolean(PREF_ENABLED, false).apply()
+            prefs.edit()
+                .putBoolean(PREF_ENABLED, false)
+                .apply()
+
             sendState(false, false)
             stopSelf()
+
             return START_NOT_STICKY
         }
 
-        if (listening) return START_STICKY
+        if (listening) {
+            return START_STICKY
+        }
 
         try {
             if (Build.VERSION.SDK_INT >= 34) {
@@ -150,39 +162,51 @@ class VoiceForegroundService : Service() {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
                 )
             } else {
-                startForeground(NOTIFICATION_ID, notification())
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification()
+                )
             }
 
-            val requestedLanguage = intent
-                ?.getStringExtra(EXTRA_LANGUAGE)
+            val requestedLanguage =
+                intent?.getStringExtra(EXTRA_LANGUAGE)
 
-            activeLanguage = if (!requestedLanguage.isNullOrBlank()) {
-                selectedLanguage(requestedLanguage)
-            } else {
-                prefs.getString(PREF_LANGUAGE, null)
-                    ?.let { selectedLanguage(it) }
-                    ?: selectedLanguage(null)
-            }
+            activeLanguage =
+                if (!requestedLanguage.isNullOrBlank()) {
+                    selectedLanguage(requestedLanguage)
+                } else {
+                    prefs.getString(PREF_LANGUAGE, null)
+                        ?.let { selectedLanguage(it) }
+                        ?: selectedLanguage(null)
+                }
 
             prefs.edit()
                 .putBoolean(PREF_ENABLED, true)
                 .putString(PREF_LANGUAGE, activeLanguage)
                 .apply()
 
+            retryDelay = 1500L
             startListening()
 
         } catch (_: Exception) {
-            prefs.edit().putBoolean(PREF_ENABLED, false).apply()
+            prefs.edit()
+                .putBoolean(PREF_ENABLED, false)
+                .apply()
+
             stopListening()
             sendState(false, false)
             stopSelf()
+
             return START_NOT_STICKY
         }
 
         return START_STICKY
     }
 
-    private fun selectedLanguage(requestedValue: String?): String {
+    private fun selectedLanguage(
+        requestedValue: String?
+    ): String {
+
         val requested = requestedValue
             ?.trim()
             ?.lowercase(Locale.ROOT)
@@ -206,7 +230,11 @@ class VoiceForegroundService : Service() {
                 requested.startsWith("en-") -> "en-IN"
 
             else -> {
-                when (Locale.getDefault().language.lowercase(Locale.ROOT)) {
+                when (
+                    Locale.getDefault()
+                        .language
+                        .lowercase(Locale.ROOT)
+                ) {
                     "hi" -> "hi-IN"
                     "ur" -> "ur-PK"
                     "ar" -> "ar"
@@ -221,10 +249,14 @@ class VoiceForegroundService : Service() {
         if (listening) return
 
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            prefs.edit().putBoolean(PREF_ENABLED, false).apply()
+            prefs.edit()
+                .putBoolean(PREF_ENABLED, false)
+                .apply()
+
             stopForeground(STOP_FOREGROUND_REMOVE)
             sendState(false, false)
             stopSelf()
+
             return
         }
 
@@ -249,6 +281,7 @@ class VoiceForegroundService : Service() {
                 object : RecognitionListener {
 
                     override fun onReadyForSpeech(params: Bundle?) {
+                        retryDelay = 1500L
                         sendState(true, false)
                     }
 
@@ -261,15 +294,40 @@ class VoiceForegroundService : Service() {
                     override fun onEndOfSpeech() {}
 
                     override fun onError(error: Int) {
-                        scheduleRestart(1500)
+
+                        if (!listening) return
+
+                        if (
+                            error ==
+                            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS
+                        ) {
+                            prefs.edit()
+                                .putBoolean(PREF_ENABLED, false)
+                                .apply()
+
+                            stopListening()
+                            sendState(false, false)
+                            stopSelf()
+
+                            return
+                        }
+
+                        scheduleRestart(retryDelay)
+
+                        retryDelay = (retryDelay * 2)
+                            .coerceAtMost(10000L)
                     }
 
                     override fun onResults(results: Bundle?) {
+
+                        if (!listening) return
+
                         val matches = results?.getStringArrayList(
                             SpeechRecognizer.RESULTS_RECOGNITION
                         )
 
-                        val recognizedText = matches?.firstOrNull()
+                        val recognizedText =
+                            matches?.firstOrNull()
 
                         if (!recognizedText.isNullOrBlank()) {
                             val resultIntent = Intent(ACTION_RESULT)
@@ -279,6 +337,7 @@ class VoiceForegroundService : Service() {
                             sendBroadcast(resultIntent)
                         }
 
+                        retryDelay = 1500L
                         scheduleRestart(500)
                     }
 
@@ -296,6 +355,7 @@ class VoiceForegroundService : Service() {
             val speechIntent = Intent(
                 RecognizerIntent.ACTION_RECOGNIZE_SPEECH
             ).apply {
+
                 putExtra(
                     RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                     RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
@@ -325,7 +385,10 @@ class VoiceForegroundService : Service() {
             speechRecognizer.startListening(speechIntent)
 
         } catch (_: Exception) {
-            scheduleRestart(2000)
+            scheduleRestart(retryDelay)
+
+            retryDelay = (retryDelay * 2)
+                .coerceAtMost(10000L)
         }
     }
 
@@ -333,7 +396,10 @@ class VoiceForegroundService : Service() {
         if (!listening) return
 
         handler.removeCallbacks(restartRunnable)
-        handler.postDelayed(restartRunnable, delay)
+        handler.postDelayed(
+            restartRunnable,
+            delay.coerceAtLeast(500L)
+        )
     }
 
     private fun stopListening() {
