@@ -1,30 +1,17 @@
-
-<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Internet and AI -->
     <uses-permission android:name="android.permission.INTERNET"/>
-
-    <!-- Microphone -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
-
-    <!-- Notifications and background operation -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
-    <!-- Installed application discovery -->
     <queries>
         <package android:name="com.whatsapp"/>
         <package android:name="com.google.android.youtube"/>
         <package android:name="com.android.chrome"/>
         <package android:name="org.telegram.messenger"/>
-
-        <intent>
-            <action android:name="android.intent.action.MAIN"/>
-            <category android:name="android.intent.category.LAUNCHER"/>
-        </intent>
     </queries>
 
     <application
@@ -33,50 +20,40 @@
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false">
 
-        <!-- Main Android Home Launcher -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="portrait">
 
-            <!-- Normal app launcher -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- Actual Android Home Launcher -->
+            <!-- Android Home Launcher option -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.HOME"/>
                 <category android:name="android.intent.category.DEFAULT"/>
             </intent-filter>
-
         </activity>
 
-        <!-- Visible microphone foreground service -->
         <service
             android:name=".VoiceForegroundService"
             android:exported="false"
             android:foregroundServiceType="microphone"/>
 
-        <!-- User-authorized accessibility service -->
         <service
             android:name=".IDRAAKAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="false">
-
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService"/>
             </intent-filter>
-
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_config"/>
-
         </service>
 
     </application>
-
 </manifest>
-            
