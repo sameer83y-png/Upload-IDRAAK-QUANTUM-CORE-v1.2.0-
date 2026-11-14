@@ -304,7 +304,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             val intent = Intent(
                 this,
                 VoiceForegroundService::class.java
-            )
+            ).apply {
+                putExtra(
+                    VoiceForegroundService.EXTRA_LANGUAGE,
+                    language
+                )
+            }
 
             if (Build.VERSION.SDK_INT >= 26) {
                 startForegroundService(intent)
@@ -347,6 +352,28 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         launcherView.setVoiceStatus(false)
         launcherView.setLiveStatus("● MICROPHONE STOPPED")
+    }
+
+    private fun restartVoiceService() {
+
+        try {
+            stopService(
+                Intent(this, VoiceForegroundService::class.java)
+            )
+        } catch (_: Exception) {
+        }
+
+        voiceRunning = false
+        assistantActive = false
+
+        launcherView.setVoiceStatus(false)
+        launcherView.setLiveStatus("● UPDATING VOICE LANGUAGE")
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (!isFinishing && !isDestroyed) {
+                startVoiceService()
+            }
+        }, 700)
     }
 
     private fun toggleVoiceService() {
@@ -528,8 +555,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         launcherView.setLiveStatus("● EXECUTING $actionName")
 
         if (success) {
-            launcherView.setLiveStatus("● ACTION COMPLETED")
-            speak("जी, कार्रवाई पूरी हो गई।")
+            launcherView.setLiveStatus("● ACTION ACCEPTED")
+            speak("जी, कार्रवाई का अनुरोध भेज दिया गया है।")
         } else {
             launcherView.setLiveStatus("● ACTION NOT COMPLETED")
 
@@ -579,7 +606,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         if (text.isBlank()) return
 
-        // Accessibility commands are handled before Gemini.
         if (handleAccessibilityCommand(text)) return
 
         launcherView.setLiveStatus("● COMMAND RECEIVED")
@@ -615,7 +641,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                                 launcherView.setLiveStatus(
                                     "● ACTION ACCEPTED"
                                 )
-                                speak("$target खोलने का अनुरोध पूरा हुआ।")
+                                speak("$target खोलने का अनुरोध भेज दिया गया है।")
                             } else {
                                 launcherView.setLiveStatus(
                                     "● ACTION FAILED"
@@ -843,6 +869,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
             setOnClickListener {
 
+                val restartVoice = voiceRunning
+
                 apiKey = key.text.toString().trim()
 
                 model = modelInput.text.toString().trim()
@@ -858,6 +886,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                 launcherView.setLiveStatus("● SETTINGS SAVED")
 
+                if (restartVoice) {
+                    restartVoiceService()
+                }
+
                 Toast.makeText(
                     this@MainActivity,
                     "IDRAAK Settings saved",
@@ -867,8 +899,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
 
         layout.addView(saveButton)
-
-        // NEW: ACCESSIBILITY SERVICE BUTTON
 
         val accessibilityButton = Button(this).apply {
             text = "ENABLE ACCESSIBILITY SERVICE"
