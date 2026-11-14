@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.os.*
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
+import android.view.Gravity
 import android.widget.*
 import org.json.JSONObject
 import com.chaquo.python.Python
@@ -68,26 +69,18 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         )
 
         if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(
-                receiver,
-                filter,
-                RECEIVER_NOT_EXPORTED
-            )
+            registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(receiver, filter)
         }
 
-        // Start the voice setup after the Home screen is visible.
         Handler(Looper.getMainLooper()).postDelayed({
             ensureVoicePermissionAndStart()
         }, 700)
     }
 
     private fun loadPrefs() {
-        val prefs = getSharedPreferences(
-            "idraak",
-            MODE_PRIVATE
-        )
+        val prefs = getSharedPreferences("idraak", MODE_PRIVATE)
 
         apiKey = prefs.getString("key", "") ?: ""
 
@@ -96,22 +89,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             "gemini-2.5-flash"
         ) ?: "gemini-2.5-flash"
 
-        gender = prefs.getString(
-            "gender",
-            "Female"
-        ) ?: "Female"
-
-        language = prefs.getString(
-            "language",
-            "Hindi"
-        ) ?: "Hindi"
+        gender = prefs.getString("gender", "Female") ?: "Female"
+        language = prefs.getString("language", "Hindi") ?: "Hindi"
     }
 
     private fun savePrefs() {
-        getSharedPreferences(
-            "idraak",
-            MODE_PRIVATE
-        ).edit()
+        getSharedPreferences("idraak", MODE_PRIVATE).edit()
             .putString("key", apiKey)
             .putString("model", model)
             .putString("gender", gender)
@@ -125,34 +108,28 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         launcherView = LauncherHomeView(
             this,
-
             onSettingsClick = {
                 openSettings()
             },
-
             onVoiceClick = {
                 toggleVoiceService()
             }
         )
 
         launcherView.setAvatarGender(gender)
-
-        // Only the IDRAAK launcher is displayed.
-        // No chat panel, text input or execute button.
         setContentView(launcherView)
     }
 
-    // WAKE WORD SYSTEM
+    // SPEECH NORMALIZATION
 
     private fun normalizeSpeech(text: String): String {
         return text.lowercase(Locale.ROOT)
-            .replace(
-                Regex("[^\\p{L}\\p{N}\\s]"),
-                ""
-            )
+            .replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
             .trim()
             .replace(Regex("\\s+"), " ")
     }
+
+    // WAKE WORD SYSTEM
 
     private fun wakePrefixes(): List<String> {
         return listOf(
@@ -175,14 +152,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val normalized = normalizeSpeech(text)
 
         for (prefix in wakePrefixes()) {
-
             if (
                 normalized == prefix ||
                 normalized.startsWith("$prefix ")
             ) {
-                return normalized
-                    .removePrefix(prefix)
-                    .trim()
+                return normalized.removePrefix(prefix).trim()
             }
         }
 
@@ -190,7 +164,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun isSleepPhrase(text: String): Boolean {
-
         val t = normalizeSpeech(text)
 
         return t.contains("सो जाओ idraak") ||
@@ -203,13 +176,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private fun handleVoiceInput(spoken: String) {
 
         if (isSleepPhrase(spoken)) {
-
             assistantActive = false
 
-            launcherView.setLiveStatus(
-                "● IDRAAK STANDBY"
-            )
-
+            launcherView.setLiveStatus("● IDRAAK STANDBY")
             speak("ठीक है। मैं Standby में जा रहा हूँ।")
             return
         }
@@ -219,28 +188,17 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             val command = extractWakeCommand(spoken)
 
             if (command != null) {
-
                 assistantActive = true
-
-                launcherView.setLiveStatus(
-                    "● IDRAAK ACTIVE"
-                )
+                launcherView.setLiveStatus("● IDRAAK ACTIVE")
 
                 if (command.isBlank()) {
-
                     speak("जी, मैं सक्रिय हूँ। बताइए!")
-
                 } else {
-
                     speak("जी, बताइए। मैं काम शुरू कर रहा हूँ।")
                     executeCommand(command)
                 }
-
             } else {
-
-                launcherView.setLiveStatus(
-                    "● IDRAAK STANDBY"
-                )
+                launcherView.setLiveStatus("● IDRAAK STANDBY")
             }
 
             return
@@ -249,7 +207,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         executeCommand(spoken)
     }
 
-    // MICROPHONE PERMISSIONS AND STARTUP
+    // MICROPHONE PERMISSIONS
 
     private fun ensureVoicePermissionAndStart() {
 
@@ -259,7 +217,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             checkSelfPermission(Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
-
             if (!permissionRequestInProgress) {
                 permissionRequestInProgress = true
 
@@ -268,7 +225,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     101
                 )
             }
-
             return
         }
 
@@ -278,20 +234,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private fun requestNotificationPermissionIfNeeded() {
 
         if (Build.VERSION.SDK_INT >= 33) {
-
             if (
                 checkSelfPermission(
                     Manifest.permission.POST_NOTIFICATIONS
                 ) != PackageManager.PERMISSION_GRANTED
             ) {
-
                 requestPermissions(
-                    arrayOf(
-                        Manifest.permission.POST_NOTIFICATIONS
-                    ),
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
                     102
                 )
-
                 return
             }
         }
@@ -304,7 +255,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
-
         super.onRequestPermissionsResult(
             requestCode,
             permissions,
@@ -312,18 +262,14 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         )
 
         if (requestCode == 101) {
-
             permissionRequestInProgress = false
 
             if (
                 grantResults.isNotEmpty() &&
                 grantResults[0] == PackageManager.PERMISSION_GRANTED
             ) {
-
                 requestNotificationPermissionIfNeeded()
-
             } else {
-
                 launcherView.setLiveStatus(
                     "● MICROPHONE PERMISSION REQUIRED"
                 )
@@ -334,14 +280,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     Toast.LENGTH_LONG
                 ).show()
             }
-
             return
         }
 
         if (requestCode == 102) {
-
-            // Notification permission is recommended.
-            // Start listening even if notification permission is denied.
             startVoiceService()
         }
     }
@@ -359,7 +301,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
 
         try {
-
             val intent = Intent(
                 this,
                 VoiceForegroundService::class.java
@@ -372,20 +313,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
 
             voiceRunning = true
-
             launcherView.setVoiceStatus(true)
-
-            launcherView.setLiveStatus(
-                "● IDRAAK VOICE STARTING"
-            )
+            launcherView.setLiveStatus("● IDRAAK VOICE STARTING")
 
         } catch (e: Exception) {
-
             voiceRunning = false
-
-            launcherView.setLiveStatus(
-                "● VOICE START FAILED"
-            )
+            launcherView.setLiveStatus("● VOICE START FAILED")
 
             Toast.makeText(
                 this,
@@ -398,7 +331,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private fun stopVoiceService() {
 
         try {
-
             val intent = Intent(
                 this,
                 VoiceForegroundService::class.java
@@ -407,7 +339,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
 
             startService(intent)
-
         } catch (_: Exception) {
         }
 
@@ -415,19 +346,205 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         assistantActive = false
 
         launcherView.setVoiceStatus(false)
-
-        launcherView.setLiveStatus(
-            "● MICROPHONE STOPPED"
-        )
+        launcherView.setLiveStatus("● MICROPHONE STOPPED")
     }
 
     private fun toggleVoiceService() {
-
         if (voiceRunning) {
             stopVoiceService()
         } else {
             ensureVoicePermissionAndStart()
         }
+    }
+
+    // ACCESSIBILITY COMMAND ENGINE
+
+    private fun handleAccessibilityCommand(text: String): Boolean {
+
+        val command = normalizeSpeech(text)
+
+        if (command.isBlank()) return false
+
+        var actionName = ""
+        var success = false
+        var recognized = true
+
+        when {
+
+            command in listOf(
+                "scroll down",
+                "स्क्रॉल डाउन",
+                "नीचे स्क्रॉल करो",
+                "नीचे स्क्रॉल",
+                "नीचे करो",
+                "पेज नीचे करो"
+            ) -> {
+                actionName = "SCROLL DOWN"
+                success = IDRAAKAccessibilityService.scrollDown()
+            }
+
+            command in listOf(
+                "scroll up",
+                "स्क्रॉल अप",
+                "ऊपर स्क्रॉल करो",
+                "ऊपर स्क्रॉल",
+                "ऊपर करो",
+                "पेज ऊपर करो"
+            ) -> {
+                actionName = "SCROLL UP"
+                success = IDRAAKAccessibilityService.scrollUp()
+            }
+
+            command in listOf(
+                "back",
+                "go back",
+                "वापस जाओ",
+                "बैक जाओ",
+                "पीछे जाओ",
+                "वापस चलो"
+            ) -> {
+                actionName = "BACK"
+                success = IDRAAKAccessibilityService.goBack()
+            }
+
+            command in listOf(
+                "home",
+                "go home",
+                "होम",
+                "होम स्क्रीन खोलो",
+                "होम पर जाओ"
+            ) -> {
+                actionName = "HOME"
+                success = IDRAAKAccessibilityService.goHome()
+            }
+
+            command in listOf(
+                "open notifications",
+                "notifications",
+                "नोटिफिकेशन खोलो",
+                "नोटिफिकेशन पैनल खोलो"
+            ) -> {
+                actionName = "NOTIFICATIONS"
+                success = IDRAAKAccessibilityService.openNotifications()
+            }
+
+            command in listOf(
+                "quick settings",
+                "open quick settings",
+                "क्विक सेटिंग खोलो",
+                "क्विक सेटिंग्स खोलो"
+            ) -> {
+                actionName = "QUICK SETTINGS"
+                success = IDRAAKAccessibilityService.openQuickSettings()
+            }
+
+            else -> {
+                recognized = false
+            }
+        }
+
+        // CLICK TEXT COMMANDS
+
+        if (!recognized) {
+
+            val clickSuffixes = listOf(
+                "पर क्लिक करो",
+                "पर क्लिक करें",
+                "को क्लिक करो",
+                "को क्लिक करें",
+                "पर दबाओ",
+                "को दबाओ",
+                "क्लिक करो",
+                "क्लिक करें",
+                "दबाओ",
+                "tap",
+                "click"
+            )
+
+            var target = command
+
+            for (suffix in clickSuffixes) {
+                if (target.endsWith(suffix)) {
+                    target = target.removeSuffix(suffix).trim()
+                    recognized = true
+                    break
+                }
+            }
+
+            val clickPrefixes = listOf(
+                "स्क्रीन पर ",
+                "स्क्रीन में ",
+                "बटन ",
+                "क्लिक ",
+                "click ",
+                "tap "
+            )
+
+            for (prefix in clickPrefixes) {
+                if (target.startsWith(prefix)) {
+                    target = target.removePrefix(prefix).trim()
+                }
+            }
+
+            if (recognized && target.isNotBlank()) {
+                actionName = "CLICK $target"
+                success = IDRAAKAccessibilityService.clickText(target)
+            } else {
+                recognized = false
+            }
+        }
+
+        // TYPE TEXT COMMANDS
+
+        if (!recognized) {
+
+            val typePrefixes = listOf(
+                "लिखो ",
+                "लिख दो ",
+                "यह लिखो ",
+                "टाइप करो ",
+                "type ",
+                "write "
+            )
+
+            var typedText: String? = null
+
+            for (prefix in typePrefixes) {
+                if (command.startsWith(prefix)) {
+                    typedText = command.removePrefix(prefix).trim()
+                    break
+                }
+            }
+
+            if (typedText != null && typedText.isNotBlank()) {
+                recognized = true
+                actionName = "TYPE TEXT"
+                success = IDRAAKAccessibilityService.typeText(typedText)
+            }
+        }
+
+        if (!recognized) return false
+
+        launcherView.setLiveStatus("● EXECUTING $actionName")
+
+        if (success) {
+            launcherView.setLiveStatus("● ACTION COMPLETED")
+            speak("जी, कार्रवाई पूरी हो गई।")
+        } else {
+            launcherView.setLiveStatus("● ACTION NOT COMPLETED")
+
+            if (!IDRAAKAccessibilityService.isConnected()) {
+                speak(
+                    "पहले फोन की Accessibility Settings में IDRAAK Service चालू करें।"
+                )
+            } else {
+                speak(
+                    "यह कार्रवाई अभी पूरी नहीं हो सकी। स्क्रीन पर विकल्प उपलब्ध नहीं हो सकता।"
+                )
+            }
+        }
+
+        return true
     }
 
     // APP CONTROL
@@ -442,11 +559,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         )
 
         if (target == "settings") {
-
-            startActivity(
-                Intent(Settings.ACTION_SETTINGS)
-            )
-
+            startActivity(Intent(Settings.ACTION_SETTINGS))
             return true
         }
 
@@ -457,32 +570,28 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         ) ?: return false
 
         startActivity(launch)
-
         return true
     }
 
-    // COMMAND ENGINE
+    // MAIN COMMAND ENGINE
 
     private fun executeCommand(text: String) {
 
         if (text.isBlank()) return
 
-        launcherView.setLiveStatus(
-            "● COMMAND RECEIVED"
-        )
+        // Accessibility commands are handled before Gemini.
+        if (handleAccessibilityCommand(text)) return
+
+        launcherView.setLiveStatus("● COMMAND RECEIVED")
 
         executor.execute {
 
             try {
-
                 val py = Python.getInstance()
                 val module = py.getModule("idraak_core")
 
                 val classified = JSONObject(
-                    module.callAttr(
-                        "classify",
-                        text
-                    ).toString()
+                    module.callAttr("classify", text).toString()
                 )
 
                 when (classified.getString("type")) {
@@ -492,7 +601,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                         val target = classified.getString("target")
 
                         runOnUiThread {
-
                             launcherView.setLiveStatus(
                                 "● LAUNCHING $target"
                             )
@@ -504,26 +612,20 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                             }
 
                             if (success) {
-
                                 launcherView.setLiveStatus(
                                     "● ACTION ACCEPTED"
                                 )
-
                                 speak("$target खोलने का अनुरोध पूरा हुआ।")
-
                             } else {
-
                                 launcherView.setLiveStatus(
                                     "● ACTION FAILED"
                                 )
-
                                 speak("ऐप नहीं खुल सका।")
                             }
                         }
                     }
 
                     "idraak_settings" -> {
-
                         runOnUiThread {
                             openSettings()
                         }
@@ -552,25 +654,23 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                         )
 
                         runOnUiThread {
-
                             launcherView.setLiveStatus(
-                                "● ${response.optString("status", "DONE").uppercase()}"
+                                "● ${
+                                    response.optString(
+                                        "status",
+                                        "DONE"
+                                    ).uppercase()
+                                }"
                             )
-
-                            // Spoken response only. No chat panel.
                             speak(answer)
                         }
                     }
                 }
 
-            } catch (e: Exception) {
+            } catch (_: Exception) {
 
                 runOnUiThread {
-
-                    launcherView.setLiveStatus(
-                        "● SYSTEM ERROR"
-                    )
-
+                    launcherView.setLiveStatus("● SYSTEM ERROR")
                     speak("माफ कीजिए, कमांड पूरी नहीं हो सकी।")
                 }
             }
@@ -584,7 +684,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         if (!::tts.isInitialized) return
 
         tts.language = when (language) {
-
             "Hindi" -> Locale("hi", "IN")
             "Urdu" -> Locale("ur", "PK")
             "Arabic" -> Locale("ar")
@@ -600,7 +699,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     override fun onInit(statusCode: Int) {
-
         if (statusCode == TextToSpeech.SUCCESS) {
             applyVoice()
         }
@@ -611,7 +709,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         if (!::tts.isInitialized) return
 
         val locale = when (language) {
-
             "Hindi" -> Locale("hi", "IN")
             "Urdu" -> Locale("ur", "PK")
             "Arabic" -> Locale("ar")
@@ -625,18 +722,32 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         } ?: emptyList()
 
         val selected = voices.firstOrNull {
-
             if (gender == "Female") {
                 it.name.contains("female", true)
             } else {
                 it.name.contains("male", true) &&
                     !it.name.contains("female", true)
             }
-
         } ?: voices.firstOrNull()
 
         if (selected != null) {
             tts.voice = selected
+        }
+    }
+
+    // ACCESSIBILITY SETTINGS
+
+    private fun openAccessibilitySettings() {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            )
+        } catch (_: Exception) {
+            Toast.makeText(
+                this,
+                "फोन की Settings में Accessibility खोलें।",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -685,10 +796,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         val voice = Spinner(this)
 
-        val genders = listOf(
-            "Female",
-            "Male"
-        )
+        val genders = listOf("Female", "Male")
 
         voice.adapter = ArrayAdapter(
             this,
@@ -705,7 +813,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 text = "IDRAAK SETTINGS"
                 textSize = 20f
                 setTextColor(Color.WHITE)
-                gravity = android.view.Gravity.CENTER
+                gravity = Gravity.CENTER
             }
         )
 
@@ -732,6 +840,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         val saveButton = Button(this).apply {
             text = "SAVE SETTINGS"
+
             setOnClickListener {
 
                 apiKey = key.text.toString().trim()
@@ -747,9 +856,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 launcherView.setAvatarGender(gender)
                 applyVoice()
 
-                launcherView.setLiveStatus(
-                    "● SETTINGS SAVED"
-                )
+                launcherView.setLiveStatus("● SETTINGS SAVED")
 
                 Toast.makeText(
                     this@MainActivity,
@@ -761,6 +868,18 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         layout.addView(saveButton)
 
+        // NEW: ACCESSIBILITY SERVICE BUTTON
+
+        val accessibilityButton = Button(this).apply {
+            text = "ENABLE ACCESSIBILITY SERVICE"
+
+            setOnClickListener {
+                openAccessibilitySettings()
+            }
+        }
+
+        layout.addView(accessibilityButton)
+
         val voiceButton = Button(this).apply {
             text = if (voiceRunning) {
                 "STOP MICROPHONE"
@@ -769,10 +888,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
 
             setOnClickListener {
-
                 toggleVoiceService()
 
-                text = if (voiceRunning) {
+                this.text = if (voiceRunning) {
                     "STOP MICROPHONE"
                 } else {
                     "START MICROPHONE"
