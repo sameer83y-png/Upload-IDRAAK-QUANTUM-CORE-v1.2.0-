@@ -161,6 +161,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         )
 
+        // Apply saved Avatar selection immediately.
+        launcherView.setAvatarGender(gender)
+
         root.addView(
             launcherView,
             LinearLayout.LayoutParams(
@@ -630,7 +633,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             if (gender == "Female") {
                 it.name.contains("female", true)
             } else {
-                it.name.contains("male", true)
+                it.name.contains("male", true) &&
+                    !it.name.contains("female", true)
             }
 
         } ?: voices.firstOrNull()
@@ -725,6 +729,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 gender = voice.selectedItem.toString()
 
                 savePrefs()
+
+                // Update the visible Avatar immediately.
+                launcherView.setAvatarGender(gender)
+
+                // Update the available speech voice.
                 applyVoice()
 
                 launcherView.setLiveStatus(
@@ -753,6 +762,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         if (::launcherView.isInitialized) {
             launcherView.reloadApps()
+            launcherView.setAvatarGender(gender)
         }
     }
 
