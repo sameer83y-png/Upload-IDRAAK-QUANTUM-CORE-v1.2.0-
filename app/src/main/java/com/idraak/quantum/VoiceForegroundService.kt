@@ -35,6 +35,10 @@ class VoiceForegroundService : Service() {
     private var activeLanguage = "hi-IN"
     private var retryDelay = 1500L
 
+    // हर recognizer instance की अलग पहचान।
+    // पुराने instance के callbacks नए session को प्रभावित नहीं करेंगे।
+    private var recognizerGeneration = 0
+
     private val prefs by lazy {
         getSharedPreferences("idraak_voice_service", MODE_PRIVATE)
     }
@@ -70,7 +74,7 @@ class VoiceForegroundService : Service() {
     private val restartRunnable = Runnable {
         restartScheduled = false
 
-        if (listening) {
+        if (listening && !sessionInProgress) {
             startRecognitionSession()
         }
     }
@@ -212,14 +216,31 @@ class VoiceForegroundService : Service() {
                 }
 
                 try {
+                    val requestedLanguage =
+                        intent.getStringExtra(EXTRA_LANGUAGE)
+
+                    if (!requestedLanguage.isNullOrBlank()) {
+                        activeLanguage =
+                            selectedLanguage(requestedLanguage)
+
+                        prefs.edit()
+                            .putString(PREF_LANGUAGE, activeLanguage)
+                            .apply()
+                    }
+
                     startForegroundSafely()
+
                     prefs.edit()
                         .putBoolean(PREF_ENABLED, true)
                         .apply()
 
                     resumeListening()
+
                 } catch (_: Exception) {
+                    stopListening()
                     sendState(false, false)
+                    stopSelf()
+                    return START_NOT_STICKY
                 }
 
                 return START_STICKY
@@ -269,11 +290,11 @@ class VoiceForegroundService : Service() {
                 .apply()
 
             retryDelay = 1500L
-
             resumeListening()
 
         } catch (_: Exception) {
             stopListening()
+
             prefs.edit()
                 .putBoolean(PREF_ENABLED, false)
                 .apply()
@@ -331,6 +352,8 @@ class VoiceForegroundService : Service() {
             )
         }
 
+        val generation = ++recognizerGeneration
+
         val speechRecognizer =
             SpeechRecognizer.createSpeechRecognizer(this)
 
@@ -339,8 +362,13 @@ class VoiceForegroundService : Service() {
         speechRecognizer.setRecognitionListener(
             object : RecognitionListener {
 
+                private fun isCurrentSession(): Boolean {
+                    return generation == recognizerGeneration &&
+                        recognizer === speechRecognizer
+                }
+
                 override fun onReadyForSpeech(params: Bundle?) {
-                    if (!listening) return
+                    if (!isCurrentSession() || !listening) return
 
                     retryDelay = 1500L
                     sessionInProgress = true
@@ -356,6 +384,8 @@ class VoiceForegroundService : Service() {
                 override fun onEndOfSpeech() {}
 
                 override fun onError(error: Int) {
+                    if (!isCurrentSession()) return
+
                     sessionInProgress = false
 
                     if (!listening) return
@@ -374,9 +404,7 @@ class VoiceForegroundService : Service() {
                         return
                     }
 
-                    if (error == SpeechRecognizer.ERROR_CLIENT) {
-                        releaseRecognizer()
-                    }
+                    releaseRecognizer(generation)
 
                     val delay =
                         if (
@@ -395,6 +423,8 @@ class VoiceForegroundService : Service() {
                 }
 
                 override fun onResults(results: Bundle?) {
+                    if (!isCurrentSession()) return
+
                     sessionInProgress = false
 
                     if (!listening) return
@@ -404,6 +434,10 @@ class VoiceForegroundService : Service() {
                     )
 
                     val recognizedText = matches?.firstOrNull()
+
+                    // पुराने recognizer को अगला session शुरू होने से
+                    // पहले invalidate और release करें।
+                    releaseRecognizer(generation)
 
                     if (!recognizedText.isNullOrBlank()) {
                         sendRecognizedText(recognizedText)
@@ -433,15 +467,7 @@ class VoiceForegroundService : Service() {
         handler.removeCallbacks(restartRunnable)
         restartScheduled = false
 
-        try {
-            createRecognizerOnce()
-            startRecognitionSession()
-            sendState(true, false)
-        } catch (_: Exception) {
-            listening = false
-            releaseRecognizer()
-            sendState(false, false)
-        }
+        startRecognitionSession()
     }
 
     private fun pauseListening() {
@@ -451,27 +477,13 @@ class VoiceForegroundService : Service() {
         handler.removeCallbacks(restartRunnable)
         restartScheduled = false
 
-        try {
-            recognizer?.cancel()
-        } catch (_: Exception) {
-        }
+        releaseRecognizer()
 
         sendState(false, false)
     }
 
     private fun startRecognitionSession() {
         if (!listening || sessionInProgress) return
-
-        if (recognizer == null) {
-            try {
-                createRecognizerOnce()
-            } catch (_: Exception) {
-                scheduleRestart(retryDelay)
-                retryDelay =
-                    (retryDelay * 2).coerceAtMost(15000L)
-                return
-            }
-        }
 
         if (
             checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
@@ -488,6 +500,10 @@ class VoiceForegroundService : Service() {
         }
 
         try {
+            if (recognizer == null) {
+                createRecognizerOnce()
+            }
+
             val speechIntent = Intent(
                 RecognizerIntent.ACTION_RECOGNIZE_SPEECH
             ).apply {
@@ -522,6 +538,7 @@ class VoiceForegroundService : Service() {
 
         } catch (_: Exception) {
             sessionInProgress = false
+            releaseRecognizer()
             scheduleRestart(retryDelay)
 
             retryDelay =
@@ -540,15 +557,31 @@ class VoiceForegroundService : Service() {
         )
     }
 
-    private fun releaseRecognizer() {
+    private fun releaseRecognizer(expectedGeneration: Int? = null) {
+        if (
+            expectedGeneration != null &&
+            expectedGeneration != recognizerGeneration
+        ) {
+            return
+        }
+
+        // पहले generation बदलें ताकि cancel/destroy के पुराने
+        // callbacks को अनदेखा किया जा सके।
+        recognizerGeneration++
+
+        val oldRecognizer = recognizer
+        recognizer = null
+        sessionInProgress = false
+
         try {
-            recognizer?.cancel()
-            recognizer?.destroy()
+            oldRecognizer?.cancel()
         } catch (_: Exception) {
         }
 
-        recognizer = null
-        sessionInProgress = false
+        try {
+            oldRecognizer?.destroy()
+        } catch (_: Exception) {
+        }
     }
 
     private fun stopListening() {
