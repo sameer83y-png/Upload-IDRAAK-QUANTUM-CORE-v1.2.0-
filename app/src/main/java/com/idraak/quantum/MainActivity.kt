@@ -8,10 +8,9 @@ import android.content.*
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.*
+import android.provider.Settings
 import android.speech.tts.TextToSpeech
-import android.view.Gravity
 import android.widget.*
-import android.text.InputType
 import org.json.JSONObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
@@ -21,8 +20,6 @@ import java.util.concurrent.Executors
 class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private lateinit var launcherView: LauncherHomeView
-    private lateinit var output: TextView
-    private lateinit var input: EditText
     private lateinit var tts: TextToSpeech
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -34,6 +31,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private var assistantActive = false
     private var voiceRunning = false
+    private var permissionRequestInProgress = false
 
     private val bg = Color.rgb(3, 7, 28)
 
@@ -52,6 +50,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        window.statusBarColor = Color.rgb(3, 7, 28)
+        window.navigationBarColor = Color.rgb(3, 7, 28)
 
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))
@@ -75,6 +76,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         } else {
             registerReceiver(receiver, filter)
         }
+
+        // Start the voice setup after the Home screen is visible.
+        Handler(Looper.getMainLooper()).postDelayed({
+            ensureVoicePermissionAndStart()
+        }, 700)
     }
 
     private fun loadPrefs() {
@@ -113,41 +119,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             .apply()
     }
 
-    private fun label(
-        text: String,
-        size: Float
-    ): TextView {
-
-        return TextView(this).apply {
-            this.text = text
-            textSize = size
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setPadding(8, 8, 8, 8)
-        }
-    }
-
-    private fun button(
-        text: String,
-        action: () -> Unit
-    ): Button {
-
-        return Button(this).apply {
-            this.text = text
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.rgb(0, 75, 120))
-            setOnClickListener {
-                action()
-            }
-        }
-    }
+    // HOME SCREEN
 
     private fun buildUI() {
-
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(bg)
-        }
 
         launcherView = LauncherHomeView(
             this,
@@ -161,86 +135,27 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         )
 
-        // Apply saved Avatar selection immediately.
         launcherView.setAvatarGender(gender)
 
-        root.addView(
-            launcherView,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
-        val commandPanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(12, 5, 12, 8)
-            setBackgroundColor(Color.rgb(8, 14, 35))
-        }
-
-        input = EditText(this).apply {
-            hint = "अपनी कमांड लिखें..."
-            setHintTextColor(Color.LTGRAY)
-            setTextColor(Color.WHITE)
-            setSingleLine(true)
-            inputType = InputType.TYPE_CLASS_TEXT
-            setBackgroundColor(Color.rgb(20, 30, 55))
-        }
-
-        commandPanel.addView(
-            input,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                48
-            )
-        )
-
-        commandPanel.addView(
-            button("EXECUTE COMMAND") {
-                executeCommand(input.text.toString())
-            }
-        )
-
-        output = label(
-            "IDRAAK QUANTUM CORE तैयार है।",
-            12f
-        )
-
-        commandPanel.addView(
-            output,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        root.addView(
-            commandPanel,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        setContentView(root)
+        // Only the IDRAAK launcher is displayed.
+        // No chat panel, text input or execute button.
+        setContentView(launcherView)
     }
 
     // WAKE WORD SYSTEM
 
     private fun normalizeSpeech(text: String): String {
         return text.lowercase(Locale.ROOT)
-            .replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
+            .replace(
+                Regex("[^\\p{L}\\p{N}\\s]"),
+                ""
+            )
             .trim()
             .replace(Regex("\\s+"), " ")
     }
 
-    private fun isWakePhrase(text: String): Boolean {
-
-        val t = normalizeSpeech(text)
-
-        val phrases = listOf(
-            "idraak",
+    private fun wakePrefixes(): List<String> {
+        return listOf(
             "hey idraak",
             "hello idraak",
             "hi idraak",
@@ -249,14 +164,29 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             "ओ इद्राक",
             "अरे idraak",
             "अरे इद्राक",
+            "idraak",
             "इद्राक",
-            "इद्राक जागो",
-            "आईड्राक जागो"
+            "आईड्राक"
         )
+    }
 
-        return phrases.any {
-            t == it || t.startsWith("$it ")
+    private fun extractWakeCommand(text: String): String? {
+
+        val normalized = normalizeSpeech(text)
+
+        for (prefix in wakePrefixes()) {
+
+            if (
+                normalized == prefix ||
+                normalized.startsWith("$prefix ")
+            ) {
+                return normalized
+                    .removePrefix(prefix)
+                    .trim()
+            }
         }
+
+        return null
     }
 
     private fun isSleepPhrase(text: String): Boolean {
@@ -280,15 +210,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 "● IDRAAK STANDBY"
             )
 
-            output.text = "IDRAAK Standby Mode में चला गया।"
-
             speak("ठीक है। मैं Standby में जा रहा हूँ।")
             return
         }
 
         if (!assistantActive) {
 
-            if (isWakePhrase(spoken)) {
+            val command = extractWakeCommand(spoken)
+
+            if (command != null) {
 
                 assistantActive = true
 
@@ -296,9 +226,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     "● IDRAAK ACTIVE"
                 )
 
-                output.text = "IDRAAK सक्रिय है। अब कमांड दीजिए।"
+                if (command.isBlank()) {
 
-                speak("जी, मैं सक्रिय हूँ। बताइए!")
+                    speak("जी, मैं सक्रिय हूँ। बताइए!")
+
+                } else {
+
+                    speak("जी, बताइए। मैं काम शुरू कर रहा हूँ।")
+                    executeCommand(command)
+                }
 
             } else {
 
@@ -310,91 +246,57 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             return
         }
 
-        input.setText(spoken)
         executeCommand(spoken)
     }
 
-    // MICROPHONE CONTROL
+    // MICROPHONE PERMISSIONS AND STARTUP
 
-    private fun toggleVoiceService() {
+    private fun ensureVoicePermissionAndStart() {
 
-        if (voiceRunning) {
+        if (isFinishing || isDestroyed) return
 
-            try {
-                val stopIntent = Intent(
-                    this,
-                    VoiceForegroundService::class.java
-                ).apply {
-                    action = VoiceForegroundService.ACTION_STOP
-                }
-
-                startService(stopIntent)
-
-                voiceRunning = false
-                assistantActive = false
-
-                launcherView.setVoiceStatus(false)
-                output.text = "Microphone बंद कर दिया गया।"
-
-            } catch (e: Exception) {
-                output.text = "Microphone error: ${e.message}"
-            }
-
-        } else {
-            requestMicAndStart()
-        }
-    }
-
-    private fun requestMicAndStart() {
-
-        if (checkSelfPermission(
-                Manifest.permission.RECORD_AUDIO
-            ) != PackageManager.PERMISSION_GRANTED
+        if (
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
         ) {
 
-            requestPermissions(
-                arrayOf(Manifest.permission.RECORD_AUDIO),
-                101
-            )
+            if (!permissionRequestInProgress) {
+                permissionRequestInProgress = true
+
+                requestPermissions(
+                    arrayOf(Manifest.permission.RECORD_AUDIO),
+                    101
+                )
+            }
 
             return
         }
 
-        startVoiceService()
+        requestNotificationPermissionIfNeeded()
     }
 
-    private fun startVoiceService() {
+    private fun requestNotificationPermissionIfNeeded() {
 
-        val intent = Intent(
-            this,
-            VoiceForegroundService::class.java
-        )
+        if (Build.VERSION.SDK_INT >= 33) {
 
-        try {
+            if (
+                checkSelfPermission(
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
 
-            if (Build.VERSION.SDK_INT >= 26) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
+                requestPermissions(
+                    arrayOf(
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ),
+                    102
+                )
+
+                return
             }
-
-            voiceRunning = true
-
-            launcherView.setVoiceStatus(true)
-
-            output.text =
-                "Microphone service शुरू करने का अनुरोध भेजा गया।"
-
-        } catch (e: Exception) {
-
-            voiceRunning = false
-
-            launcherView.setLiveStatus(
-                "MICROPHONE ERROR"
-            )
-
-            output.text = e.message ?: "Microphone error"
         }
+
+        startVoiceService()
     }
 
     override fun onRequestPermissionsResult(
@@ -409,18 +311,122 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             grantResults
         )
 
-        if (requestCode == 101 &&
-            grantResults.isNotEmpty() &&
-            grantResults[0] == PackageManager.PERMISSION_GRANTED
-        ) {
+        if (requestCode == 101) {
 
+            permissionRequestInProgress = false
+
+            if (
+                grantResults.isNotEmpty() &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED
+            ) {
+
+                requestNotificationPermissionIfNeeded()
+
+            } else {
+
+                launcherView.setLiveStatus(
+                    "● MICROPHONE PERMISSION REQUIRED"
+                )
+
+                Toast.makeText(
+                    this,
+                    "IDRAAK को Voice के लिए Microphone अनुमति चाहिए।",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+
+            return
+        }
+
+        if (requestCode == 102) {
+
+            // Notification permission is recommended.
+            // Start listening even if notification permission is denied.
             startVoiceService()
+        }
+    }
 
-        } else {
+    private fun startVoiceService() {
+
+        if (
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            launcherView.setLiveStatus(
+                "● MICROPHONE PERMISSION REQUIRED"
+            )
+            return
+        }
+
+        try {
+
+            val intent = Intent(
+                this,
+                VoiceForegroundService::class.java
+            )
+
+            if (Build.VERSION.SDK_INT >= 26) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+
+            voiceRunning = true
+
+            launcherView.setVoiceStatus(true)
 
             launcherView.setLiveStatus(
-                "MICROPHONE PERMISSION DENIED"
+                "● IDRAAK VOICE STARTING"
             )
+
+        } catch (e: Exception) {
+
+            voiceRunning = false
+
+            launcherView.setLiveStatus(
+                "● VOICE START FAILED"
+            )
+
+            Toast.makeText(
+                this,
+                "Voice service error: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun stopVoiceService() {
+
+        try {
+
+            val intent = Intent(
+                this,
+                VoiceForegroundService::class.java
+            ).apply {
+                action = VoiceForegroundService.ACTION_STOP
+            }
+
+            startService(intent)
+
+        } catch (_: Exception) {
+        }
+
+        voiceRunning = false
+        assistantActive = false
+
+        launcherView.setVoiceStatus(false)
+
+        launcherView.setLiveStatus(
+            "● MICROPHONE STOPPED"
+        )
+    }
+
+    private fun toggleVoiceService() {
+
+        if (voiceRunning) {
+            stopVoiceService()
+        } else {
+            ensureVoicePermissionAndStart()
         }
     }
 
@@ -438,7 +444,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         if (target == "settings") {
 
             startActivity(
-                Intent(android.provider.Settings.ACTION_SETTINGS)
+                Intent(Settings.ACTION_SETTINGS)
             )
 
             return true
@@ -464,8 +470,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         launcherView.setLiveStatus(
             "● COMMAND RECEIVED"
         )
-
-        output.text = "कमांड का विश्लेषण किया जा रहा है..."
 
         executor.execute {
 
@@ -501,9 +505,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                             if (success) {
 
-                                output.text =
-                                    "$target खोलने का अनुरोध Android ने स्वीकार किया।"
-
                                 launcherView.setLiveStatus(
                                     "● ACTION ACCEPTED"
                                 )
@@ -511,9 +512,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                                 speak("$target खोलने का अनुरोध पूरा हुआ।")
 
                             } else {
-
-                                output.text =
-                                    "$target नहीं खुला। ऐप इंस्टॉल है या नहीं जाँचें।"
 
                                 launcherView.setLiveStatus(
                                     "● ACTION FAILED"
@@ -534,7 +532,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     else -> {
 
                         runOnUiThread {
-
                             launcherView.setLiveStatus(
                                 "● GEMINI THINKING"
                             )
@@ -556,12 +553,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                         runOnUiThread {
 
-                            output.text = answer
-
                             launcherView.setLiveStatus(
                                 "● ${response.optString("status", "DONE").uppercase()}"
                             )
 
+                            // Spoken response only. No chat panel.
                             speak(answer)
                         }
                     }
@@ -575,7 +571,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                         "● SYSTEM ERROR"
                     )
 
-                    output.text = e.toString()
+                    speak("माफ कीजिए, कमांड पूरी नहीं हो सकी।")
                 }
             }
         }
@@ -705,20 +701,38 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         )
 
         layout.addView(
-            label("IDRAAK SETTINGS", 20f)
+            TextView(this).apply {
+                text = "IDRAAK SETTINGS"
+                textSize = 20f
+                setTextColor(Color.WHITE)
+                gravity = android.view.Gravity.CENTER
+            }
         )
 
         layout.addView(key)
         layout.addView(modelInput)
 
-        layout.addView(label("Language", 14f))
+        layout.addView(
+            TextView(this).apply {
+                text = "Language"
+                setTextColor(Color.WHITE)
+            }
+        )
+
         layout.addView(lang)
 
-        layout.addView(label("Avatar / Voice", 14f))
+        layout.addView(
+            TextView(this).apply {
+                text = "Avatar / Voice"
+                setTextColor(Color.WHITE)
+            }
+        )
+
         layout.addView(voice)
 
-        layout.addView(
-            button("SAVE SETTINGS") {
+        val saveButton = Button(this).apply {
+            text = "SAVE SETTINGS"
+            setOnClickListener {
 
                 apiKey = key.text.toString().trim()
 
@@ -730,10 +744,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                 savePrefs()
 
-                // Update the visible Avatar immediately.
                 launcherView.setAvatarGender(gender)
-
-                // Update the available speech voice.
                 applyVoice()
 
                 launcherView.setLiveStatus(
@@ -741,12 +752,55 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 )
 
                 Toast.makeText(
-                    this,
+                    this@MainActivity,
                     "IDRAAK Settings saved",
                     Toast.LENGTH_SHORT
                 ).show()
             }
-        )
+        }
+
+        layout.addView(saveButton)
+
+        val voiceButton = Button(this).apply {
+            text = if (voiceRunning) {
+                "STOP MICROPHONE"
+            } else {
+                "START MICROPHONE"
+            }
+
+            setOnClickListener {
+
+                toggleVoiceService()
+
+                text = if (voiceRunning) {
+                    "STOP MICROPHONE"
+                } else {
+                    "START MICROPHONE"
+                }
+            }
+        }
+
+        layout.addView(voiceButton)
+
+        val homeButton = Button(this).apply {
+            text = "SET IDRAAK AS DEFAULT HOME"
+
+            setOnClickListener {
+                try {
+                    startActivity(
+                        Intent(Settings.ACTION_HOME_SETTINGS)
+                    )
+                } catch (_: Exception) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Home settings फोन की Settings में चुनें।",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+
+        layout.addView(homeButton)
 
         val scroll = ScrollView(this)
         scroll.addView(layout)
@@ -763,6 +817,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         if (::launcherView.isInitialized) {
             launcherView.reloadApps()
             launcherView.setAvatarGender(gender)
+
+            if (!voiceRunning) {
+                ensureVoicePermissionAndStart()
+            }
         }
     }
 
