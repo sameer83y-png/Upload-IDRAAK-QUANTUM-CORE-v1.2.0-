@@ -14,6 +14,8 @@ import android.text.TextWatcher
 import android.text.Editable
 import kotlin.math.abs
 import kotlin.math.min
+import kotlin.math.sin
+import kotlin.math.cos
 
 class LauncherHomeView(
     context: Context,
@@ -106,7 +108,6 @@ class LauncherHomeView(
         }
 
         orbView.setOnTouchListener { _, event ->
-
             when (event.action) {
 
                 MotionEvent.ACTION_DOWN -> {
@@ -198,7 +199,7 @@ class LauncherHomeView(
         )
 
         val instruction = TextView(context).apply {
-            text = "VOICE CORE READY"
+            text = "SAY IDRAAK TO ACTIVATE"
             textSize = 10f
             setTextColor(Color.rgb(130, 155, 205))
             gravity = Gravity.CENTER
@@ -292,7 +293,6 @@ class LauncherHomeView(
 
         searchBox.addTextChangedListener(
             object : TextWatcher {
-
                 override fun beforeTextChanged(
                     s: CharSequence?,
                     start: Int,
@@ -350,7 +350,7 @@ class LauncherHomeView(
         )
 
         val footer = TextView(context).apply {
-            text = "IDRAAK QUANTUM CORE  •  SYSTEM ONLINE"
+            text = "IDRAAK QUANTUM CORE • SYSTEM ONLINE"
             textSize = 8f
             setTextColor(Color.rgb(95, 120, 170))
             gravity = Gravity.CENTER
@@ -428,30 +428,10 @@ class LauncherHomeView(
 class LiveOrbView(context: Context) : View(context) {
 
     private val orbPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-    }
-
-    private val avatarPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        textAlign = Paint.Align.CENTER
-        typeface = Typeface.create(
-            "sans-serif-black",
-            Typeface.BOLD
-        )
-        textSize = 12f
-    }
-
-    private val smallTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.rgb(0, 225, 255)
-        textAlign = Paint.Align.CENTER
-        textSize = 8f
-        typeface = Typeface.DEFAULT_BOLD
-    }
+    private val facePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private var rotation = 0f
     private var pulse = 0f
@@ -459,16 +439,22 @@ class LiveOrbView(context: Context) : View(context) {
 
     private val cyan = Color.rgb(0, 225, 255)
     private val purple = Color.rgb(155, 65, 255)
+    private val paleBlue = Color.rgb(190, 250, 255)
+
+    init {
+        contentDescription = "IDRAAK holographic AI globe"
+    }
 
     fun setAvatarGender(gender: String) {
-        avatarGender = if (
-            gender.equals("female", true) ||
-            gender.equals("महिला", true)
-        ) {
-            "female"
-        } else {
-            "male"
-        }
+        avatarGender =
+            if (
+                gender.equals("female", true) ||
+                gender.equals("महिला", true)
+            ) {
+                "female"
+            } else {
+                "male"
+            }
         invalidate()
     }
 
@@ -477,17 +463,35 @@ class LiveOrbView(context: Context) : View(context) {
 
         val cx = width / 2f
         val cy = height / 2f
-        val radius = min(width, height) * 0.34f
+        val radius = min(width, height) * 0.31f
 
         pulse += 0.045f
-        val pulseSize = 1f + 0.035f * kotlin.math.sin(pulse)
+        val breathing = 1f + 0.025f * sin(pulse)
 
-        val glow = RadialGradient(
+        drawAtmosphere(canvas, cx, cy, radius)
+        drawGlobe(canvas, cx, cy, radius, breathing)
+        drawOrbitRings(canvas, cx, cy, radius)
+        drawHolographicAvatar(canvas, cx, cy, radius)
+        drawInterfaceDetails(canvas, cx, cy, radius)
+
+        rotation += 0.65f
+        if (rotation >= 360f) rotation = 0f
+
+        postInvalidateDelayed(40)
+    }
+
+    private fun drawAtmosphere(
+        canvas: Canvas,
+        cx: Float,
+        cy: Float,
+        radius: Float
+    ) {
+        orbPaint.shader = RadialGradient(
             cx,
             cy,
-            radius * 2f,
+            radius * 2.25f,
             intArrayOf(
-                Color.argb(100, 0, 220, 255),
+                Color.argb(100, 0, 225, 255),
                 Color.argb(45, 100, 50, 255),
                 Color.TRANSPARENT
             ),
@@ -495,40 +499,108 @@ class LiveOrbView(context: Context) : View(context) {
             Shader.TileMode.CLAMP
         )
 
-        orbPaint.shader = glow
-        canvas.drawCircle(cx, cy, radius * 2f, orbPaint)
-        orbPaint.shader = null
+        canvas.drawCircle(
+            cx,
+            cy,
+            radius * 2.25f,
+            orbPaint
+        )
 
-        val globeGradient = RadialGradient(
-            cx - radius * 0.28f,
-            cy - radius * 0.3f,
-            radius * 1.5f,
+        orbPaint.shader = null
+    }
+
+    private fun drawGlobe(
+        canvas: Canvas,
+        cx: Float,
+        cy: Float,
+        radius: Float,
+        breathing: Float
+    ) {
+        orbPaint.shader = RadialGradient(
+            cx - radius * 0.3f,
+            cy - radius * 0.35f,
+            radius * 1.65f,
             intArrayOf(
-                Color.rgb(75, 220, 255),
-                Color.rgb(28, 80, 175),
-                Color.rgb(8, 10, 42)
+                Color.rgb(40, 150, 205),
+                Color.rgb(15, 55, 125),
+                Color.rgb(5, 10, 40)
             ),
             null,
             Shader.TileMode.CLAMP
         )
 
-        orbPaint.shader = globeGradient
         canvas.drawCircle(
             cx,
             cy,
-            radius * pulseSize,
+            radius * breathing,
             orbPaint
         )
+
         orbPaint.shader = null
 
-        ringPaint.color = cyan
-        ringPaint.alpha = 220
-        ringPaint.strokeWidth = 2.5f
+        orbPaint.style = Paint.Style.STROKE
+        orbPaint.strokeWidth = 1.5f
+        orbPaint.color = Color.argb(180, 0, 225, 255)
 
         canvas.drawCircle(
             cx,
             cy,
-            radius * 1.08f,
+            radius * breathing,
+            orbPaint
+        )
+
+        orbPaint.style = Paint.Style.FILL
+
+        canvas.save()
+        canvas.clipPath(
+            Path().apply {
+                addCircle(cx, cy, radius * 0.96f, Path.Direction.CW)
+            }
+        )
+
+        val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(55, 100, 230, 255)
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+        }
+
+        for (i in -3..3) {
+            val offset = i * radius * 0.25f
+            canvas.drawLine(
+                cx - radius,
+                cy + offset,
+                cx + radius,
+                cy + offset,
+                gridPaint
+            )
+            canvas.drawLine(
+                cx + offset,
+                cy - radius,
+                cx + offset,
+                cy + radius,
+                gridPaint
+            )
+        }
+
+        canvas.restore()
+    }
+
+    private fun drawOrbitRings(
+        canvas: Canvas,
+        cx: Float,
+        cy: Float,
+        radius: Float
+    ) {
+        ringPaint.style = Paint.Style.STROKE
+        ringPaint.strokeCap = Paint.Cap.ROUND
+        ringPaint.strokeWidth = 2.2f
+        ringPaint.color = cyan
+        ringPaint.alpha = 210
+
+        canvas.drawCircle(
+            cx,
+            cy,
+            radius * 1.12f,
             ringPaint
         )
 
@@ -537,14 +609,28 @@ class LiveOrbView(context: Context) : View(context) {
 
         ringPaint.color = purple
         ringPaint.alpha = 230
-        ringPaint.strokeWidth = 2.2f
+        ringPaint.strokeWidth = 2.4f
 
         canvas.drawOval(
             RectF(
-                cx - radius * 1.42f,
+                cx - radius * 1.48f,
                 cy - radius * 0.42f,
-                cx + radius * 1.42f,
+                cx + radius * 1.48f,
                 cy + radius * 0.42f
+            ),
+            ringPaint
+        )
+
+        ringPaint.color = paleBlue
+        ringPaint.strokeWidth = 1.1f
+        ringPaint.alpha = 170
+
+        canvas.drawOval(
+            RectF(
+                cx - radius * 1.35f,
+                cy - radius * 0.25f,
+                cx + radius * 1.35f,
+                cy + radius * 0.25f
             ),
             ringPaint
         )
@@ -552,24 +638,303 @@ class LiveOrbView(context: Context) : View(context) {
         canvas.restore()
 
         ringPaint.color = cyan
-        ringPaint.alpha = 150
-        ringPaint.strokeWidth = 1.4f
+        ringPaint.strokeWidth = 1.3f
+        ringPaint.alpha = 120
 
         canvas.drawCircle(
             cx,
             cy,
-            radius * 1.27f,
+            radius * 1.34f,
             ringPaint
         )
 
-        drawAvatar(canvas, cx, cy, radius)
+        ringPaint.style = Paint.Style.FILL
+
+        val dotAngle = Math.toRadians(rotation.toDouble())
+        val dotX = cx + cos(dotAngle).toFloat() * radius * 1.48f
+        val dotY = cy + sin(dotAngle).toFloat() * radius * 0.42f
+
+        orbPaint.color = paleBlue
+        canvas.drawCircle(dotX, dotY, 4f, orbPaint)
+    }
+
+    private fun drawHolographicAvatar(
+        canvas: Canvas,
+        cx: Float,
+        cy: Float,
+        radius: Float
+    ) {
+        val scale = radius / 72f
+
+        canvas.save()
+        canvas.translate(cx, cy - radius * 0.04f)
+        canvas.scale(scale, scale)
+
+        drawAvatarGlow(canvas)
+        drawShoulders(canvas)
+        drawNeck(canvas)
+        drawFace(canvas)
+        drawHair(canvas)
+        drawFaceDetails(canvas)
+        drawCircuitLines(canvas)
+
+        canvas.restore()
+    }
+
+    private fun drawAvatarGlow(canvas: Canvas) {
+        facePaint.shader = RadialGradient(
+            0f,
+            -5f,
+            72f,
+            intArrayOf(
+                Color.argb(75, 0, 235, 255),
+                Color.argb(25, 0, 100, 255),
+                Color.TRANSPARENT
+            ),
+            null,
+            Shader.TileMode.CLAMP
+        )
+
+        canvas.drawCircle(0f, 0f, 72f, facePaint)
+        facePaint.shader = null
+    }
+
+    private fun drawShoulders(canvas: Canvas) {
+        val shoulders = Path().apply {
+            moveTo(-12f, 34f)
+            cubicTo(-40f, 38f, -48f, 49f, -52f, 65f)
+            lineTo(52f, 65f)
+            cubicTo(48f, 49f, 40f, 38f, 12f, 34f)
+            close()
+        }
+
+        facePaint.shader = LinearGradient(
+            -40f,
+            30f,
+            40f,
+            65f,
+            intArrayOf(
+                Color.argb(240, 110, 245, 255),
+                Color.argb(210, 20, 115, 210),
+                Color.argb(230, 70, 55, 190)
+            ),
+            null,
+            Shader.TileMode.CLAMP
+        )
+
+        canvas.drawPath(shoulders, facePaint)
+        facePaint.shader = null
+
+        facePaint.style = Paint.Style.STROKE
+        facePaint.strokeWidth = 1.5f
+        facePaint.color = paleBlue
+        facePaint.alpha = 190
+        canvas.drawPath(shoulders, facePaint)
+        facePaint.style = Paint.Style.FILL
+    }
+
+    private fun drawNeck(canvas: Canvas) {
+        facePaint.shader = LinearGradient(
+            -10f,
+            15f,
+            10f,
+            40f,
+            intArrayOf(
+                paleBlue,
+                Color.rgb(30, 140, 220),
+                Color.rgb(20, 45, 125)
+            ),
+            null,
+            Shader.TileMode.CLAMP
+        )
+
+        canvas.drawRoundRect(
+            RectF(-11f, 18f, 11f, 43f),
+            5f,
+            5f,
+            facePaint
+        )
+
+        facePaint.shader = null
+    }
+
+    private fun drawFace(canvas: Canvas) {
+        facePaint.shader = LinearGradient(
+            -25f,
+            -35f,
+            25f,
+            28f,
+            intArrayOf(
+                Color.rgb(220, 255, 255),
+                Color.rgb(95, 205, 245),
+                Color.rgb(25, 95, 180)
+            ),
+            null,
+            Shader.TileMode.CLAMP
+        )
+
+        canvas.drawOval(
+            RectF(-24f, -34f, 24f, 27f),
+            facePaint
+        )
+
+        facePaint.shader = null
+
+        facePaint.style = Paint.Style.STROKE
+        facePaint.strokeWidth = 1.3f
+        facePaint.color = paleBlue
+        facePaint.alpha = 220
+
+        canvas.drawOval(
+            RectF(-24f, -34f, 24f, 27f),
+            facePaint
+        )
+
+        facePaint.style = Paint.Style.FILL
+    }
+
+    private fun drawHair(canvas: Canvas) {
+        facePaint.color = Color.rgb(8, 24, 65)
+
+        val hair = Path()
+
+        if (avatarGender == "female") {
+            hair.moveTo(-24f, -9f)
+            hair.quadTo(-32f, -43f, 0f, -43f)
+            hair.quadTo(32f, -43f, 24f, -8f)
+            hair.lineTo(27f, 44f)
+            hair.quadTo(19f, 37f, 18f, 15f)
+            hair.lineTo(18f, -20f)
+            hair.quadTo(0f, -8f, -18f, -20f)
+            hair.lineTo(-18f, 15f)
+            hair.quadTo(-19f, 37f, -27f, 44f)
+            hair.close()
+        } else {
+            hair.moveTo(-23f, -15f)
+            hair.quadTo(-28f, -43f, 0f, -40f)
+            hair.quadTo(28f, -43f, 23f, -15f)
+            hair.quadTo(10f, -25f, -7f, -19f)
+            hair.quadTo(-16f, -17f, -23f, -15f)
+            hair.close()
+        }
+
+        canvas.drawPath(hair, facePaint)
+
+        facePaint.style = Paint.Style.STROKE
+        facePaint.strokeWidth = 1.1f
+        facePaint.color = Color.argb(190, 0, 225, 255)
+        canvas.drawPath(hair, facePaint)
+        facePaint.style = Paint.Style.FILL
+    }
+
+    private fun drawFaceDetails(canvas: Canvas) {
+        linePaint.style = Paint.Style.STROKE
+        linePaint.strokeCap = Paint.Cap.ROUND
+        linePaint.strokeWidth = 2f
+        linePaint.color = cyan
+        linePaint.alpha = 230
+
+        canvas.drawLine(-13f, -2f, -5f, -2f, linePaint)
+        canvas.drawLine(5f, -2f, 13f, -2f, linePaint)
+
+        linePaint.style = Paint.Style.FILL
+        linePaint.color = Color.WHITE
+
+        canvas.drawCircle(-9f, -2f, 2f, linePaint)
+        canvas.drawCircle(9f, -2f, 2f, linePaint)
+
+        linePaint.style = Paint.Style.STROKE
+        linePaint.strokeWidth = 1.5f
+        linePaint.color = paleBlue
+
+        val nose = Path().apply {
+            moveTo(0f, 0f)
+            lineTo(-2f, 9f)
+            lineTo(2f, 10f)
+        }
+
+        canvas.drawPath(nose, linePaint)
+
+        val mouth = Path().apply {
+            moveTo(-6f, 17f)
+            quadTo(0f, 21f, 6f, 17f)
+        }
+
+        canvas.drawPath(mouth, linePaint)
+
+        linePaint.style = Paint.Style.FILL
+    }
+
+    private fun drawCircuitLines(canvas: Canvas) {
+        linePaint.style = Paint.Style.STROKE
+        linePaint.strokeWidth = 1.1f
+        linePaint.strokeCap = Paint.Cap.ROUND
+        linePaint.color = cyan
+        linePaint.alpha = 190
+
+        val leftCircuit = Path().apply {
+            moveTo(-20f, 2f)
+            lineTo(-29f, 8f)
+            lineTo(-29f, 18f)
+            lineTo(-36f, 23f)
+        }
+
+        val rightCircuit = Path().apply {
+            moveTo(20f, 2f)
+            lineTo(29f, 8f)
+            lineTo(29f, 18f)
+            lineTo(36f, 23f)
+        }
+
+        canvas.drawPath(leftCircuit, linePaint)
+        canvas.drawPath(rightCircuit, linePaint)
+
+        linePaint.style = Paint.Style.FILL
+
+        canvas.drawCircle(-36f, 23f, 2f, linePaint)
+        canvas.drawCircle(36f, 23f, 2f, linePaint)
+
+        linePaint.style = Paint.Style.STROKE
+        linePaint.strokeWidth = 0.8f
+        linePaint.alpha = 130
+
+        canvas.drawArc(
+            RectF(-18f, -27f, 18f, 25f),
+            205f,
+            130f,
+            false,
+            linePaint
+        )
+
+        linePaint.style = Paint.Style.FILL
+    }
+
+    private fun drawInterfaceDetails(
+        canvas: Canvas,
+        cx: Float,
+        cy: Float,
+        radius: Float
+    ) {
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.typeface = Typeface.create(
+            "sans-serif-black",
+            Typeface.BOLD
+        )
+        textPaint.color = Color.WHITE
+        textPaint.textSize = 12f
+        textPaint.setShadowLayer(10f, 0f, 0f, cyan)
 
         canvas.drawText(
             "IDRAAK",
             cx,
-            cy + radius * 0.78f,
+            cy + radius * 0.80f,
             textPaint
         )
+
+        textPaint.clearShadowLayer()
+        textPaint.color = cyan
+        textPaint.textSize = 8f
+        textPaint.letterSpacingCompat()
 
         canvas.drawText(
             if (avatarGender == "female") {
@@ -578,123 +943,22 @@ class LiveOrbView(context: Context) : View(context) {
                 "MALE AI CORE"
             },
             cx,
-            cy + radius * 1.02f,
-            smallTextPaint
+            cy + radius * 1.05f,
+            textPaint
         )
 
-        rotation += 1.1f
-        if (rotation >= 360f) rotation = 0f
+        textPaint.color = Color.argb(180, 150, 220, 255)
+        textPaint.textSize = 7f
 
-        postInvalidateDelayed(40)
+        canvas.drawText(
+            "QUANTUM HOLOGRAPHIC INTERFACE",
+            cx,
+            cy + radius * 1.55f,
+            textPaint
+        )
     }
 
-    private fun drawAvatar(
-        canvas: Canvas,
-        cx: Float,
-        cy: Float,
-        radius: Float
-    ) {
-        val scale = radius / 70f
-
-        canvas.save()
-        canvas.translate(cx, cy - radius * 0.10f)
-        canvas.scale(scale, scale)
-
-        avatarPaint.shader = LinearGradient(
-            -25f,
-            -35f,
-            25f,
-            50f,
-            intArrayOf(
-                Color.rgb(200, 250, 255),
-                Color.rgb(45, 175, 255),
-                Color.rgb(80, 70, 220)
-            ),
-            null,
-            Shader.TileMode.CLAMP
-        )
-
-        avatarPaint.style = Paint.Style.FILL
-
-        canvas.drawRoundRect(
-            RectF(-9f, 19f, 9f, 38f),
-            5f,
-            5f,
-            avatarPaint
-        )
-
-        val shoulders = Path().apply {
-            moveTo(-9f, 30f)
-            cubicTo(-28f, 32f, -38f, 43f, -40f, 55f)
-            lineTo(40f, 55f)
-            cubicTo(38f, 43f, 28f, 32f, 9f, 30f)
-            close()
-        }
-
-        canvas.drawPath(shoulders, avatarPaint)
-
-        canvas.drawOval(
-            RectF(-20f, -28f, 20f, 23f),
-            avatarPaint
-        )
-
-        avatarPaint.shader = null
-
-        avatarPaint.color = if (avatarGender == "female") {
-            Color.rgb(25, 35, 100)
-        } else {
-            Color.rgb(12, 30, 75)
-        }
-
-        val hair = Path()
-
-        if (avatarGender == "female") {
-            hair.moveTo(-20f, -4f)
-            hair.quadTo(-28f, -37f, 0f, -35f)
-            hair.quadTo(28f, -37f, 20f, -4f)
-            hair.lineTo(25f, 32f)
-            hair.quadTo(17f, 24f, 17f, 10f)
-            hair.lineTo(17f, -15f)
-            hair.quadTo(0f, -4f, -17f, -15f)
-            hair.lineTo(-17f, 10f)
-            hair.quadTo(-17f, 24f, -25f, 32f)
-            hair.close()
-        } else {
-            hair.moveTo(-20f, -10f)
-            hair.quadTo(-24f, -35f, 0f, -34f)
-            hair.quadTo(24f, -35f, 20f, -10f)
-            hair.quadTo(5f, -19f, -8f, -12f)
-            hair.close()
-        }
-
-        canvas.drawPath(hair, avatarPaint)
-
-        avatarPaint.color = cyan
-        avatarPaint.strokeWidth = 2.5f
-        avatarPaint.style = Paint.Style.STROKE
-
-        canvas.drawLine(-11f, 0f, -5f, 0f, avatarPaint)
-        canvas.drawLine(5f, 0f, 11f, 0f, avatarPaint)
-
-        avatarPaint.style = Paint.Style.FILL
-        avatarPaint.color = Color.rgb(190, 250, 255)
-
-        canvas.drawCircle(-8f, 0f, 2f, avatarPaint)
-        canvas.drawCircle(8f, 0f, 2f, avatarPaint)
-
-        avatarPaint.color = Color.argb(180, 0, 225, 255)
-        avatarPaint.strokeWidth = 1.2f
-        avatarPaint.style = Paint.Style.STROKE
-
-        canvas.drawArc(
-            RectF(-7f, 7f, 7f, 15f),
-            10f,
-            160f,
-            false,
-            avatarPaint
-        )
-
-        avatarPaint.style = Paint.Style.FILL
-        canvas.restore()
+    private fun Paint.letterSpacingCompat() {
+        // Canvas text spacing is kept compatible with Android 9.
     }
 }
