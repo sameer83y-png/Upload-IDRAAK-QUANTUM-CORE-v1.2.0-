@@ -2,6 +2,9 @@
 package com.idraak.quantum
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.accessibilityservice.GestureDescription
+import android.graphics.Path
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -20,6 +23,11 @@ class IDRAAKAccessibilityService : AccessibilityService() {
             return activeService != null
         }
 
+        // स्क्रीन पर दिखाई देने वाला टेक्स्ट प्राप्त करना
+        fun getScreenText(): String {
+            return latestVisibleText
+        }
+
         // स्क्रीन पर मौजूद टेक्स्ट वाले बटन को क्लिक करना
         fun clickText(text: String): Boolean {
             if (text.isBlank()) return false
@@ -35,9 +43,12 @@ class IDRAAKAccessibilityService : AccessibilityService() {
 
                     while (target != null) {
                         if (target.isClickable && target.isEnabled) {
-                            return target.performAction(
-                                AccessibilityNodeInfo.ACTION_CLICK
-                            )
+                            if (target.performAction(
+                                    AccessibilityNodeInfo.ACTION_CLICK
+                                )
+                            ) {
+                                return true
+                            }
                         }
 
                         target = target.parent
@@ -45,6 +56,128 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                 }
 
                 false
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        // स्क्रीन पर किसी View ID से क्लिक करना
+        fun clickViewId(viewId: String): Boolean {
+            if (viewId.isBlank()) return false
+
+            val service = activeService ?: return false
+
+            return try {
+                val root = service.rootInActiveWindow ?: return false
+                val nodes = root.findAccessibilityNodeInfosByViewId(viewId)
+
+                for (node in nodes) {
+                    if (node.isClickable && node.isEnabled) {
+                        if (node.performAction(
+                                AccessibilityNodeInfo.ACTION_CLICK
+                            )
+                        ) {
+                            return true
+                        }
+                    }
+
+                    var parent = node.parent
+
+                    while (parent != null) {
+                        if (parent.isClickable && parent.isEnabled) {
+                            if (parent.performAction(
+                                    AccessibilityNodeInfo.ACTION_CLICK
+                                )
+                            ) {
+                                return true
+                            }
+                        }
+
+                        parent = parent.parent
+                    }
+                }
+
+                false
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        // स्क्रीन पर निर्धारित स्थान पर टच करना
+        fun tap(x: Float, y: Float): Boolean {
+            return dispatchTap(x, y)
+        }
+
+        private fun dispatchTap(x: Float, y: Float): Boolean {
+            val service = activeService ?: return false
+
+            if (x < 0f || y < 0f) return false
+
+            return try {
+                val path = Path().apply {
+                    moveTo(x, y)
+                }
+
+                val gesture = GestureDescription.Builder()
+                    .addStroke(
+                        GestureDescription.StrokeDescription(
+                            path,
+                            0,
+                            100
+                        )
+                    )
+                    .build()
+
+                service.dispatchGesture(
+                    gesture,
+                    null,
+                    null
+                )
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        // स्क्रीन पर स्वाइप करना
+        fun swipe(
+            startX: Float,
+            startY: Float,
+            endX: Float,
+            endY: Float,
+            duration: Long = 400L
+        ): Boolean {
+            val service = activeService ?: return false
+
+            if (
+                startX < 0f || startY < 0f ||
+                endX < 0f || endY < 0f
+            ) {
+                return false
+            }
+
+            return try {
+                val path = Path().apply {
+                    moveTo(startX, startY)
+                    lineTo(endX, endY)
+                }
+
+                val safeDuration = duration.coerceIn(100L, 2000L)
+
+                val gesture = GestureDescription.Builder()
+                    .addStroke(
+                        GestureDescription.StrokeDescription(
+                            path,
+                            0,
+                            safeDuration
+                        )
+                    )
+                    .build()
+
+                service.dispatchGesture(
+                    gesture,
+                    null,
+                    null
+                )
             } catch (_: Exception) {
                 false
             }
@@ -103,7 +236,7 @@ class IDRAAKAccessibilityService : AccessibilityService() {
         fun goBack(): Boolean {
             return try {
                 activeService?.performGlobalAction(
-                    AccessibilityService.GLOBAL_ACTION_BACK
+                    GLOBAL_ACTION_BACK
                 ) ?: false
             } catch (_: Exception) {
                 false
@@ -114,7 +247,18 @@ class IDRAAKAccessibilityService : AccessibilityService() {
         fun goHome(): Boolean {
             return try {
                 activeService?.performGlobalAction(
-                    AccessibilityService.GLOBAL_ACTION_HOME
+                    GLOBAL_ACTION_HOME
+                ) ?: false
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        // Recent Apps स्क्रीन
+        fun openRecentApps(): Boolean {
+            return try {
+                activeService?.performGlobalAction(
+                    GLOBAL_ACTION_RECENTS
                 ) ?: false
             } catch (_: Exception) {
                 false
@@ -125,7 +269,7 @@ class IDRAAKAccessibilityService : AccessibilityService() {
         fun openNotifications(): Boolean {
             return try {
                 activeService?.performGlobalAction(
-                    AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS
+                    GLOBAL_ACTION_NOTIFICATIONS
                 ) ?: false
             } catch (_: Exception) {
                 false
@@ -136,7 +280,7 @@ class IDRAAKAccessibilityService : AccessibilityService() {
         fun openQuickSettings(): Boolean {
             return try {
                 activeService?.performGlobalAction(
-                    AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS
+                    GLOBAL_ACTION_QUICK_SETTINGS
                 ) ?: false
             } catch (_: Exception) {
                 false
@@ -176,11 +320,30 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                 false
             }
         }
+
+        // सक्रिय टेक्स्ट बॉक्स का टेक्स्ट साफ करना
+        fun clearText(): Boolean {
+            return typeText("")
+        }
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+
         activeService = this
+
+        try {
+            val info = serviceInfo
+
+            info.flags = info.flags or
+                AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+
+            serviceInfo = info
+
+        } catch (_: Exception) {
+            // सेवा उपलब्ध रहेगी, भले अतिरिक्त flags लागू न हों
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -192,7 +355,6 @@ class IDRAAKAccessibilityService : AccessibilityService() {
 
             fun walk(node: AccessibilityNodeInfo?) {
                 if (node == null) return
-
                 if (collected.length >= 5000) return
 
                 node.text?.toString()
