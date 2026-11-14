@@ -719,7 +719,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
             applyVoice()
 
-            // IMPORTANT: SPEAKING ANIMATION CALLBACK
             setupTtsAnimation()
 
             pendingSpeech?.let {
@@ -1025,11 +1024,7 @@ class JarvisOrbView(
         onLongPress()
     }
 
-    init {
-        setLayerType(LAYER_TYPE_SOFTWARE, null)
-        handler.post(animationRunnable)
-    }
-
+    // FIX: animationRunnable is initialized BEFORE init runs.
     private val animationRunnable = object : Runnable {
 
         override fun run() {
@@ -1042,6 +1037,11 @@ class JarvisOrbView(
 
             handler.postDelayed(this, 35)
         }
+    }
+
+    init {
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
+        handler.post(animationRunnable)
     }
 
     fun setStatus(value: String) {
