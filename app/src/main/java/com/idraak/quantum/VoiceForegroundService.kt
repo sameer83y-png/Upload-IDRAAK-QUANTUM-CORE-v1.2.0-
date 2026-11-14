@@ -19,18 +19,29 @@ class VoiceForegroundService : Service() {
     private var listening = false
     private var activeLanguage = "hi-IN"
 
+    private val prefs by lazy {
+        getSharedPreferences("idraak_voice_service", MODE_PRIVATE)
+    }
+
     private val restartRunnable = Runnable {
-        if (listening) {
-            createRecognizer()
-        }
+        if (listening) createRecognizer()
     }
 
     companion object {
         const val CHANNEL = "idraak_voice_channel"
+
         const val ACTION_STOP = "com.idraak.quantum.STOP_VOICE"
         const val ACTION_RESULT = "com.idraak.quantum.VOICE_RESULT"
+        const val ACTION_STATE = "com.idraak.quantum.VOICE_STATE"
+
         const val EXTRA_TEXT = "recognized_text"
         const val EXTRA_LANGUAGE = "idraak_language"
+        const val EXTRA_RUNNING = "voice_running"
+        const val EXTRA_USER_STOPPED = "voice_user_stopped"
+
+        private const val NOTIFICATION_ID = 42
+        private const val PREF_ENABLED = "voice_enabled"
+        private const val PREF_LANGUAGE = "voice_language"
     }
 
     override fun onCreate() {
@@ -85,6 +96,15 @@ class VoiceForegroundService : Service() {
             .build()
     }
 
+    private fun sendState(running: Boolean, userStopped: Boolean) {
+        val intent = Intent(ACTION_STATE)
+            .setPackage(packageName)
+            .putExtra(EXTRA_RUNNING, running)
+            .putExtra(EXTRA_USER_STOPPED, userStopped)
+
+        sendBroadcast(intent)
+    }
+
     override fun onStartCommand(
         intent: Intent?,
         flags: Int,
@@ -92,7 +112,21 @@ class VoiceForegroundService : Service() {
     ): Int {
 
         if (intent?.action == ACTION_STOP) {
+            prefs.edit()
+                .putBoolean(PREF_ENABLED, false)
+                .apply()
+
             stopListening()
+            sendState(false, true)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        // Android द्वारा Service Restart होने पर
+        // User की पिछली Stop पसंद का सम्मान करें।
+        if (intent == null &&
+            !prefs.getBoolean(PREF_ENABLED, false)
+        ) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -100,29 +134,47 @@ class VoiceForegroundService : Service() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
+            prefs.edit().putBoolean(PREF_ENABLED, false).apply()
+            sendState(false, false)
             stopSelf()
             return START_NOT_STICKY
         }
 
-        if (listening) {
-            return START_STICKY
-        }
+        if (listening) return START_STICKY
 
         try {
             if (Build.VERSION.SDK_INT >= 34) {
                 startForeground(
-                    42,
+                    NOTIFICATION_ID,
                     notification(),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
                 )
             } else {
-                startForeground(42, notification())
+                startForeground(NOTIFICATION_ID, notification())
             }
 
-            startListening(intent)
+            val requestedLanguage = intent
+                ?.getStringExtra(EXTRA_LANGUAGE)
+
+            activeLanguage = if (!requestedLanguage.isNullOrBlank()) {
+                selectedLanguage(requestedLanguage)
+            } else {
+                prefs.getString(PREF_LANGUAGE, null)
+                    ?.let { selectedLanguage(it) }
+                    ?: selectedLanguage(null)
+            }
+
+            prefs.edit()
+                .putBoolean(PREF_ENABLED, true)
+                .putString(PREF_LANGUAGE, activeLanguage)
+                .apply()
+
+            startListening()
 
         } catch (_: Exception) {
+            prefs.edit().putBoolean(PREF_ENABLED, false).apply()
             stopListening()
+            sendState(false, false)
             stopSelf()
             return START_NOT_STICKY
         }
@@ -130,9 +182,8 @@ class VoiceForegroundService : Service() {
         return START_STICKY
     }
 
-    private fun selectedLanguage(startIntent: Intent?): String {
-        val requested = startIntent
-            ?.getStringExtra(EXTRA_LANGUAGE)
+    private fun selectedLanguage(requestedValue: String?): String {
+        val requested = requestedValue
             ?.trim()
             ?.lowercase(Locale.ROOT)
             .orEmpty()
@@ -166,18 +217,18 @@ class VoiceForegroundService : Service() {
         }
     }
 
-    private fun startListening(startIntent: Intent?) {
+    private fun startListening() {
         if (listening) return
 
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            prefs.edit().putBoolean(PREF_ENABLED, false).apply()
             stopForeground(STOP_FOREGROUND_REMOVE)
+            sendState(false, false)
             stopSelf()
             return
         }
 
-        activeLanguage = selectedLanguage(startIntent)
         listening = true
-
         createRecognizer()
     }
 
@@ -197,7 +248,9 @@ class VoiceForegroundService : Service() {
             speechRecognizer.setRecognitionListener(
                 object : RecognitionListener {
 
-                    override fun onReadyForSpeech(params: Bundle?) {}
+                    override fun onReadyForSpeech(params: Bundle?) {
+                        sendState(true, false)
+                    }
 
                     override fun onBeginningOfSpeech() {}
 
@@ -208,7 +261,7 @@ class VoiceForegroundService : Service() {
                     override fun onEndOfSpeech() {}
 
                     override fun onError(error: Int) {
-                        scheduleRestart(1000)
+                        scheduleRestart(1500)
                     }
 
                     override fun onResults(results: Bundle?) {
@@ -272,7 +325,7 @@ class VoiceForegroundService : Service() {
             speechRecognizer.startListening(speechIntent)
 
         } catch (_: Exception) {
-            scheduleRestart(1500)
+            scheduleRestart(2000)
         }
     }
 
@@ -297,7 +350,10 @@ class VoiceForegroundService : Service() {
         }
 
         recognizer = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
+
+        if (::manager.isInitialized) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        }
     }
 
     override fun onDestroy() {
