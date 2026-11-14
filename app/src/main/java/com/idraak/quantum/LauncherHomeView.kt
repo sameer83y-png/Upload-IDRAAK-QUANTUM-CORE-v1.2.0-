@@ -6,42 +6,31 @@ import android.graphics.*
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
-import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
-import android.widget.*
-import android.text.TextWatcher
-import android.text.Editable
-import kotlin.math.abs
+import android.view.ViewConfiguration
+import android.widget.LinearLayout
+import android.widget.TextView
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.cos
 
+@Suppress("UNUSED_PARAMETER")
 class LauncherHomeView(
     context: Context,
     private val onSettingsClick: () -> Unit,
-    private val onVoiceClick: () -> Unit
+    onVoiceClick: () -> Unit
 ) : LinearLayout(context) {
 
-    private val engine = LauncherEngine(context)
-    private var allApps: List<LauncherApp> = emptyList()
-
-    private lateinit var appAdapter: AppDrawerAdapter
-    private lateinit var searchBox: EditText
     private lateinit var statusText: TextView
-    private lateinit var appGrid: GridView
     private lateinit var orbView: LiveOrbView
-    private lateinit var drawerTitle: TextView
-
-    private var drawerOpen = false
 
     private val cyan = Color.rgb(0, 225, 255)
-    private val purple = Color.rgb(155, 75, 255)
 
     init {
         orientation = VERTICAL
-        gravity = Gravity.CENTER_HORIZONTAL
-        setPadding(18, 20, 18, 14)
+        gravity = android.view.Gravity.CENTER
+        setPadding(dp(18), dp(20), dp(18), dp(14))
 
         background = GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
@@ -53,8 +42,10 @@ class LauncherHomeView(
         )
 
         buildInterface()
-        reloadApps()
     }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
 
     private fun buildInterface() {
 
@@ -66,7 +57,7 @@ class LauncherHomeView(
                 "sans-serif-black",
                 Typeface.BOLD
             )
-            gravity = Gravity.CENTER
+            gravity = android.view.Gravity.CENTER
             letterSpacing = 0.16f
             setShadowLayer(18f, 0f, 0f, cyan)
         }
@@ -83,9 +74,9 @@ class LauncherHomeView(
             text = "QUANTUM AI • PERSONAL INTELLIGENCE"
             textSize = 9f
             setTextColor(Color.rgb(150, 175, 220))
-            gravity = Gravity.CENTER
+            gravity = android.view.Gravity.CENTER
             letterSpacing = 0.14f
-            setPadding(0, 5, 0, 18)
+            setPadding(0, dp(5), 0, dp(12))
         }
 
         addView(
@@ -98,13 +89,19 @@ class LauncherHomeView(
 
         orbView = LiveOrbView(context)
 
-        val longPressHandler = Handler(Looper.getMainLooper())
+        val handler = Handler(Looper.getMainLooper())
+        val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+
         var startX = 0f
         var startY = 0f
         var moved = false
+        var longPressTriggered = false
 
         val longPressAction = Runnable {
-            onSettingsClick()
+            if (!moved) {
+                longPressTriggered = true
+                onSettingsClick()
+            }
         }
 
         orbView.setOnTouchListener { _, event ->
@@ -114,47 +111,27 @@ class LauncherHomeView(
                     startX = event.x
                     startY = event.y
                     moved = false
+                    longPressTriggered = false
 
-                    longPressHandler.postDelayed(
-                        longPressAction,
-                        2000
-                    )
+                    handler.removeCallbacks(longPressAction)
+                    handler.postDelayed(longPressAction, 2000L)
                     true
                 }
 
                 MotionEvent.ACTION_MOVE -> {
                     if (
-                        abs(event.x - startX) > 25 ||
-                        abs(event.y - startY) > 25
+                        kotlin.math.abs(event.x - startX) > touchSlop ||
+                        kotlin.math.abs(event.y - startY) > touchSlop
                     ) {
                         moved = true
-                        longPressHandler.removeCallbacks(
-                            longPressAction
-                        )
+                        handler.removeCallbacks(longPressAction)
                     }
                     true
                 }
 
-                MotionEvent.ACTION_UP -> {
-                    longPressHandler.removeCallbacks(
-                        longPressAction
-                    )
-
-                    val deltaY = event.y - startY
-
-                    if (moved && deltaY < -45) {
-                        showDrawer()
-                    } else if (moved && deltaY > 45) {
-                        hideDrawer()
-                    }
-
-                    true
-                }
-
+                MotionEvent.ACTION_UP,
                 MotionEvent.ACTION_CANCEL -> {
-                    longPressHandler.removeCallbacks(
-                        longPressAction
-                    )
+                    handler.removeCallbacks(longPressAction)
                     true
                 }
 
@@ -162,21 +139,20 @@ class LauncherHomeView(
             }
         }
 
+        val screenWidth =
+            resources.displayMetrics.widthPixels
+
+        val orbSize = min(
+            screenWidth - dp(36),
+            dp(310)
+        )
+
         addView(
             orbView,
-            LayoutParams(
-                min(
-                    resources.displayMetrics.widthPixels - 50,
-                    300
-                ),
-                min(
-                    resources.displayMetrics.widthPixels - 50,
-                    300
-                )
-            ).apply {
-                gravity = Gravity.CENTER
-                topMargin = 8
-                bottomMargin = 8
+            LayoutParams(orbSize, orbSize).apply {
+                gravity = android.view.Gravity.CENTER
+                topMargin = dp(12)
+                bottomMargin = dp(12)
             }
         )
 
@@ -184,10 +160,10 @@ class LauncherHomeView(
             text = "● IDRAAK STANDBY"
             textSize = 13f
             setTextColor(cyan)
-            gravity = Gravity.CENTER
+            gravity = android.view.Gravity.CENTER
             typeface = Typeface.DEFAULT_BOLD
             letterSpacing = 0.08f
-            setPadding(0, 10, 0, 5)
+            setPadding(0, dp(10), 0, dp(5))
         }
 
         addView(
@@ -202,9 +178,9 @@ class LauncherHomeView(
             text = "SAY IDRAAK TO ACTIVATE"
             textSize = 10f
             setTextColor(Color.rgb(130, 155, 205))
-            gravity = Gravity.CENTER
+            gravity = android.view.Gravity.CENTER
             letterSpacing = 0.16f
-            setPadding(0, 4, 0, 16)
+            setPadding(0, dp(5), 0, dp(16))
         }
 
         addView(
@@ -215,147 +191,13 @@ class LauncherHomeView(
             )
         )
 
-        drawerTitle = TextView(context).apply {
-            text = "APPLICATION MATRIX"
-            textSize = 12f
-            setTextColor(cyan)
-            gravity = Gravity.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, 12, 0, 8)
-            visibility = View.GONE
-        }
-
-        addView(
-            drawerTitle,
-            LayoutParams(
-                LayoutParams.MATCH_PARENT,
-                LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        searchBox = EditText(context).apply {
-            hint = "Search applications..."
-            setHintTextColor(Color.GRAY)
-            setTextColor(Color.WHITE)
-            textSize = 14f
-            setSingleLine(true)
-            setPadding(16, 8, 16, 8)
-
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(12, 22, 48))
-                cornerRadius = 24f
-                setStroke(2, Color.rgb(0, 150, 210))
-            }
-
-            visibility = View.GONE
-        }
-
-        addView(
-            searchBox,
-            LayoutParams(
-                LayoutParams.MATCH_PARENT,
-                46
-            ).apply {
-                bottomMargin = 8
-            }
-        )
-
-        appGrid = GridView(context).apply {
-            numColumns = 4
-            horizontalSpacing = 8
-            verticalSpacing = 8
-            stretchMode = GridView.STRETCH_COLUMN_WIDTH
-            gravity = Gravity.CENTER
-            clipToPadding = false
-            selector = android.graphics.drawable.ColorDrawable(
-                Color.TRANSPARENT
-            )
-            visibility = View.GONE
-        }
-
-        appAdapter = AppDrawerAdapter(
-            context,
-            emptyList()
-        ) { app ->
-            engine.launchApp(app.packageName)
-        }
-
-        appGrid.adapter = appAdapter
-
-        addView(
-            appGrid,
-            LayoutParams(
-                LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
-        searchBox.addTextChangedListener(
-            object : TextWatcher {
-                override fun beforeTextChanged(
-                    s: CharSequence?,
-                    start: Int,
-                    count: Int,
-                    after: Int
-                ) {}
-
-                override fun onTextChanged(
-                    s: CharSequence?,
-                    start: Int,
-                    before: Int,
-                    count: Int
-                ) {
-                    appAdapter.updateApps(
-                        engine.searchApps(
-                            s?.toString() ?: "",
-                            allApps
-                        )
-                    )
-                }
-
-                override fun afterTextChanged(s: Editable?) {}
-            }
-        )
-
-        val drawerButton = TextView(context).apply {
-            text = "⌃   APPLICATIONS   ⌃"
-            textSize = 11f
-            setTextColor(cyan)
-            gravity = Gravity.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            letterSpacing = 0.12f
-            setPadding(15, 13, 15, 13)
-
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(10, 20, 45))
-                cornerRadius = 28f
-                setStroke(1, cyan)
-            }
-
-            setOnClickListener {
-                if (drawerOpen) hideDrawer() else showDrawer()
-            }
-        }
-
-        addView(
-            drawerButton,
-            LayoutParams(
-                LayoutParams.MATCH_PARENT,
-                48
-            ).apply {
-                topMargin = 8
-                bottomMargin = 8
-            }
-        )
-
         val footer = TextView(context).apply {
-            text = "IDRAAK QUANTUM CORE • SYSTEM ONLINE"
+            text = "IDRAAK QUANTUM CORE • VOICE CONTROL"
             textSize = 8f
             setTextColor(Color.rgb(95, 120, 170))
-            gravity = Gravity.CENTER
+            gravity = android.view.Gravity.CENTER
             letterSpacing = 0.08f
-            setPadding(0, 6, 0, 2)
+            setPadding(0, dp(6), 0, dp(2))
         }
 
         addView(
@@ -367,20 +209,6 @@ class LauncherHomeView(
         )
     }
 
-    private fun showDrawer() {
-        drawerOpen = true
-        drawerTitle.visibility = View.VISIBLE
-        searchBox.visibility = View.VISIBLE
-        appGrid.visibility = View.VISIBLE
-    }
-
-    private fun hideDrawer() {
-        drawerOpen = false
-        drawerTitle.visibility = View.GONE
-        searchBox.visibility = View.GONE
-        appGrid.visibility = View.GONE
-    }
-
     fun setAvatarGender(gender: String) {
         if (::orbView.isInitialized) {
             orbView.setAvatarGender(gender)
@@ -388,24 +216,8 @@ class LauncherHomeView(
     }
 
     fun reloadApps() {
-        try {
-            allApps = engine.getInstalledApps()
-
-            if (::appAdapter.isInitialized) {
-                appAdapter.updateApps(
-                    engine.searchApps(
-                        if (::searchBox.isInitialized) {
-                            searchBox.text.toString()
-                        } else {
-                            ""
-                        },
-                        allApps
-                    )
-                )
-            }
-        } catch (_: Exception) {
-            setLiveStatus("● APP DRAWER ERROR")
-        }
+        // Apps are opened through MainActivity voice commands.
+        // No touch-based app drawer is displayed.
     }
 
     fun setLiveStatus(status: String) {
@@ -415,34 +227,60 @@ class LauncherHomeView(
     }
 
     fun setVoiceStatus(active: Boolean) {
-        setLiveStatus(
-            if (active) {
-                "● IDRAAK VOICE ACTIVE"
-            } else {
-                "● IDRAAK STANDBY"
-            }
-        )
+        if (::orbView.isInitialized) {
+            orbView.setListening(active)
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        if (::orbView.isInitialized) {
+            orbView.stopAnimation()
+        }
+        super.onDetachedFromWindow()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (::orbView.isInitialized) {
+            orbView.startAnimation()
+        }
     }
 }
 
 class LiveOrbView(context: Context) : View(context) {
 
-    private val orbPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val facePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private var rotation = 0f
     private var pulse = 0f
     private var avatarGender = "male"
+    private var listening = false
+    private var animationRunning = false
 
     private val cyan = Color.rgb(0, 225, 255)
     private val purple = Color.rgb(155, 65, 255)
     private val paleBlue = Color.rgb(190, 250, 255)
 
+    private val animationRunnable = object : Runnable {
+        override fun run() {
+            if (!animationRunning) return
+
+            rotation += 0.65f
+            if (rotation >= 360f) rotation = 0f
+
+            pulse += 0.045f
+            invalidate()
+
+            postDelayed(this, 40L)
+        }
+    }
+
     init {
-        contentDescription = "IDRAAK holographic AI globe"
+        contentDescription =
+            "IDRAAK holographic AI globe. Long press for settings."
+        startAnimation()
     }
 
     fun setAvatarGender(gender: String) {
@@ -450,12 +288,27 @@ class LiveOrbView(context: Context) : View(context) {
             if (
                 gender.equals("female", true) ||
                 gender.equals("महिला", true)
-            ) {
-                "female"
-            } else {
-                "male"
-            }
+            ) "female" else "male"
+
         invalidate()
+    }
+
+    fun setListening(active: Boolean) {
+        listening = active
+        invalidate()
+    }
+
+    fun startAnimation() {
+        if (!animationRunning) {
+            animationRunning = true
+            removeCallbacks(animationRunnable)
+            post(animationRunnable)
+        }
+    }
+
+    fun stopAnimation() {
+        animationRunning = false
+        removeCallbacks(animationRunnable)
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -465,19 +318,11 @@ class LiveOrbView(context: Context) : View(context) {
         val cy = height / 2f
         val radius = min(width, height) * 0.31f
 
-        pulse += 0.045f
-        val breathing = 1f + 0.025f * sin(pulse)
-
         drawAtmosphere(canvas, cx, cy, radius)
-        drawGlobe(canvas, cx, cy, radius, breathing)
-        drawOrbitRings(canvas, cx, cy, radius)
-        drawHolographicAvatar(canvas, cx, cy, radius)
-        drawInterfaceDetails(canvas, cx, cy, radius)
-
-        rotation += 0.65f
-        if (rotation >= 360f) rotation = 0f
-
-        postInvalidateDelayed(40)
+        drawGlobe(canvas, cx, cy, radius)
+        drawOrbit(canvas, cx, cy, radius)
+        drawAvatar(canvas, cx, cy, radius)
+        drawLabels(canvas, cx, cy, radius)
     }
 
     private fun drawAtmosphere(
@@ -486,37 +331,33 @@ class LiveOrbView(context: Context) : View(context) {
         cy: Float,
         radius: Float
     ) {
-        orbPaint.shader = RadialGradient(
+        paint.shader = RadialGradient(
             cx,
             cy,
-            radius * 2.25f,
+            radius * 2.2f,
             intArrayOf(
-                Color.argb(100, 0, 225, 255),
-                Color.argb(45, 100, 50, 255),
+                if (listening) Color.argb(125, 0, 255, 255)
+                else Color.argb(85, 0, 225, 255),
+                Color.argb(35, 100, 50, 255),
                 Color.TRANSPARENT
             ),
             null,
             Shader.TileMode.CLAMP
         )
 
-        canvas.drawCircle(
-            cx,
-            cy,
-            radius * 2.25f,
-            orbPaint
-        )
-
-        orbPaint.shader = null
+        canvas.drawCircle(cx, cy, radius * 2.2f, paint)
+        paint.shader = null
     }
 
     private fun drawGlobe(
         canvas: Canvas,
         cx: Float,
         cy: Float,
-        radius: Float,
-        breathing: Float
+        radius: Float
     ) {
-        orbPaint.shader = RadialGradient(
+        val breathing = 1f + 0.025f * sin(pulse)
+
+        paint.shader = RadialGradient(
             cx - radius * 0.3f,
             cy - radius * 0.35f,
             radius * 1.65f,
@@ -533,83 +374,70 @@ class LiveOrbView(context: Context) : View(context) {
             cx,
             cy,
             radius * breathing,
-            orbPaint
+            paint
         )
 
-        orbPaint.shader = null
-
-        orbPaint.style = Paint.Style.STROKE
-        orbPaint.strokeWidth = 1.5f
-        orbPaint.color = Color.argb(180, 0, 225, 255)
-
-        canvas.drawCircle(
-            cx,
-            cy,
-            radius * breathing,
-            orbPaint
-        )
-
-        orbPaint.style = Paint.Style.FILL
+        paint.shader = null
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1.7f
+        paint.color = if (listening) Color.WHITE else cyan
+        canvas.drawCircle(cx, cy, radius * breathing, paint)
+        paint.style = Paint.Style.FILL
 
         canvas.save()
-        canvas.clipPath(
-            Path().apply {
-                addCircle(cx, cy, radius * 0.96f, Path.Direction.CW)
-            }
-        )
+        val clip = Path().apply {
+            addCircle(cx, cy, radius * 0.96f, Path.Direction.CW)
+        }
+        canvas.clipPath(clip)
 
-        val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(55, 100, 230, 255)
+        val grid = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(65, 100, 230, 255)
             style = Paint.Style.STROKE
             strokeWidth = 1f
         }
 
         for (i in -3..3) {
             val offset = i * radius * 0.25f
+
             canvas.drawLine(
                 cx - radius,
                 cy + offset,
                 cx + radius,
                 cy + offset,
-                gridPaint
+                grid
             )
+
             canvas.drawLine(
                 cx + offset,
                 cy - radius,
                 cx + offset,
                 cy + radius,
-                gridPaint
+                grid
             )
         }
 
         canvas.restore()
     }
 
-    private fun drawOrbitRings(
+    private fun drawOrbit(
         canvas: Canvas,
         cx: Float,
         cy: Float,
         radius: Float
     ) {
-        ringPaint.style = Paint.Style.STROKE
-        ringPaint.strokeCap = Paint.Cap.ROUND
-        ringPaint.strokeWidth = 2.2f
-        ringPaint.color = cyan
-        ringPaint.alpha = 210
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2.2f
+        paint.color = cyan
+        paint.alpha = 210
 
-        canvas.drawCircle(
-            cx,
-            cy,
-            radius * 1.12f,
-            ringPaint
-        )
+        canvas.drawCircle(cx, cy, radius * 1.12f, paint)
 
         canvas.save()
         canvas.rotate(rotation, cx, cy)
 
-        ringPaint.color = purple
-        ringPaint.alpha = 230
-        ringPaint.strokeWidth = 2.4f
+        paint.color = purple
+        paint.alpha = 230
+        paint.strokeWidth = 2.4f
 
         canvas.drawOval(
             RectF(
@@ -618,12 +446,11 @@ class LiveOrbView(context: Context) : View(context) {
                 cx + radius * 1.48f,
                 cy + radius * 0.42f
             ),
-            ringPaint
+            paint
         )
 
-        ringPaint.color = paleBlue
-        ringPaint.strokeWidth = 1.1f
-        ringPaint.alpha = 170
+        paint.color = paleBlue
+        paint.strokeWidth = 1.1f
 
         canvas.drawOval(
             RectF(
@@ -632,33 +459,25 @@ class LiveOrbView(context: Context) : View(context) {
                 cx + radius * 1.35f,
                 cy + radius * 0.25f
             ),
-            ringPaint
+            paint
         )
 
         canvas.restore()
 
-        ringPaint.color = cyan
-        ringPaint.strokeWidth = 1.3f
-        ringPaint.alpha = 120
+        paint.style = Paint.Style.FILL
+        paint.color = paleBlue
+
+        val angle = Math.toRadians(rotation.toDouble())
 
         canvas.drawCircle(
-            cx,
-            cy,
-            radius * 1.34f,
-            ringPaint
+            cx + cos(angle).toFloat() * radius * 1.48f,
+            cy + sin(angle).toFloat() * radius * 0.42f,
+            4f,
+            paint
         )
-
-        ringPaint.style = Paint.Style.FILL
-
-        val dotAngle = Math.toRadians(rotation.toDouble())
-        val dotX = cx + cos(dotAngle).toFloat() * radius * 1.48f
-        val dotY = cy + sin(dotAngle).toFloat() * radius * 0.42f
-
-        orbPaint.color = paleBlue
-        canvas.drawCircle(dotX, dotY, 4f, orbPaint)
     }
 
-    private fun drawHolographicAvatar(
+    private fun drawAvatar(
         canvas: Canvas,
         cx: Float,
         cy: Float,
@@ -673,21 +492,21 @@ class LiveOrbView(context: Context) : View(context) {
         drawAvatarGlow(canvas)
         drawShoulders(canvas)
         drawNeck(canvas)
-        drawFace(canvas)
+        drawHead(canvas)
         drawHair(canvas)
         drawFaceDetails(canvas)
-        drawCircuitLines(canvas)
+        drawCircuits(canvas)
 
         canvas.restore()
     }
 
     private fun drawAvatarGlow(canvas: Canvas) {
-        facePaint.shader = RadialGradient(
+        paint.shader = RadialGradient(
             0f,
             -5f,
             72f,
             intArrayOf(
-                Color.argb(75, 0, 235, 255),
+                Color.argb(85, 0, 235, 255),
                 Color.argb(25, 0, 100, 255),
                 Color.TRANSPARENT
             ),
@@ -695,12 +514,12 @@ class LiveOrbView(context: Context) : View(context) {
             Shader.TileMode.CLAMP
         )
 
-        canvas.drawCircle(0f, 0f, 72f, facePaint)
-        facePaint.shader = null
+        canvas.drawCircle(0f, 0f, 72f, paint)
+        paint.shader = null
     }
 
     private fun drawShoulders(canvas: Canvas) {
-        val shoulders = Path().apply {
+        val body = Path().apply {
             moveTo(-12f, 34f)
             cubicTo(-40f, 38f, -48f, 49f, -52f, 65f)
             lineTo(52f, 65f)
@@ -708,7 +527,7 @@ class LiveOrbView(context: Context) : View(context) {
             close()
         }
 
-        facePaint.shader = LinearGradient(
+        paint.shader = LinearGradient(
             -40f,
             30f,
             40f,
@@ -722,19 +541,18 @@ class LiveOrbView(context: Context) : View(context) {
             Shader.TileMode.CLAMP
         )
 
-        canvas.drawPath(shoulders, facePaint)
-        facePaint.shader = null
+        canvas.drawPath(body, paint)
+        paint.shader = null
 
-        facePaint.style = Paint.Style.STROKE
-        facePaint.strokeWidth = 1.5f
-        facePaint.color = paleBlue
-        facePaint.alpha = 190
-        canvas.drawPath(shoulders, facePaint)
-        facePaint.style = Paint.Style.FILL
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1.5f
+        paint.color = paleBlue
+        canvas.drawPath(body, paint)
+        paint.style = Paint.Style.FILL
     }
 
     private fun drawNeck(canvas: Canvas) {
-        facePaint.shader = LinearGradient(
+        paint.shader = LinearGradient(
             -10f,
             15f,
             10f,
@@ -752,14 +570,14 @@ class LiveOrbView(context: Context) : View(context) {
             RectF(-11f, 18f, 11f, 43f),
             5f,
             5f,
-            facePaint
+            paint
         )
 
-        facePaint.shader = null
+        paint.shader = null
     }
 
-    private fun drawFace(canvas: Canvas) {
-        facePaint.shader = LinearGradient(
+    private fun drawHead(canvas: Canvas) {
+        paint.shader = LinearGradient(
             -25f,
             -35f,
             25f,
@@ -775,26 +593,22 @@ class LiveOrbView(context: Context) : View(context) {
 
         canvas.drawOval(
             RectF(-24f, -34f, 24f, 27f),
-            facePaint
+            paint
         )
 
-        facePaint.shader = null
-
-        facePaint.style = Paint.Style.STROKE
-        facePaint.strokeWidth = 1.3f
-        facePaint.color = paleBlue
-        facePaint.alpha = 220
-
+        paint.shader = null
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1.3f
+        paint.color = paleBlue
         canvas.drawOval(
             RectF(-24f, -34f, 24f, 27f),
-            facePaint
+            paint
         )
-
-        facePaint.style = Paint.Style.FILL
+        paint.style = Paint.Style.FILL
     }
 
     private fun drawHair(canvas: Canvas) {
-        facePaint.color = Color.rgb(8, 24, 65)
+        paint.color = Color.rgb(8, 24, 65)
 
         val hair = Path()
 
@@ -818,13 +632,13 @@ class LiveOrbView(context: Context) : View(context) {
             hair.close()
         }
 
-        canvas.drawPath(hair, facePaint)
+        canvas.drawPath(hair, paint)
 
-        facePaint.style = Paint.Style.STROKE
-        facePaint.strokeWidth = 1.1f
-        facePaint.color = Color.argb(190, 0, 225, 255)
-        canvas.drawPath(hair, facePaint)
-        facePaint.style = Paint.Style.FILL
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1.1f
+        paint.color = cyan
+        canvas.drawPath(hair, paint)
+        paint.style = Paint.Style.FILL
     }
 
     private fun drawFaceDetails(canvas: Canvas) {
@@ -832,14 +646,12 @@ class LiveOrbView(context: Context) : View(context) {
         linePaint.strokeCap = Paint.Cap.ROUND
         linePaint.strokeWidth = 2f
         linePaint.color = cyan
-        linePaint.alpha = 230
 
         canvas.drawLine(-13f, -2f, -5f, -2f, linePaint)
         canvas.drawLine(5f, -2f, 13f, -2f, linePaint)
 
         linePaint.style = Paint.Style.FILL
         linePaint.color = Color.WHITE
-
         canvas.drawCircle(-9f, -2f, 2f, linePaint)
         canvas.drawCircle(9f, -2f, 2f, linePaint)
 
@@ -852,51 +664,46 @@ class LiveOrbView(context: Context) : View(context) {
             lineTo(-2f, 9f)
             lineTo(2f, 10f)
         }
-
         canvas.drawPath(nose, linePaint)
 
         val mouth = Path().apply {
             moveTo(-6f, 17f)
             quadTo(0f, 21f, 6f, 17f)
         }
-
         canvas.drawPath(mouth, linePaint)
 
         linePaint.style = Paint.Style.FILL
     }
 
-    private fun drawCircuitLines(canvas: Canvas) {
+    private fun drawCircuits(canvas: Canvas) {
         linePaint.style = Paint.Style.STROKE
         linePaint.strokeWidth = 1.1f
         linePaint.strokeCap = Paint.Cap.ROUND
         linePaint.color = cyan
-        linePaint.alpha = 190
 
-        val leftCircuit = Path().apply {
+        val left = Path().apply {
             moveTo(-20f, 2f)
             lineTo(-29f, 8f)
             lineTo(-29f, 18f)
             lineTo(-36f, 23f)
         }
 
-        val rightCircuit = Path().apply {
+        val right = Path().apply {
             moveTo(20f, 2f)
             lineTo(29f, 8f)
             lineTo(29f, 18f)
             lineTo(36f, 23f)
         }
 
-        canvas.drawPath(leftCircuit, linePaint)
-        canvas.drawPath(rightCircuit, linePaint)
+        canvas.drawPath(left, linePaint)
+        canvas.drawPath(right, linePaint)
 
         linePaint.style = Paint.Style.FILL
-
         canvas.drawCircle(-36f, 23f, 2f, linePaint)
         canvas.drawCircle(36f, 23f, 2f, linePaint)
 
         linePaint.style = Paint.Style.STROKE
         linePaint.strokeWidth = 0.8f
-        linePaint.alpha = 130
 
         canvas.drawArc(
             RectF(-18f, -27f, 18f, 25f),
@@ -909,7 +716,7 @@ class LiveOrbView(context: Context) : View(context) {
         linePaint.style = Paint.Style.FILL
     }
 
-    private fun drawInterfaceDetails(
+    private fun drawLabels(
         canvas: Canvas,
         cx: Float,
         cy: Float,
@@ -920,6 +727,7 @@ class LiveOrbView(context: Context) : View(context) {
             "sans-serif-black",
             Typeface.BOLD
         )
+
         textPaint.color = Color.WHITE
         textPaint.textSize = 12f
         textPaint.setShadowLayer(10f, 0f, 0f, cyan)
@@ -932,16 +740,12 @@ class LiveOrbView(context: Context) : View(context) {
         )
 
         textPaint.clearShadowLayer()
-        textPaint.color = cyan
+        textPaint.color = if (listening) Color.WHITE else cyan
         textPaint.textSize = 8f
-        textPaint.letterSpacingCompat()
 
         canvas.drawText(
-            if (avatarGender == "female") {
-                "FEMALE AI CORE"
-            } else {
-                "MALE AI CORE"
-            },
+            if (listening) "VOICE SYSTEM ACTIVE"
+            else "VOICE SYSTEM STANDBY",
             cx,
             cy + radius * 1.05f,
             textPaint
@@ -956,9 +760,5 @@ class LiveOrbView(context: Context) : View(context) {
             cy + radius * 1.55f,
             textPaint
         )
-    }
-
-    private fun Paint.letterSpacingCompat() {
-        // Canvas text spacing is kept compatible with Android 9.
     }
 }
