@@ -40,7 +40,6 @@ class VoiceForegroundService : Service() {
     }
 
     companion object {
-
         const val CHANNEL = "idraak_voice_channel"
 
         const val ACTION_STOP =
@@ -52,13 +51,18 @@ class VoiceForegroundService : Service() {
         const val ACTION_STATE =
             "com.idraak.quantum.VOICE_STATE"
 
+        const val ACTION_PAUSE =
+            "com.idraak.quantum.PAUSE_VOICE"
+
+        const val ACTION_RESUME =
+            "com.idraak.quantum.RESUME_VOICE"
+
         const val EXTRA_TEXT = "recognized_text"
         const val EXTRA_LANGUAGE = "idraak_language"
         const val EXTRA_RUNNING = "voice_running"
         const val EXTRA_USER_STOPPED = "voice_user_stopped"
 
         private const val NOTIFICATION_ID = 42
-
         private const val PREF_ENABLED = "voice_enabled"
         private const val PREF_LANGUAGE = "voice_language"
     }
@@ -74,10 +78,7 @@ class VoiceForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
 
-        manager = getSystemService(
-            NotificationManager::class.java
-        )
-
+        manager = getSystemService(NotificationManager::class.java)
         createChannel()
     }
 
@@ -89,7 +90,7 @@ class VoiceForegroundService : Service() {
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description =
-                    "Visible notification while IDRAAK microphone is active"
+                    "Visible notification while IDRAAK voice service is active"
             }
 
             manager.createNotificationChannel(channel)
@@ -97,7 +98,6 @@ class VoiceForegroundService : Service() {
     }
 
     private fun notification(): Notification {
-
         val stopIntent = Intent(
             this,
             VoiceForegroundService::class.java
@@ -128,8 +128,8 @@ class VoiceForegroundService : Service() {
             }
 
         return builder
-            .setContentTitle("IDRAAK Microphone")
-            .setContentText("Voice service active — tap Stop to pause")
+            .setContentTitle("IDRAAK Voice Service")
+            .setContentText("Voice service active")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setOngoing(true)
             .addAction(
@@ -183,17 +183,47 @@ class VoiceForegroundService : Service() {
         startId: Int
     ): Int {
 
-        if (intent?.action == ACTION_STOP) {
+        when (intent?.action) {
 
-            prefs.edit()
-                .putBoolean(PREF_ENABLED, false)
-                .apply()
+            ACTION_STOP -> {
+                prefs.edit()
+                    .putBoolean(PREF_ENABLED, false)
+                    .apply()
 
-            stopListening()
-            sendState(false, true)
-            stopSelf()
+                stopListening()
+                sendState(false, true)
+                stopSelf()
 
-            return START_NOT_STICKY
+                return START_NOT_STICKY
+            }
+
+            ACTION_PAUSE -> {
+                pauseListening()
+                return START_STICKY
+            }
+
+            ACTION_RESUME -> {
+                if (
+                    checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
+                    PackageManager.PERMISSION_GRANTED
+                ) {
+                    sendState(false, false)
+                    return START_NOT_STICKY
+                }
+
+                try {
+                    startForegroundSafely()
+                    prefs.edit()
+                        .putBoolean(PREF_ENABLED, true)
+                        .apply()
+
+                    resumeListening()
+                } catch (_: Exception) {
+                    sendState(false, false)
+                }
+
+                return START_STICKY
+            }
         }
 
         if (
@@ -218,10 +248,6 @@ class VoiceForegroundService : Service() {
             return START_NOT_STICKY
         }
 
-        if (listening) {
-            return START_STICKY
-        }
-
         try {
             startForegroundSafely()
 
@@ -243,26 +269,15 @@ class VoiceForegroundService : Service() {
                 .apply()
 
             retryDelay = 1500L
-            listening = true
 
-            createRecognizerOnce()
-
-            if (recognizer == null) {
-                throw IllegalStateException(
-                    "Speech recognizer could not be created"
-                )
-            }
-
-            sendState(true, false)
-            startRecognitionSession()
+            resumeListening()
 
         } catch (_: Exception) {
-
+            stopListening()
             prefs.edit()
                 .putBoolean(PREF_ENABLED, false)
                 .apply()
 
-            stopListening()
             sendState(false, false)
             stopSelf()
 
@@ -272,17 +287,13 @@ class VoiceForegroundService : Service() {
         return START_STICKY
     }
 
-    private fun selectedLanguage(
-        requestedValue: String?
-    ): String {
-
+    private fun selectedLanguage(requestedValue: String?): String {
         val requested = requestedValue
             ?.trim()
             ?.lowercase(Locale.ROOT)
             .orEmpty()
 
         return when {
-
             requested.contains("hindi") ||
                 requested == "hi" ||
                 requested == "hi-in" -> "hi-IN"
@@ -312,7 +323,6 @@ class VoiceForegroundService : Service() {
     }
 
     private fun createRecognizerOnce() {
-
         if (recognizer != null) return
 
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -330,6 +340,8 @@ class VoiceForegroundService : Service() {
             object : RecognitionListener {
 
                 override fun onReadyForSpeech(params: Bundle?) {
+                    if (!listening) return
+
                     retryDelay = 1500L
                     sessionInProgress = true
                     sendState(true, false)
@@ -344,7 +356,6 @@ class VoiceForegroundService : Service() {
                 override fun onEndOfSpeech() {}
 
                 override fun onError(error: Int) {
-
                     sessionInProgress = false
 
                     if (!listening) return
@@ -360,35 +371,30 @@ class VoiceForegroundService : Service() {
                         stopListening()
                         sendState(false, false)
                         stopSelf()
-
                         return
                     }
 
-                    // Client Error पर खराब Recognizer को बदलना
-                    if (
-                        error == SpeechRecognizer.ERROR_CLIENT
-                    ) {
+                    if (error == SpeechRecognizer.ERROR_CLIENT) {
                         releaseRecognizer()
                     }
 
-                    // Busy Error पर थोड़ी देर रुककर पुनः प्रयास
-                    val delay = if (
-                        error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY
-                    ) {
-                        3000L
-                    } else {
-                        retryDelay
-                    }
+                    val delay =
+                        if (
+                            error ==
+                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY
+                        ) {
+                            3000L
+                        } else {
+                            retryDelay
+                        }
 
                     scheduleRestart(delay)
 
-                    retryDelay = (
-                        retryDelay * 2
-                    ).coerceAtMost(15000L)
+                    retryDelay =
+                        (retryDelay * 2).coerceAtMost(15000L)
                 }
 
                 override fun onResults(results: Bundle?) {
-
                     sessionInProgress = false
 
                     if (!listening) return
@@ -404,16 +410,10 @@ class VoiceForegroundService : Service() {
                     }
 
                     retryDelay = 1500L
-
-                    // उसी Recognizer से अगला Session
                     scheduleRestart(700L)
                 }
 
-                override fun onPartialResults(
-                    partialResults: Bundle?
-                ) {
-                    // Partial text को अभी command की तरह execute नहीं करेंगे
-                }
+                override fun onPartialResults(partialResults: Bundle?) {}
 
                 override fun onEvent(
                     eventType: Int,
@@ -423,21 +423,52 @@ class VoiceForegroundService : Service() {
         )
     }
 
-    private fun startRecognitionSession() {
+    private fun resumeListening() {
+        if (listening) return
 
-        if (!listening) return
-        if (sessionInProgress) return
+        listening = true
+        sessionInProgress = false
+        retryDelay = 1500L
+
+        handler.removeCallbacks(restartRunnable)
+        restartScheduled = false
+
+        try {
+            createRecognizerOnce()
+            startRecognitionSession()
+            sendState(true, false)
+        } catch (_: Exception) {
+            listening = false
+            releaseRecognizer()
+            sendState(false, false)
+        }
+    }
+
+    private fun pauseListening() {
+        listening = false
+        sessionInProgress = false
+
+        handler.removeCallbacks(restartRunnable)
+        restartScheduled = false
+
+        try {
+            recognizer?.cancel()
+        } catch (_: Exception) {
+        }
+
+        sendState(false, false)
+    }
+
+    private fun startRecognitionSession() {
+        if (!listening || sessionInProgress) return
 
         if (recognizer == null) {
             try {
                 createRecognizerOnce()
             } catch (_: Exception) {
                 scheduleRestart(retryDelay)
-
-                retryDelay = (
-                    retryDelay * 2
-                ).coerceAtMost(15000L)
-
+                retryDelay =
+                    (retryDelay * 2).coerceAtMost(15000L)
                 return
             }
         }
@@ -453,16 +484,13 @@ class VoiceForegroundService : Service() {
             stopListening()
             sendState(false, false)
             stopSelf()
-
             return
         }
 
         try {
-
             val speechIntent = Intent(
                 RecognizerIntent.ACTION_RECOGNIZE_SPEECH
             ).apply {
-
                 putExtra(
                     RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                     RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
@@ -493,19 +521,15 @@ class VoiceForegroundService : Service() {
             recognizer?.startListening(speechIntent)
 
         } catch (_: Exception) {
-
             sessionInProgress = false
-
             scheduleRestart(retryDelay)
 
-            retryDelay = (
-                retryDelay * 2
-            ).coerceAtMost(15000L)
+            retryDelay =
+                (retryDelay * 2).coerceAtMost(15000L)
         }
     }
 
     private fun scheduleRestart(delay: Long) {
-
         if (!listening || restartScheduled) return
 
         restartScheduled = true
@@ -517,7 +541,6 @@ class VoiceForegroundService : Service() {
     }
 
     private fun releaseRecognizer() {
-
         try {
             recognizer?.cancel()
             recognizer?.destroy()
@@ -529,7 +552,6 @@ class VoiceForegroundService : Service() {
     }
 
     private fun stopListening() {
-
         listening = false
         sessionInProgress = false
         restartScheduled = false
@@ -547,10 +569,8 @@ class VoiceForegroundService : Service() {
     }
 
     override fun onDestroy() {
-
         stopListening()
         sendState(false, false)
-
         super.onDestroy()
     }
 
