@@ -8,12 +8,12 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.*
 import android.os.*
+import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import android.provider.Settings
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -242,7 +242,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 }
 
                 override fun onError(error: Int) {
-
                     listening = false
 
                     if (activityVisible && !speaking) {
@@ -445,14 +444,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 runOnUiThread {
 
                     if (!isFinishing && !isDestroyed) {
-
                         orbView.setStatus("MAYA AI • RESPONSE")
-
                         speak(answer)
                     }
                 }
 
-            } catch (e: Exception) {
+            } catch (_: Exception) {
 
                 runOnUiThread {
 
@@ -608,6 +605,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             val result = StringBuilder()
 
             for (i in 0 until parts.length()) {
+
                 val part = parts.optJSONObject(i)
                 val text = part?.optString("text", "") ?: ""
 
@@ -666,7 +664,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 if (launchIntent != null) {
 
                     try {
-
                         startActivity(launchIntent)
 
                         orbView.setStatus("APPLICATION LAUNCHED")
@@ -674,12 +671,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                         speak("जी, ऐप खोल रहा हूँ।")
 
                     } catch (_: Exception) {
-
                         speak("ऐप नहीं खुल सका।")
                     }
 
                 } else {
-
                     speak("यह ऐप फोन में उपलब्ध नहीं है।")
                 }
 
@@ -708,15 +703,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private fun selectedLocale(): Locale {
 
         return when (language) {
-
             "Hindi" -> Locale("hi", "IN")
-
             "English" -> Locale.US
-
             "Urdu" -> Locale("ur", "PK")
-
             "Arabic" -> Locale("ar")
-
             else -> Locale.US
         }
     }
@@ -729,15 +719,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
             applyVoice()
 
+            // IMPORTANT: SPEAKING ANIMATION CALLBACK
+            setupTtsAnimation()
+
             pendingSpeech?.let {
-
                 pendingSpeech = null
-
                 speak(it)
             }
 
         } else {
-
             ttsReady = false
         }
     }
@@ -763,11 +753,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val selectedVoice = voices.firstOrNull {
 
             if (gender == "Female") {
-
                 it.name.contains("female", true)
-
             } else {
-
                 it.name.contains("male", true) &&
                     !it.name.contains("female", true)
             }
@@ -782,9 +769,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private fun speak(text: String) {
 
         if (!ttsReady) {
-
             pendingSpeech = text
-
             return
         }
 
@@ -808,53 +793,79 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         )
     }
 
+    // TTS ANIMATION CALLBACK
+
+    private fun setupTtsAnimation() {
+
+        tts.setOnUtteranceProgressListener(
+            object : UtteranceProgressListener() {
+
+                override fun onStart(utteranceId: String?) {}
+
+                override fun onDone(utteranceId: String?) {
+
+                    runOnUiThread {
+
+                        speaking = false
+
+                        orbView.setSpeaking(false)
+
+                        orbView.setStatus(
+                            if (assistantActive)
+                                "IDRAAK ACTIVE"
+                            else
+                                "IDRAAK STANDBY"
+                        )
+
+                        scheduleListening(400)
+                    }
+                }
+
+                override fun onError(utteranceId: String?) {
+
+                    runOnUiThread {
+
+                        speaking = false
+
+                        orbView.setSpeaking(false)
+
+                        scheduleListening(500)
+                    }
+                }
+            }
+        )
+    }
+
     // SETTINGS - LONG PRESS ORB
 
     private fun openSettings() {
 
         val layout = LinearLayout(this).apply {
-
             orientation = LinearLayout.VERTICAL
-
             setPadding(24, 20, 24, 20)
-
             setBackgroundColor(Color.rgb(3, 7, 28))
         }
 
         val title = TextView(this).apply {
-
             text = "IDRAAK • JARVIS SETTINGS"
-
             textSize = 20f
-
             gravity = android.view.Gravity.CENTER
-
             setTextColor(Color.CYAN)
         }
 
         val keyInput = EditText(this).apply {
-
             hint = "Gemini API Key"
-
             setSingleLine(true)
-
             setText(apiKey)
-
             setTextColor(Color.WHITE)
-
             setHintTextColor(Color.LTGRAY)
         }
 
         val modelInput = EditText(this).apply {
-
             hint = "Gemini Model ID"
-
             setSingleLine(true)
-
             setText(model)
-
             setTextColor(Color.WHITE)
-
             setHintTextColor(Color.LTGRAY)
         }
 
@@ -960,7 +971,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         super.onPause()
 
         activityVisible = false
-
         listening = false
 
         handler.removeCallbacksAndMessages(null)
@@ -990,49 +1000,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         super.onDestroy()
     }
-
-    // TTS ANIMATION CALLBACK
-
-    private fun setupTtsAnimation() {
-
-        tts.setOnUtteranceProgressListener(
-            object : UtteranceProgressListener() {
-
-                override fun onStart(utteranceId: String?) {}
-
-                override fun onDone(utteranceId: String?) {
-
-                    runOnUiThread {
-
-                        speaking = false
-
-                        orbView.setSpeaking(false)
-
-                        orbView.setStatus(
-                            if (assistantActive)
-                                "IDRAAK ACTIVE"
-                            else
-                                "IDRAAK STANDBY"
-                        )
-
-                        scheduleListening(400)
-                    }
-                }
-
-                override fun onError(utteranceId: String?) {
-
-                    runOnUiThread {
-
-                        speaking = false
-
-                        orbView.setSpeaking(false)
-
-                        scheduleListening(500)
-                    }
-                }
-            }
-        )
-    }
 }
 
 // ==========================================
@@ -1054,19 +1021,12 @@ class JarvisOrbView(
 
     private var status = "IDRAAK INITIALIZING"
 
-    private var pressTriggered = false
-
     private val longPressRunnable = Runnable {
-
-        pressTriggered = true
-
         onLongPress()
     }
 
     init {
-
         setLayerType(LAYER_TYPE_SOFTWARE, null)
-
         handler.post(animationRunnable)
     }
 
@@ -1085,23 +1045,17 @@ class JarvisOrbView(
     }
 
     fun setStatus(value: String) {
-
         status = value.uppercase(Locale.ROOT)
-
         invalidate()
     }
 
     fun setSpeaking(value: Boolean) {
-
         speaking = value
-
         invalidate()
     }
 
     fun setVoiceLevel(value: Float) {
-
         voiceLevel = value.coerceIn(0f, 12f)
-
         invalidate()
     }
 
@@ -1138,7 +1092,8 @@ class JarvisOrbView(
             val x = cx + cos(angle) * distance
             val y = cy + sin(angle) * distance
 
-            paint.alpha = 35 + (abs(sin(phase + i)) * 90).toInt()
+            paint.alpha = 35 +
+                (abs(sin(phase + i)) * 90).toInt()
 
             canvas.drawCircle(
                 x.toFloat(),
@@ -1268,7 +1223,6 @@ class JarvisOrbView(
 
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 2.5f
-
         paint.color = Color.CYAN
 
         val wave = Path()
@@ -1305,7 +1259,6 @@ class JarvisOrbView(
         // CENTRAL CORE
 
         paint.style = Paint.Style.FILL
-
         paint.color = Color.WHITE
 
         canvas.drawCircle(
@@ -1315,14 +1268,16 @@ class JarvisOrbView(
             paint
         )
 
-        // LABEL
+        // IDRAAK LABEL
 
         paint.color = Color.CYAN
         paint.textAlign = Paint.Align.CENTER
+
         paint.typeface = Typeface.create(
             "sans-serif-medium",
             Typeface.BOLD
         )
+
         paint.textSize = 22f
 
         canvas.drawText(
@@ -1336,6 +1291,7 @@ class JarvisOrbView(
 
         paint.color = Color.WHITE
         paint.textSize = 14f
+
         paint.typeface = Typeface.create(
             "sans-serif",
             Typeface.NORMAL
@@ -1375,8 +1331,6 @@ class JarvisOrbView(
         when (event.action) {
 
             MotionEvent.ACTION_DOWN -> {
-
-                pressTriggered = false
 
                 handler.postDelayed(
                     longPressRunnable,
