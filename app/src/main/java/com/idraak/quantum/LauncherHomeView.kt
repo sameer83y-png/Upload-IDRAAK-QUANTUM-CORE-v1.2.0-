@@ -1,27 +1,19 @@
 
 package com.idraak.quantum
 
-import android.animation.ValueAnimator
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.RadialGradient
-import android.graphics.Shader
-import android.graphics.Typeface
+import android.graphics.*
 import android.graphics.drawable.GradientDrawable
-import android.text.Editable
-import android.text.TextWatcher
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
-import android.view.animation.LinearInterpolator
-import android.widget.Button
-import android.widget.EditText
-import android.widget.GridView
-import android.widget.LinearLayout
-import android.widget.TextView
-import android.view.inputmethod.EditorInfo
+import android.widget.*
+import android.text.TextWatcher
+import android.text.Editable
+import kotlin.math.abs
+import kotlin.math.min
 
 class LauncherHomeView(
     context: Context,
@@ -30,259 +22,301 @@ class LauncherHomeView(
 ) : LinearLayout(context) {
 
     private val engine = LauncherEngine(context)
-    private val allApps = engine.getInstalledApps()
-    private lateinit var adapter: AppDrawerAdapter
-    private lateinit var statusText: TextView
+    private var allApps: List<LauncherApp> = emptyList()
+
+    private lateinit var appAdapter: AppDrawerAdapter
     private lateinit var searchBox: EditText
+    private lateinit var statusText: TextView
+    private lateinit var voiceButton: TextView
     private lateinit var appGrid: GridView
+
+    private val backgroundColor = Color.rgb(5, 9, 25)
+    private val cyan = Color.rgb(0, 220, 255)
+    private val purple = Color.rgb(150, 75, 255)
 
     init {
         orientation = VERTICAL
         gravity = Gravity.CENTER_HORIZONTAL
-        setPadding(18, 20, 18, 12)
+        setPadding(16, 12, 16, 10)
 
         background = GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
             intArrayOf(
-                Color.rgb(5, 9, 27),
-                Color.rgb(12, 17, 42),
-                Color.rgb(20, 10, 42)
+                Color.rgb(5, 9, 25),
+                Color.rgb(10, 15, 42),
+                Color.rgb(15, 8, 38)
             )
         )
 
         buildInterface()
+        reloadApps()
     }
 
     private fun buildInterface() {
 
         val header = TextView(context).apply {
-            text = "IDRAAK QUANTUM CORE"
-            textSize = 21f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.rgb(90, 220, 255))
+            text = "IDRAAK"
+            textSize = 27f
+            setTextColor(cyan)
+            typeface = Typeface.create(
+                "sans-serif-black",
+                Typeface.BOLD
+            )
             gravity = Gravity.CENTER
-            letterSpacing = 0.12f
+            letterSpacing = 0.22f
         }
 
         addView(
             header,
             LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+                LayoutParams.MATCH_PARENT,
+                LayoutParams.WRAP_CONTENT
             )
         )
 
         val subtitle = TextView(context).apply {
-            text = "NEXT GENERATION AI LAUNCHER"
+            text = "QUANTUM INTELLIGENCE SYSTEM"
             textSize = 10f
-            letterSpacing = 0.22f
+            setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
-            setTextColor(Color.rgb(160, 150, 230))
-            setPadding(0, 5, 0, 0)
+            letterSpacing = 0.18f
+            setPadding(0, 2, 0, 8)
         }
 
-        addView(subtitle)
+        addView(
+            subtitle,
+            LayoutParams(
+                LayoutParams.MATCH_PARENT,
+                LayoutParams.WRAP_CONTENT
+            )
+        )
 
         val orb = LiveOrbView(context)
+
+        val longPressHandler = Handler(Looper.getMainLooper())
+        var longPressTriggered = false
+        var startX = 0f
+        var startY = 0f
+
+        val longPressAction = Runnable {
+            longPressTriggered = true
+            onSettingsClick()
+        }
+
+        orb.setOnTouchListener { view, event ->
+
+            when (event.action) {
+
+                MotionEvent.ACTION_DOWN -> {
+                    longPressTriggered = false
+                    startX = event.x
+                    startY = event.y
+
+                    longPressHandler.postDelayed(
+                        longPressAction,
+                        2000
+                    )
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    if (
+                        abs(event.x - startX) > 25 ||
+                        abs(event.y - startY) > 25
+                    ) {
+                        longPressHandler.removeCallbacks(
+                            longPressAction
+                        )
+                    }
+                    true
+                }
+
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> {
+                    longPressHandler.removeCallbacks(
+                        longPressAction
+                    )
+                    true
+                }
+
+                else -> true
+            }
+        }
 
         addView(
             orb,
             LayoutParams(190, 190).apply {
                 gravity = Gravity.CENTER
-                topMargin = 8
-                bottomMargin = 4
+                topMargin = 5
+                bottomMargin = 5
             }
         )
 
         statusText = TextView(context).apply {
-            text = "● IDRAAK SYSTEM READY"
-            textSize = 12f
+            text = "● IDRAAK STANDBY"
+            textSize = 13f
+            setTextColor(Color.rgb(0, 200, 255))
             gravity = Gravity.CENTER
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.rgb(70, 255, 190))
+            setPadding(0, 5, 0, 12)
         }
 
         addView(
             statusText,
             LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+                LayoutParams.MATCH_PARENT,
+                LayoutParams.WRAP_CONTENT
             )
         )
 
         searchBox = EditText(context).apply {
-            hint = "Search installed apps..."
-            setHintTextColor(Color.rgb(140, 155, 190))
+            hint = "Search installed applications..."
+            setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
-            textSize = 15f
+            textSize = 14f
             setSingleLine(true)
-            imeOptions = EditorInfo.IME_ACTION_SEARCH
-            setPadding(18, 8, 18, 8)
+            setPadding(16, 10, 16, 10)
 
             background = GradientDrawable().apply {
-                setColor(Color.rgb(22, 31, 57))
-                cornerRadius = 24f
-                setStroke(2, Color.rgb(45, 145, 210))
+                setColor(Color.rgb(17, 25, 48))
+                cornerRadius = 28f
+                setStroke(2, Color.rgb(25, 120, 180))
             }
         }
 
         addView(
             searchBox,
             LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                52
+                LayoutParams.MATCH_PARENT,
+                48
             ).apply {
-                topMargin = 15
-                bottomMargin = 12
+                bottomMargin = 10
             }
-        )
-
-        val drawerTitle = TextView(context).apply {
-            text = "YOUR APPLICATIONS"
-            textSize = 12f
-            typeface = Typeface.DEFAULT_BOLD
-            letterSpacing = 0.12f
-            setTextColor(Color.rgb(100, 205, 255))
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        addView(
-            drawerTitle,
-            LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                30
-            )
         )
 
         appGrid = GridView(context).apply {
             numColumns = 4
-            horizontalSpacing = 9
-            verticalSpacing = 10
+            horizontalSpacing = 8
+            verticalSpacing = 8
             stretchMode = GridView.STRETCH_COLUMN_WIDTH
+            gravity = Gravity.CENTER
             clipToPadding = false
-            setPadding(0, 8, 0, 8)
             selector = android.graphics.drawable.ColorDrawable(
                 Color.TRANSPARENT
             )
         }
 
-        adapter = AppDrawerAdapter(context, allApps) { app ->
-            setLiveStatus("LAUNCHING ${app.name.uppercase()}...")
-            val launched = engine.launchApp(app.packageName)
-
-            if (launched) {
-                setLiveStatus("● APP LAUNCH REQUEST SENT")
-            } else {
-                setLiveStatus("APP COULD NOT BE OPENED")
-            }
+        appAdapter = AppDrawerAdapter(
+            context,
+            emptyList()
+        ) { app ->
+            engine.launchApp(app.packageName)
         }
 
-        appGrid.adapter = adapter
+        appGrid.adapter = appAdapter
 
         addView(
             appGrid,
             LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
+                LayoutParams.MATCH_PARENT,
                 0,
                 1f
             )
         )
 
-        searchBox.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(
-                s: CharSequence?,
-                start: Int,
-                count: Int,
-                after: Int
-            ) {}
+        searchBox.addTextChangedListener(
+            object : TextWatcher {
 
-            override fun onTextChanged(
-                s: CharSequence?,
-                start: Int,
-                before: Int,
-                count: Int
-            ) {
-                val filtered = engine.searchApps(
-                    s?.toString() ?: "",
-                    allApps
-                )
-                adapter.updateApps(filtered)
+                override fun beforeTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    count: Int,
+                    after: Int
+                ) {}
+
+                override fun onTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    before: Int,
+                    count: Int
+                ) {
+                    val filtered = engine.searchApps(
+                        s?.toString() ?: "",
+                        allApps
+                    )
+                    appAdapter.updateApps(filtered)
+                }
+
+                override fun afterTextChanged(
+                    s: Editable?
+                ) {}
             }
+        )
 
-            override fun afterTextChanged(s: Editable?) {}
-        })
-
-        val footer = LinearLayout(context).apply {
+        val bottomBar = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER
-        }
-
-        val voiceButton = createActionButton(
-            "🎙 VOICE",
-            Color.rgb(0, 125, 190)
-        ) {
-            onVoiceClick()
+            setPadding(0, 10, 0, 0)
         }
 
         val settingsButton = createActionButton(
             "⚙ SETTINGS",
-            Color.rgb(100, 65, 175)
+            purple
         ) {
             onSettingsClick()
         }
 
-        footer.addView(
-            voiceButton,
-            LayoutParams(0, 52, 1f).apply {
+        voiceButton = createActionButton(
+            "🎙 ACTIVATE",
+            cyan
+        ) {
+            onVoiceClick()
+        }
+
+        bottomBar.addView(
+            settingsButton,
+            LayoutParams(0, 48, 1f).apply {
                 marginEnd = 6
             }
         )
 
-        footer.addView(
-            settingsButton,
-            LayoutParams(0, 52, 1f).apply {
+        bottomBar.addView(
+            voiceButton,
+            LayoutParams(0, 48, 1f).apply {
                 marginStart = 6
             }
         )
 
         addView(
-            footer,
+            bottomBar,
             LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                58
+                LayoutParams.MATCH_PARENT,
+                LayoutParams.WRAP_CONTENT
             )
         )
-
-        val footerText = TextView(context).apply {
-            text = "POWERED BY IDRAAK QUANTUM ENGINE"
-            textSize = 9f
-            letterSpacing = 0.12f
-            gravity = Gravity.CENTER
-            setTextColor(Color.rgb(115, 130, 175))
-            setPadding(0, 8, 0, 0)
-        }
-
-        addView(footerText)
     }
 
     private fun createActionButton(
         label: String,
         color: Int,
         action: () -> Unit
-    ): Button {
+    ): TextView {
 
-        return Button(context).apply {
+        return TextView(context).apply {
             text = label
             textSize = 12f
-            isAllCaps = false
+            gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
 
             background = GradientDrawable().apply {
-                setColor(color)
-                cornerRadius = 22f
-                setStroke(1, Color.rgb(100, 205, 255))
+                setColor(Color.rgb(17, 25, 48))
+                cornerRadius = 24f
+                setStroke(2, color)
             }
+
+            isClickable = true
+            isFocusable = true
 
             setOnClickListener {
                 action()
@@ -290,152 +324,199 @@ class LauncherHomeView(
         }
     }
 
-    fun setLiveStatus(message: String) {
-        if (::statusText.isInitialized) {
-            statusText.text = message
+    fun reloadApps() {
+        try {
+            allApps = engine.getInstalledApps()
+
+            if (::appAdapter.isInitialized) {
+                val query = if (::searchBox.isInitialized) {
+                    searchBox.text.toString()
+                } else {
+                    ""
+                }
+
+                appAdapter.updateApps(
+                    engine.searchApps(query, allApps)
+                )
+            }
+        } catch (_: Exception) {
+            setLiveStatus("● APP DRAWER ERROR")
         }
     }
 
-    fun reloadApps() {
-        val updated = engine.getInstalledApps()
-        adapter.updateApps(updated)
+    fun setLiveStatus(status: String) {
+        if (::statusText.isInitialized) {
+            statusText.text = status
+        }
     }
 
     fun setVoiceStatus(active: Boolean) {
-        setLiveStatus(
-            if (active) {
-                "● IDRAAK LISTENING"
+        if (::voiceButton.isInitialized) {
+            voiceButton.text = if (active) {
+                "⏸ STOP VOICE"
             } else {
-                "● IDRAAK SYSTEM READY"
+                "🎙 ACTIVATE"
             }
-        )
+        }
     }
 }
 
 class LiveOrbView(context: Context) : View(context) {
 
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val orbPaint = Paint(
+        Paint.ANTI_ALIAS_FLAG
+    )
+
+    private val ringPaint = Paint(
+        Paint.ANTI_ALIAS_FLAG
+    ).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2.5f
+    }
+
+    private val textPaint = Paint(
+        Paint.ANTI_ALIAS_FLAG
+    ).apply {
+        color = Color.WHITE
+        textAlign = Paint.Align.CENTER
+        typeface = Typeface.create(
+            "sans-serif-black",
+            Typeface.BOLD
+        )
+        textSize = 17f
+    }
+
+    private val smallTextPaint = Paint(
+        Paint.ANTI_ALIAS_FLAG
+    ).apply {
+        color = Color.rgb(0, 225, 255)
+        textAlign = Paint.Align.CENTER
+        textSize = 8f
+        typeface = Typeface.DEFAULT_BOLD
+    }
+
     private var rotation = 0f
-    private var pulse = 0f
 
-    private val animator = ValueAnimator.ofFloat(0f, 360f).apply {
-        duration = 7000
-        repeatCount = ValueAnimator.INFINITE
-        interpolator = LinearInterpolator()
-
-        addUpdateListener {
-            rotation = it.animatedValue as Float
-            pulse = (Math.sin(Math.toRadians(rotation.toDouble()))
-                .toFloat() + 1f) / 2f
-            invalidate()
-        }
-    }
-
-    init {
-        animator.start()
-    }
+    private val cyan = Color.rgb(0, 225, 255)
+    private val purple = Color.rgb(155, 65, 255)
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
         val cx = width / 2f
         val cy = height / 2f
-        val radius = width.coerceAtMost(height) * 0.34f
+        val radius = min(width, height) * 0.37f
 
-        paint.style = Paint.Style.FILL
-        paint.shader = RadialGradient(
+        canvas.save()
+
+        val glow = RadialGradient(
             cx,
             cy,
-            radius * 1.8f,
+            radius * 1.65f,
             intArrayOf(
-                Color.argb(100, 0, 210, 255),
-                Color.argb(35, 100, 70, 255),
+                Color.argb(90, 0, 220, 255),
+                Color.argb(35, 110, 50, 255),
                 Color.TRANSPARENT
             ),
             null,
             Shader.TileMode.CLAMP
         )
 
-        canvas.drawCircle(cx, cy, radius * 1.8f, paint)
-        paint.shader = null
-
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2.5f
-        paint.color = Color.rgb(40, 190, 255)
-
-        canvas.save()
-        canvas.rotate(rotation, cx, cy)
-        canvas.drawOval(
-            cx - radius * 1.35f,
-            cy - radius * 0.48f,
-            cx + radius * 1.35f,
-            cy + radius * 0.48f,
-            paint
+        orbPaint.shader = glow
+        canvas.drawCircle(
+            cx,
+            cy,
+            radius * 1.65f,
+            orbPaint
         )
-        canvas.restore()
+        orbPaint.shader = null
 
-        paint.strokeWidth = 2f
-        paint.color = Color.rgb(165, 85, 255)
-
-        canvas.save()
-        canvas.rotate(-rotation * 0.7f, cx, cy)
-        canvas.drawOval(
-            cx - radius * 0.55f,
-            cy - radius * 1.3f,
-            cx + radius * 0.55f,
-            cy + radius * 1.3f,
-            paint
-        )
-        canvas.restore()
-
-        paint.style = Paint.Style.FILL
-        paint.shader = RadialGradient(
-            cx - radius * 0.25f,
-            cy - radius * 0.25f,
-            radius * 1.4f,
+        val globeGradient = RadialGradient(
+            cx - radius * 0.28f,
+            cy - radius * 0.3f,
+            radius * 1.5f,
             intArrayOf(
-                Color.rgb(120, 245, 255),
-                Color.rgb(0, 125, 220),
-                Color.rgb(35, 30, 105)
+                Color.rgb(65, 205, 255),
+                Color.rgb(24, 75, 165),
+                Color.rgb(12, 12, 48)
             ),
             null,
             Shader.TileMode.CLAMP
         )
 
-        canvas.drawCircle(cx, cy, radius * (0.78f + pulse * 0.05f), paint)
-        paint.shader = null
+        orbPaint.shader = globeGradient
+        canvas.drawCircle(
+            cx,
+            cy,
+            radius,
+            orbPaint
+        )
+        orbPaint.shader = null
 
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2f
-        paint.color = Color.rgb(110, 230, 255)
-        canvas.drawCircle(cx, cy, radius * 0.78f, paint)
+        ringPaint.color = cyan
+        ringPaint.alpha = 210
+        ringPaint.strokeWidth = 2.5f
 
-        paint.style = Paint.Style.FILL
-        paint.color = Color.WHITE
-        paint.textAlign = Paint.Align.CENTER
-        paint.typeface = Typeface.DEFAULT_BOLD
-        paint.textSize = radius * 0.27f
+        canvas.drawCircle(
+            cx,
+            cy,
+            radius,
+            ringPaint
+        )
+
+        canvas.save()
+        canvas.rotate(rotation, cx, cy)
+
+        ringPaint.color = purple
+        ringPaint.alpha = 230
+        ringPaint.strokeWidth = 2.2f
+
+        val ovalRect = RectF(
+            cx - radius * 1.25f,
+            cy - radius * 0.38f,
+            cx + radius * 1.25f,
+            cy + radius * 0.38f
+        )
+
+        canvas.drawOval(
+            ovalRect,
+            ringPaint
+        )
+
+        canvas.restore()
+
+        ringPaint.color = cyan
+        ringPaint.alpha = 170
+        ringPaint.strokeWidth = 1.5f
+
+        canvas.drawCircle(
+            cx,
+            cy,
+            radius * 1.18f,
+            ringPaint
+        )
 
         canvas.drawText(
             "IDRAAK",
             cx,
-            cy + radius * 0.08f,
-            paint
+            cy + 5f,
+            textPaint
         )
-
-        paint.textSize = radius * 0.13f
-        paint.color = Color.rgb(150, 235, 255)
 
         canvas.drawText(
             "QUANTUM CORE",
             cx,
-            cy + radius * 0.35f,
-            paint
+            cy + radius * 0.52f,
+            smallTextPaint
         )
-    }
 
-    override fun onDetachedFromWindow() {
-        animator.cancel()
-        super.onDetachedFromWindow()
+        canvas.restore()
+
+        rotation += 1.2f
+        if (rotation >= 360f) {
+            rotation = 0f
+        }
+
+        postInvalidateDelayed(35)
     }
 }
