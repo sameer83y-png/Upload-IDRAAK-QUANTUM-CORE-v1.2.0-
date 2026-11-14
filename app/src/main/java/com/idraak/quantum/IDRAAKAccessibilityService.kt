@@ -2,9 +2,9 @@
 package com.idraak.quantum
 
 import android.accessibilityservice.AccessibilityService
+import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.os.Bundle
 
 class IDRAAKAccessibilityService : AccessibilityService() {
 
@@ -20,14 +20,14 @@ class IDRAAKAccessibilityService : AccessibilityService() {
             return activeService != null
         }
 
-        // स्क्रीन पर दिए गए टेक्स्ट वाला बटन क्लिक करना
+        // स्क्रीन पर मौजूद टेक्स्ट वाले बटन को क्लिक करना
         fun clickText(text: String): Boolean {
             if (text.isBlank()) return false
 
             val service = activeService ?: return false
-            val root = service.rootInActiveWindow ?: return false
 
             return try {
+                val root = service.rootInActiveWindow ?: return false
                 val nodes = root.findAccessibilityNodeInfosByText(text)
 
                 for (node in nodes) {
@@ -39,6 +39,7 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                                 AccessibilityNodeInfo.ACTION_CLICK
                             )
                         }
+
                         target = target.parent
                     }
                 }
@@ -65,32 +66,34 @@ class IDRAAKAccessibilityService : AccessibilityService() {
 
         private fun scroll(action: Int): Boolean {
             val service = activeService ?: return false
-            val root = service.rootInActiveWindow ?: return false
 
             return try {
-                val nodes = ArrayList<AccessibilityNodeInfo>()
+                val root = service.rootInActiveWindow ?: return false
 
-                fun findScrollable(node: AccessibilityNodeInfo?) {
-                    if (node == null) return
+                fun findScrollable(
+                    node: AccessibilityNodeInfo?
+                ): Boolean {
+                    if (node == null) return false
 
-                    if (node.isScrollable) {
-                        nodes.add(node)
+                    if (node.isScrollable && node.isEnabled) {
+                        if (node.performAction(action)) {
+                            return true
+                        }
                     }
 
                     for (i in 0 until node.childCount) {
-                        findScrollable(node.getChild(i))
+                        val child = node.getChild(i)
+
+                        if (findScrollable(child)) {
+                            return true
+                        }
                     }
+
+                    return false
                 }
 
                 findScrollable(root)
 
-                for (node in nodes) {
-                    if (node.performAction(action)) {
-                        return true
-                    }
-                }
-
-                false
             } catch (_: Exception) {
                 false
             }
@@ -98,30 +101,46 @@ class IDRAAKAccessibilityService : AccessibilityService() {
 
         // फोन का Back बटन
         fun goBack(): Boolean {
-            return activeService?.performGlobalAction(
-                GLOBAL_ACTION_BACK
-            ) ?: false
+            return try {
+                activeService?.performGlobalAction(
+                    AccessibilityService.GLOBAL_ACTION_BACK
+                ) ?: false
+            } catch (_: Exception) {
+                false
+            }
         }
 
         // फोन की Home स्क्रीन
         fun goHome(): Boolean {
-            return activeService?.performGlobalAction(
-                GLOBAL_ACTION_HOME
-            ) ?: false
+            return try {
+                activeService?.performGlobalAction(
+                    AccessibilityService.GLOBAL_ACTION_HOME
+                ) ?: false
+            } catch (_: Exception) {
+                false
+            }
         }
 
         // Notification panel खोलना
         fun openNotifications(): Boolean {
-            return activeService?.performGlobalAction(
-                GLOBAL_ACTION_NOTIFICATIONS
-            ) ?: false
+            return try {
+                activeService?.performGlobalAction(
+                    AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS
+                ) ?: false
+            } catch (_: Exception) {
+                false
+            }
         }
 
         // Quick Settings खोलना
         fun openQuickSettings(): Boolean {
-            return activeService?.performGlobalAction(
-                GLOBAL_ACTION_QUICK_SETTINGS
-            ) ?: false
+            return try {
+                activeService?.performGlobalAction(
+                    AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS
+                ) ?: false
+            } catch (_: Exception) {
+                false
+            }
         }
 
         // सक्रिय टेक्स्ट बॉक्स में टेक्स्ट लिखना
@@ -129,9 +148,10 @@ class IDRAAKAccessibilityService : AccessibilityService() {
             if (text.isEmpty()) return false
 
             val service = activeService ?: return false
-            val root = service.rootInActiveWindow ?: return false
 
             return try {
+                val root = service.rootInActiveWindow ?: return false
+
                 val node = root.findFocus(
                     AccessibilityNodeInfo.FOCUS_INPUT
                 ) ?: return false
@@ -151,6 +171,7 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                     AccessibilityNodeInfo.ACTION_SET_TEXT,
                     arguments
                 )
+
             } catch (_: Exception) {
                 false
             }
@@ -172,19 +193,22 @@ class IDRAAKAccessibilityService : AccessibilityService() {
             fun walk(node: AccessibilityNodeInfo?) {
                 if (node == null) return
 
+                if (collected.length >= 5000) return
+
                 node.text?.toString()
                     ?.takeIf { it.isNotBlank() }
                     ?.let {
-                        collected.append(it).append("\n")
+                        collected.append(it).append('\n')
                     }
 
                 node.contentDescription?.toString()
                     ?.takeIf { it.isNotBlank() }
                     ?.let {
-                        collected.append(it).append("\n")
+                        collected.append(it).append('\n')
                     }
 
                 for (i in 0 until node.childCount) {
+                    if (collected.length >= 5000) break
                     walk(node.getChild(i))
                 }
             }
@@ -194,7 +218,7 @@ class IDRAAKAccessibilityService : AccessibilityService() {
             latestVisibleText = collected.toString().take(5000)
 
         } catch (_: Exception) {
-            // स्क्रीन पढ़ने में त्रुटि होने पर सेवा बंद नहीं होगी
+            // स्क्रीन पढ़ने में त्रुटि होने पर सेवा चालू रहेगी
         }
     }
 
@@ -208,6 +232,7 @@ class IDRAAKAccessibilityService : AccessibilityService() {
         }
 
         latestVisibleText = ""
+
         super.onDestroy()
     }
 }
