@@ -149,8 +149,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         gender = prefs.getString("gender", "Female") ?: "Female"
         language = prefs.getString("language", "Hindi") ?: "Hindi"
 
-        // First launch: enabled by default.
-        // After the user stops the microphone, keep it disabled.
         voiceEnabled = prefs.getBoolean("voice_enabled", true)
     }
 
@@ -198,17 +196,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private fun wakePrefixes(): List<String> {
         return listOf(
-            "hey idraak",
-            "hello idraak",
-            "hi idraak",
-            "hey इद्राक",
-            "ओ idraak",
-            "ओ इद्राक",
-            "अरे idraak",
-            "अरे इद्राक",
             "idraak",
             "इद्राक",
-            "आईड्राक"
+            "आईड्राक",
+            "इत्राक"
         )
     }
 
@@ -231,11 +222,16 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private fun isSleepPhrase(text: String): Boolean {
         val t = normalizeSpeech(text)
 
-        return t.contains("सो जाओ idraak") ||
-            t.contains("सो जाओ इद्राक") ||
-            t.contains("sleep idraak") ||
-            t.contains("go to sleep idraak") ||
-            t.contains("standby idraak")
+        return t == "सो जाओ" ||
+            t == "सो जाओ idraak" ||
+            t == "सो जाओ इद्राक" ||
+            t == "so jao" ||
+            t == "so jao idraak" ||
+            t == "sleep" ||
+            t == "sleep idraak" ||
+            t == "go to sleep" ||
+            t == "go to sleep idraak" ||
+            t == "standby"
     }
 
     private fun handleVoiceInput(spoken: String) {
@@ -355,9 +351,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
 
         if (requestCode == 102) {
-            // Android may still allow a foreground service
-            // when notification permission is denied.
-            // Continue, but Android controls notification visibility.
             startVoiceService()
         }
     }
