@@ -19,16 +19,11 @@ class IDRAAKAccessibilityService : AccessibilityService() {
         @Volatile
         private var activeService: IDRAAKAccessibilityService? = null
 
-        fun isConnected(): Boolean {
-            return activeService != null
-        }
+        fun isConnected(): Boolean = activeService != null
 
-        // स्क्रीन पर दिखाई देने वाला टेक्स्ट प्राप्त करना
-        fun getScreenText(): String {
-            return latestVisibleText
-        }
+        fun getScreenText(): String = latestVisibleText
 
-        // स्क्रीन पर मौजूद टेक्स्ट वाले बटन को क्लिक करना
+        // स्क्रीन पर टेक्स्ट खोजकर क्लिक करना
         fun clickText(text: String): Boolean {
             if (text.isBlank()) return false
 
@@ -61,7 +56,7 @@ class IDRAAKAccessibilityService : AccessibilityService() {
             }
         }
 
-        // स्क्रीन पर किसी View ID से क्लिक करना
+        // View ID से क्लिक करना
         fun clickViewId(viewId: String): Boolean {
             if (viewId.isBlank()) return false
 
@@ -72,20 +67,11 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                 val nodes = root.findAccessibilityNodeInfosByViewId(viewId)
 
                 for (node in nodes) {
-                    if (node.isClickable && node.isEnabled) {
-                        if (node.performAction(
-                                AccessibilityNodeInfo.ACTION_CLICK
-                            )
-                        ) {
-                            return true
-                        }
-                    }
+                    var target: AccessibilityNodeInfo? = node
 
-                    var parent = node.parent
-
-                    while (parent != null) {
-                        if (parent.isClickable && parent.isEnabled) {
-                            if (parent.performAction(
+                    while (target != null) {
+                        if (target.isClickable && target.isEnabled) {
+                            if (target.performAction(
                                     AccessibilityNodeInfo.ACTION_CLICK
                                 )
                             ) {
@@ -93,7 +79,7 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                             }
                         }
 
-                        parent = parent.parent
+                        target = target.parent
                     }
                 }
 
@@ -103,12 +89,8 @@ class IDRAAKAccessibilityService : AccessibilityService() {
             }
         }
 
-        // स्क्रीन पर निर्धारित स्थान पर टच करना
+        // स्क्रीन पर निर्धारित स्थान पर Tap
         fun tap(x: Float, y: Float): Boolean {
-            return dispatchTap(x, y)
-        }
-
-        private fun dispatchTap(x: Float, y: Float): Boolean {
             val service = activeService ?: return false
 
             if (x < 0f || y < 0f) return false
@@ -128,17 +110,13 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                     )
                     .build()
 
-                service.dispatchGesture(
-                    gesture,
-                    null,
-                    null
-                )
+                service.dispatchGesture(gesture, null, null)
             } catch (_: Exception) {
                 false
             }
         }
 
-        // स्क्रीन पर स्वाइप करना
+        // स्क्रीन पर Swipe
         fun swipe(
             startX: Float,
             startY: Float,
@@ -173,28 +151,19 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                     )
                     .build()
 
-                service.dispatchGesture(
-                    gesture,
-                    null,
-                    null
-                )
+                service.dispatchGesture(gesture, null, null)
             } catch (_: Exception) {
                 false
             }
         }
 
-        // स्क्रीन नीचे स्क्रॉल करना
+        // Scroll
         fun scrollDown(): Boolean {
-            return scroll(
-                AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
-            )
+            return scroll(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
         }
 
-        // स्क्रीन ऊपर स्क्रॉल करना
         fun scrollUp(): Boolean {
-            return scroll(
-                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-            )
+            return scroll(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
         }
 
         private fun scroll(action: Int): Boolean {
@@ -203,9 +172,7 @@ class IDRAAKAccessibilityService : AccessibilityService() {
             return try {
                 val root = service.rootInActiveWindow ?: return false
 
-                fun findScrollable(
-                    node: AccessibilityNodeInfo?
-                ): Boolean {
+                fun findScrollable(node: AccessibilityNodeInfo?): Boolean {
                     if (node == null) return false
 
                     if (node.isScrollable && node.isEnabled) {
@@ -215,9 +182,7 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                     }
 
                     for (i in 0 until node.childCount) {
-                        val child = node.getChild(i)
-
-                        if (findScrollable(child)) {
+                        if (findScrollable(node.getChild(i))) {
                             return true
                         }
                     }
@@ -226,71 +191,68 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                 }
 
                 findScrollable(root)
-
             } catch (_: Exception) {
                 false
             }
         }
 
-        // फोन का Back बटन
+        // Back
         fun goBack(): Boolean {
             return try {
                 activeService?.performGlobalAction(
-                    GLOBAL_ACTION_BACK
+                    AccessibilityService.GLOBAL_ACTION_BACK
                 ) ?: false
             } catch (_: Exception) {
                 false
             }
         }
 
-        // फोन की Home स्क्रीन
+        // Home
         fun goHome(): Boolean {
             return try {
                 activeService?.performGlobalAction(
-                    GLOBAL_ACTION_HOME
+                    AccessibilityService.GLOBAL_ACTION_HOME
                 ) ?: false
             } catch (_: Exception) {
                 false
             }
         }
 
-        // Recent Apps स्क्रीन
+        // Recent Apps
         fun openRecentApps(): Boolean {
             return try {
                 activeService?.performGlobalAction(
-                    GLOBAL_ACTION_RECENTS
+                    AccessibilityService.GLOBAL_ACTION_RECENTS
                 ) ?: false
             } catch (_: Exception) {
                 false
             }
         }
 
-        // Notification panel खोलना
+        // Notification Panel
         fun openNotifications(): Boolean {
             return try {
                 activeService?.performGlobalAction(
-                    GLOBAL_ACTION_NOTIFICATIONS
+                    AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS
                 ) ?: false
             } catch (_: Exception) {
                 false
             }
         }
 
-        // Quick Settings खोलना
+        // Quick Settings
         fun openQuickSettings(): Boolean {
             return try {
                 activeService?.performGlobalAction(
-                    GLOBAL_ACTION_QUICK_SETTINGS
+                    AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS
                 ) ?: false
             } catch (_: Exception) {
                 false
             }
         }
 
-        // सक्रिय टेक्स्ट बॉक्स में टेक्स्ट लिखना
+        // सक्रिय Text Field में टेक्स्ट लिखना
         fun typeText(text: String): Boolean {
-            if (text.isEmpty()) return false
-
             val service = activeService ?: return false
 
             return try {
@@ -315,16 +277,13 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                     AccessibilityNodeInfo.ACTION_SET_TEXT,
                     arguments
                 )
-
             } catch (_: Exception) {
                 false
             }
         }
 
-        // सक्रिय टेक्स्ट बॉक्स का टेक्स्ट साफ करना
-        fun clearText(): Boolean {
-            return typeText("")
-        }
+        // सक्रिय Text Field साफ करना
+        fun clearText(): Boolean = typeText("")
     }
 
     override fun onServiceConnected() {
@@ -340,9 +299,8 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                 AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
 
             serviceInfo = info
-
         } catch (_: Exception) {
-            // सेवा उपलब्ध रहेगी, भले अतिरिक्त flags लागू न हों
+            // अतिरिक्त flags लागू न होने पर भी सेवा चालू रहेगी
         }
     }
 
@@ -350,12 +308,15 @@ class IDRAAKAccessibilityService : AccessibilityService() {
         if (event == null) return
 
         try {
-            val root = rootInActiveWindow ?: return
+            val root = rootInActiveWindow ?: run {
+                latestVisibleText = ""
+                return
+            }
+
             val collected = StringBuilder()
 
             fun walk(node: AccessibilityNodeInfo?) {
-                if (node == null) return
-                if (collected.length >= 5000) return
+                if (node == null || collected.length >= 5000) return
 
                 node.text?.toString()
                     ?.takeIf { it.isNotBlank() }
@@ -380,7 +341,7 @@ class IDRAAKAccessibilityService : AccessibilityService() {
             latestVisibleText = collected.toString().take(5000)
 
         } catch (_: Exception) {
-            // स्क्रीन पढ़ने में त्रुटि होने पर सेवा चालू रहेगी
+            // स्क्रीन पढ़ने में त्रुटि होने पर सेवा सुरक्षित रहेगी
         }
     }
 
