@@ -11,22 +11,22 @@ import java.util.UUID
 /**
  * IDRAAK Voice Engine
  *
- * केवल जिम्मेदारियाँ:
+ * Responsibilities:
  * - TextToSpeech initialization
  * - Text-to-Speech playback
  * - Speech callbacks
  * - Playback state management
  *
- * भाषा और Voice Selection:
+ * Language configuration:
  * TtsLanguageManager
  *
  * Recognition service commands:
  * VoiceManager
  *
- * Speech Recognition:
+ * Speech recognition:
  * VoiceForegroundService
  *
- * Wake Word:
+ * Wake word:
  * WakeWordController
  */
 class VoiceEngine(
@@ -60,7 +60,6 @@ class VoiceEngine(
 
     private val appContext = context.applicationContext
 
-    // Language configuration is delegated to its own class.
     private val languageManager =
         TtsLanguageManager(appContext)
 
@@ -71,9 +70,13 @@ class VoiceEngine(
 
     private var listeningRequested = false
     private var pausedForSpeech = false
+    private var sleeping = false
 
     private var recognitionLanguage = "hi-IN"
     private var activeUtteranceId: String? = null
+
+    // Keeps the latest speech request until TTS is ready.
+    private var pendingSpeechText: String? = null
 
     private var currentState = EngineState.INITIALIZING
         private set
@@ -92,7 +95,10 @@ class VoiceEngine(
 
         if (status != TextToSpeech.SUCCESS) {
             Log.e(TAG, "TTS initialization failed: $status")
+
             engineReady = false
+            pendingSpeechText = null
+
             updateState(EngineState.ERROR)
 
             listener?.onSpeechError(
@@ -109,6 +115,8 @@ class VoiceEngine(
                 override fun onStart(utteranceId: String?) {
                     if (destroyed) return
 
+                    if (utteranceId != activeUtteranceId) return
+
                     Log.d(TAG, "Speech started: $utteranceId")
 
                     updateState(EngineState.SPEAKING)
@@ -118,9 +126,9 @@ class VoiceEngine(
                 override fun onDone(utteranceId: String?) {
                     if (destroyed) return
 
-                    Log.d(TAG, "Speech completed: $utteranceId")
-
                     if (utteranceId != activeUtteranceId) return
+
+                    Log.d(TAG, "Speech completed: $utteranceId")
 
                     activeUtteranceId = null
 
@@ -175,7 +183,6 @@ class VoiceEngine(
 
         engineReady = true
 
-        // Language and voice configuration is handled externally.
         val configurationApplied =
             languageManager.applyTo(engine)
 
@@ -186,11 +193,19 @@ class VoiceEngine(
             )
         }
 
-        updateState(EngineState.READY)
+        updateStateAfterSpeech()
 
         listener?.onEngineReady()
 
         Log.d(TAG, "TTS engine initialized")
+
+        // Process the latest request received during initialization.
+        val pendingText = pendingSpeechText
+        pendingSpeechText = null
+
+        if (!pendingText.isNullOrBlank()) {
+            speak(pendingText)
+        }
     }
 
     // -------------------------------------------------
@@ -234,13 +249,19 @@ class VoiceEngine(
 
         recognitionLanguage = language
         listeningRequested = true
-        pausedForSpeech = false
 
         voiceManager.start(recognitionLanguage)
 
-        updateState(EngineState.LISTENING)
+        if (activeUtteranceId != null) {
+            pausedForSpeech = true
+            voiceManager.pause()
+            updateState(EngineState.SPEAKING)
+        } else {
+            pausedForSpeech = false
+            updateStateAfterSpeech()
+        }
 
-        Log.d(TAG, "Listening started: $recognitionLanguage")
+        Log.d(TAG, "Listening requested: $recognitionLanguage")
     }
 
     fun pauseListening() {
@@ -251,7 +272,13 @@ class VoiceEngine(
 
         voiceManager.pause()
 
-        updateState(EngineState.PAUSED)
+        updateState(
+            if (activeUtteranceId != null) {
+                EngineState.SPEAKING
+            } else {
+                EngineState.PAUSED
+            }
+        )
 
         Log.d(TAG, "Listening paused")
     }
@@ -260,13 +287,23 @@ class VoiceEngine(
         if (destroyed) return
 
         listeningRequested = true
-        pausedForSpeech = false
 
-        voiceManager.resume(recognitionLanguage)
+        if (activeUtteranceId != null) {
+            if (!pausedForSpeech) {
+                pausedForSpeech = true
+                voiceManager.pause()
+            }
 
-        updateState(EngineState.LISTENING)
+            updateState(EngineState.SPEAKING)
+        } else {
+            pausedForSpeech = false
 
-        Log.d(TAG, "Listening resumed")
+            voiceManager.resume(recognitionLanguage)
+
+            updateStateAfterSpeech()
+        }
+
+        Log.d(TAG, "Listening resume requested")
     }
 
     fun stopListening() {
@@ -277,7 +314,7 @@ class VoiceEngine(
 
         voiceManager.stop()
 
-        updateState(EngineState.READY)
+        updateStateAfterSpeech()
 
         Log.d(TAG, "Listening stopped")
     }
@@ -286,6 +323,7 @@ class VoiceEngine(
         if (!listeningRequested || pausedForSpeech) return
 
         pausedForSpeech = true
+
         voiceManager.pause()
 
         Log.d(TAG, "Listening paused for TTS playback")
@@ -295,6 +333,7 @@ class VoiceEngine(
         if (!listeningRequested || !pausedForSpeech) return
 
         pausedForSpeech = false
+
         voiceManager.resume(recognitionLanguage)
 
         Log.d(TAG, "Listening resumed after TTS playback")
@@ -315,17 +354,17 @@ class VoiceEngine(
         }
 
         if (!engineReady || tts == null) {
-            Log.w(TAG, "TTS engine is not ready")
+            Log.d(TAG, "TTS not ready. Speech request queued.")
 
-            listener?.onSpeechError(
-                "आवाज़ का इंजन अभी तैयार नहीं है।"
-            )
+            // Keep the latest request instead of losing it.
+            pendingSpeechText = cleanText
             return
         }
 
         pauseForSpeech()
 
         val utteranceId = UUID.randomUUID().toString()
+
         activeUtteranceId = utteranceId
 
         updateState(EngineState.SPEAKING)
@@ -337,7 +376,7 @@ class VoiceEngine(
             utteranceId
         )
 
-        if (result == TextToSpeech.ERROR) {
+        if (result == null || result == TextToSpeech.ERROR) {
             handleSpeechError(
                 "Text-to-Speech ने आवाज़ शुरू नहीं की।",
                 utteranceId
@@ -353,7 +392,10 @@ class VoiceEngine(
     fun stopSpeaking() {
         if (destroyed) return
 
+        pendingSpeechText = null
+
         tts?.stop()
+
         activeUtteranceId = null
 
         resumeAfterSpeech()
@@ -391,6 +433,12 @@ class VoiceEngine(
         if (destroyed) return
 
         val nextState = when {
+            activeUtteranceId != null ->
+                EngineState.SPEAKING
+
+            sleeping ->
+                EngineState.SLEEPING
+
             listeningRequested && !pausedForSpeech ->
                 EngineState.LISTENING
 
@@ -416,14 +464,16 @@ class VoiceEngine(
         listener?.onVoiceStateChanged(newState)
     }
 
-    fun setSleeping(sleeping: Boolean) {
+    /**
+     * Mirrors the sleep state managed by WakeWordController.
+     * This method does not control wake-word detection.
+     */
+    fun setSleeping(value: Boolean) {
         if (destroyed) return
 
-        if (sleeping) {
-            updateState(EngineState.SLEEPING)
-        } else {
-            updateStateAfterSpeech()
-        }
+        sleeping = value
+
+        updateStateAfterSpeech()
     }
 
     fun getCurrentState(): EngineState {
@@ -435,7 +485,7 @@ class VoiceEngine(
     }
 
     fun isSpeaking(): Boolean {
-        return currentState == EngineState.SPEAKING
+        return activeUtteranceId != null
     }
 
     // -------------------------------------------------
@@ -451,6 +501,9 @@ class VoiceEngine(
 
         listeningRequested = false
         pausedForSpeech = false
+        sleeping = false
+
+        pendingSpeechText = null
         activeUtteranceId = null
 
         engineReady = false
