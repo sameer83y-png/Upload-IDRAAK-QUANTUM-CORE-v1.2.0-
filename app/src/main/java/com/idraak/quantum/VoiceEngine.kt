@@ -138,9 +138,6 @@ class VoiceEngine(
         }
     }
 
-    /**
-     * Set language: Hindi, English, Urdu or Arabic.
-     */
     fun setLanguage(language: String): Boolean {
         if (destroyed) return false
 
@@ -186,20 +183,17 @@ class VoiceEngine(
     }
 
     /**
-     * Start Android foreground voice service.
+     * Start or resume Android foreground voice service.
      */
     fun startListening() {
         if (destroyed) return
 
         startServiceAction(
-            VoiceForegroundService.ACTION_START,
+            VoiceForegroundService.ACTION_RESUME,
             EngineState.LISTENING
         )
     }
 
-    /**
-     * Pause microphone recognition.
-     */
     fun pauseListening() {
         if (destroyed) return
 
@@ -209,9 +203,6 @@ class VoiceEngine(
         )
     }
 
-    /**
-     * Resume microphone recognition.
-     */
     fun resumeListening() {
         if (destroyed || !ttsReady) return
 
@@ -221,9 +212,6 @@ class VoiceEngine(
         )
     }
 
-    /**
-     * Stop microphone service.
-     */
     fun stopListening() {
         if (destroyed) return
 
@@ -249,7 +237,8 @@ class VoiceEngine(
         }
 
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            if (
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                 action != VoiceForegroundService.ACTION_PAUSE &&
                 action != VoiceForegroundService.ACTION_STOP
             ) {
@@ -267,9 +256,6 @@ class VoiceEngine(
         }
     }
 
-    /**
-     * Pass recognized text from MainActivity to this method.
-     */
     fun processRecognizedText(text: String) {
         if (destroyed || text.isBlank()) return
 
@@ -289,9 +275,6 @@ class VoiceEngine(
         }
     }
 
-    /**
-     * Speak text using Android TTS.
-     */
     fun speak(text: String) {
         if (destroyed || text.isBlank()) return
 
@@ -316,9 +299,6 @@ class VoiceEngine(
         }
     }
 
-    /**
-     * Stop current TTS output.
-     */
     fun stopSpeaking() {
         if (destroyed) return
 
@@ -326,33 +306,25 @@ class VoiceEngine(
         resumeListening()
     }
 
-    /**
-     * Mark command processing as started.
-     */
     fun startProcessing() {
         if (destroyed) return
 
         wakeWordController.startProcessing()
     }
 
-    /**
-     * Mark command processing as completed.
-     */
     fun finishProcessing() {
         if (destroyed) return
 
         wakeWordController.finishProcessing()
 
-        if (wakeWordController.getState() ==
+        if (
+            wakeWordController.getState() ==
             WakeWordController.VoiceState.ACTIVE
         ) {
             setState(EngineState.READY)
         }
     }
 
-    /**
-     * Manually activate command mode.
-     */
     fun activate() {
         if (destroyed) return
 
@@ -360,9 +332,6 @@ class VoiceEngine(
         setState(EngineState.READY)
     }
 
-    /**
-     * Enable or disable wake word processing.
-     */
     fun setWakeWordEnabled(enabled: Boolean) {
         if (destroyed) return
 
@@ -385,7 +354,6 @@ class VoiceEngine(
         if (destroyed) return
 
         currentState = state
-
         listener?.onVoiceStateChanged(state)
 
         Log.d(TAG, "Engine state: $state")
@@ -400,9 +368,6 @@ class VoiceEngine(
         listener?.onSpeechError(message)
     }
 
-    /**
-     * Release engine resources.
-     */
     fun release() {
         if (destroyed) return
 
