@@ -6,15 +6,14 @@ import java.util.Locale
 /**
  * IDRAAK Wake Word Controller
  *
- * जिम्मेदारियाँ:
- * 1. IDRAAK Wake Word पहचानना
- * 2. Voice Command Mode सक्रिय करना
- * 3. Sleep Command पहचानना
- * 4. Command Mode की स्थिति संभालना
+ * Responsibilities:
+ * 1. Detect IDRAAK wake word.
+ * 2. Activate voice command mode.
+ * 3. Detect sleep commands in supported languages.
+ * 4. Manage voice states safely.
  *
- * यह Controller SpeechRecognizer से प्राप्त Text पर काम करता है।
- * वास्तविक लगातार Wake Word Detection के लिए अलग Keyword Spotting
- * Engine की आवश्यकता होगी।
+ * This controller processes text received from SpeechRecognizer.
+ * It is not a dedicated always-on keyword spotting engine.
  */
 
 class WakeWordController(
@@ -51,19 +50,17 @@ class WakeWordController(
             "go to sleep",
             "sleep mode",
             "خواب",
-            "نم",
-            "نم جاؤ",
-            "اذهب للنوم"
+            "سو جاؤ",
+            "سو جا",
+            "اذهب للنوم",
+            "نم"
         )
 
-        private val COMMAND_PREFIXES = listOf(
-            "idraak",
-            "idraaq",
-            "idrak",
-            "इद्राक",
-            "आईड्राक",
-            "इत्राक"
-        )
+        private val ARABIC_DIACRITICS =
+            Regex("[\\u064B-\\u065F\\u0670]")
+
+        private val WORD_BOUNDARY_CHARS =
+            "[\\p{L}\\p{M}\\p{N}]"
     }
 
     @Volatile
@@ -85,12 +82,10 @@ class WakeWordController(
     }
 
     /**
-     * SpeechRecognizer से प्राप्त Text यहाँ भेजें।
+     * Process recognized speech text.
      */
     @Synchronized
-    fun processRecognizedText(
-        recognizedText: String
-    ) {
+    fun processRecognizedText(recognizedText: String) {
 
         if (!enabled || recognizedText.isBlank()) {
             return
@@ -98,9 +93,11 @@ class WakeWordController(
 
         val text = normalize(recognizedText)
 
-        if (text.isBlank()) return
+        if (text.isBlank()) {
+            return
+        }
 
-        // Sleep Command हर स्थिति में प्राथमिकता रखता है।
+        // Sleep commands have priority in every state.
         if (containsAny(text, SLEEP_WORDS)) {
             sleep()
             return
@@ -110,27 +107,19 @@ class WakeWordController(
 
             VoiceState.SLEEPING -> {
 
-                if (containsWakeWord(text)) {
+                if (!containsWakeWord(text)) {
+                    return
+                }
 
-                    val remainingCommand =
-                        removeWakeWord(text)
+                val remainingCommand = removeWakeWord(text)
 
-                    if (remainingCommand.isNotBlank()) {
+                setState(VoiceState.ACTIVE)
 
-                        setState(VoiceState.ACTIVE)
+                onWakeWordDetected()
 
-                        onWakeWordDetected()
-
-                        onCommandDetected(
-                            remainingCommand
-                        )
-
-                    } else {
-
-                        setState(VoiceState.ACTIVE)
-
-                        onWakeWordDetected()
-                    }
+                // Support: "IDRAAK open YouTube"
+                if (remainingCommand.isNotBlank()) {
+                    onCommandDetected(remainingCommand)
                 }
             }
 
@@ -138,29 +127,27 @@ class WakeWordController(
 
                 if (containsWakeWord(text)) {
 
-                    val remainingCommand =
-                        removeWakeWord(text)
+                    val remainingCommand = removeWakeWord(text)
 
                     if (remainingCommand.isNotBlank()) {
-                        onCommandDetected(
-                            remainingCommand
-                        )
+                        onCommandDetected(remainingCommand)
                     }
 
                 } else {
 
+                    // Already active: accept the next command.
                     onCommandDetected(text)
                 }
             }
 
             VoiceState.PROCESSING -> {
-                // Processing के दौरान Duplicate Commands नहीं भेजेंगे।
+                // Ignore duplicate commands while processing.
             }
         }
     }
 
     /**
-     * AI Controller को बताता है कि Command Processing पूरी हुई।
+     * Mark command processing as complete.
      */
     @Synchronized
     fun finishProcessing() {
@@ -173,7 +160,7 @@ class WakeWordController(
     }
 
     /**
-     * Command Processing शुरू करना।
+     * Mark command processing as started.
      */
     @Synchronized
     fun startProcessing() {
@@ -186,7 +173,7 @@ class WakeWordController(
     }
 
     /**
-     * IDRAAK को Sleeping Mode में डालना।
+     * Put IDRAAK into sleeping mode.
      */
     @Synchronized
     fun sleep() {
@@ -200,7 +187,7 @@ class WakeWordController(
     }
 
     /**
-     * Voice Controller को Enable / Disable करना।
+     * Enable or disable voice controller.
      */
     @Synchronized
     fun setEnabled(value: Boolean) {
@@ -208,6 +195,7 @@ class WakeWordController(
         enabled = value
 
         if (!value) {
+
             if (currentState != VoiceState.SLEEPING) {
                 sleep()
             } else {
@@ -217,7 +205,7 @@ class WakeWordController(
     }
 
     /**
-     * Command Mode को दोबारा सक्रिय करना।
+     * Activate command mode manually.
      */
     @Synchronized
     fun activate() {
@@ -228,7 +216,7 @@ class WakeWordController(
     }
 
     /**
-     * Wake Word पहचानना।
+     * Detect supported wake words.
      */
     private fun containsWakeWord(text: String): Boolean {
 
@@ -238,33 +226,22 @@ class WakeWordController(
     }
 
     /**
-     * Wake Word हटाकर वास्तविक Command निकालना।
+     * Remove wake words from recognized text.
      */
     private fun removeWakeWord(text: String): String {
 
         var result = text
 
-        for (word in COMMAND_PREFIXES) {
+        for (word in WAKE_WORDS) {
 
             val pattern = Regex(
-                "(?<![\\p{L}\\p{N}])" +
-                    Regex.escape(word) +
-                    "(?![\\p{L}\\p{N}])",
+                "(?<!$WORD_BOUNDARY_CHARS)" +
+                    Regex.escape(normalize(word)) +
+                    "(?!$WORD_BOUNDARY_CHARS)",
                 RegexOption.IGNORE_CASE
             )
 
             result = pattern.replace(result, " ")
-        }
-
-        for (word in listOf(
-            "इद्राक",
-            "इद्राक्",
-            "आईड्राक",
-            "आइड्राक",
-            "इत्राक"
-        )) {
-
-            result = result.replace(word, " ")
         }
 
         return result
@@ -273,7 +250,7 @@ class WakeWordController(
     }
 
     /**
-     * Phrase Matching।
+     * Match any phrase from a list.
      */
     private fun containsAny(
         text: String,
@@ -285,6 +262,9 @@ class WakeWordController(
         }
     }
 
+    /**
+     * Match a complete phrase, not a substring inside another word.
+     */
     private fun containsPhrase(
         text: String,
         phrase: String
@@ -292,14 +272,10 @@ class WakeWordController(
 
         if (phrase.isBlank()) return false
 
-        if (phrase.any { it.code > 127 }) {
-            return text.contains(phrase)
-        }
-
         val pattern = Regex(
-            "(?<![\\p{L}\\p{N}])" +
+            "(?<!$WORD_BOUNDARY_CHARS)" +
                 Regex.escape(phrase) +
-                "(?![\\p{L}\\p{N}])",
+                "(?!$WORD_BOUNDARY_CHARS)",
             RegexOption.IGNORE_CASE
         )
 
@@ -307,25 +283,28 @@ class WakeWordController(
     }
 
     /**
-     * Hindi, English, Urdu और Arabic Text Normalization।
+     * Normalize Hindi, English, Urdu and Arabic text.
      */
     private fun normalize(value: String): String {
 
         return value
             .lowercase(Locale.ROOT)
+            .replace(ARABIC_DIACRITICS, "")
             .replace("ā", "a")
             .replace("ī", "i")
             .replace("ū", "u")
             .replace("’", "'")
             .replace("'", "")
-            .replace(Regex("[،,!?؛:।]"), " ")
+            .replace(Regex("[،,!?؛:।؟]+"), " ")
+            .replace(Regex("[\\u200C\\u200D\\uFEFF]"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
     }
 
-    private fun setState(
-        newState: VoiceState
-    ) {
+    /**
+     * Update state only when it actually changes.
+     */
+    private fun setState(newState: VoiceState) {
 
         if (currentState == newState) return
 
