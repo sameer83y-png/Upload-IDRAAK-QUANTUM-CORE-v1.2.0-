@@ -23,73 +23,120 @@ class IDRAAKAccessibilityService : AccessibilityService() {
 
         fun getScreenText(): String = latestVisibleText
 
-        // स्क्रीन पर टेक्स्ट खोजकर क्लिक करना
+        // ---------------------------------------------
+        // Node Click Helpers
+        // ---------------------------------------------
+
+        private fun clickNodeOrParent(
+            node: AccessibilityNodeInfo
+        ): Boolean {
+            var current: AccessibilityNodeInfo? =
+                AccessibilityNodeInfo.obtain(node)
+
+            try {
+                while (current != null) {
+                    val parent = current.parent
+
+                    val clicked =
+                        current.isClickable &&
+                        current.isEnabled &&
+                        current.performAction(
+                            AccessibilityNodeInfo.ACTION_CLICK
+                        )
+
+                    current.recycle()
+
+                    if (clicked) {
+                        parent?.recycle()
+                        return true
+                    }
+
+                    current = parent
+                }
+
+                return false
+            } catch (_: Exception) {
+                current?.recycle()
+                return false
+            }
+        }
+
+        // ---------------------------------------------
+        // Click By Text
+        // ---------------------------------------------
+
         fun clickText(text: String): Boolean {
             if (text.isBlank()) return false
 
             val service = activeService ?: return false
 
             return try {
-                val root = service.rootInActiveWindow ?: return false
-                val nodes = root.findAccessibilityNodeInfosByText(text)
+                val root = service.rootInActiveWindow
+                    ?: return false
 
-                for (node in nodes) {
-                    var target: AccessibilityNodeInfo? = node
+                try {
+                    val nodes =
+                        root.findAccessibilityNodeInfosByText(text)
 
-                    while (target != null) {
-                        if (target.isClickable && target.isEnabled) {
-                            if (target.performAction(
-                                    AccessibilityNodeInfo.ACTION_CLICK
-                                )
-                            ) {
+                    for (node in nodes) {
+                        try {
+                            if (clickNodeOrParent(node)) {
                                 return true
                             }
+                        } finally {
+                            node.recycle()
                         }
-
-                        target = target.parent
                     }
-                }
 
-                false
+                    false
+                } finally {
+                    root.recycle()
+                }
             } catch (_: Exception) {
                 false
             }
         }
 
-        // View ID से क्लिक करना
+        // ---------------------------------------------
+        // Click By View ID
+        // ---------------------------------------------
+
         fun clickViewId(viewId: String): Boolean {
             if (viewId.isBlank()) return false
 
             val service = activeService ?: return false
 
             return try {
-                val root = service.rootInActiveWindow ?: return false
-                val nodes = root.findAccessibilityNodeInfosByViewId(viewId)
+                val root = service.rootInActiveWindow
+                    ?: return false
 
-                for (node in nodes) {
-                    var target: AccessibilityNodeInfo? = node
+                try {
+                    val nodes =
+                        root.findAccessibilityNodeInfosByViewId(viewId)
 
-                    while (target != null) {
-                        if (target.isClickable && target.isEnabled) {
-                            if (target.performAction(
-                                    AccessibilityNodeInfo.ACTION_CLICK
-                                )
-                            ) {
+                    for (node in nodes) {
+                        try {
+                            if (clickNodeOrParent(node)) {
                                 return true
                             }
+                        } finally {
+                            node.recycle()
                         }
-
-                        target = target.parent
                     }
-                }
 
-                false
+                    false
+                } finally {
+                    root.recycle()
+                }
             } catch (_: Exception) {
                 false
             }
         }
 
-        // स्क्रीन पर निर्धारित स्थान पर Tap
+        // ---------------------------------------------
+        // Tap Gesture
+        // ---------------------------------------------
+
         fun tap(x: Float, y: Float): Boolean {
             val service = activeService ?: return false
 
@@ -110,13 +157,20 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                     )
                     .build()
 
-                service.dispatchGesture(gesture, null, null)
+                service.dispatchGesture(
+                    gesture,
+                    null,
+                    null
+                )
             } catch (_: Exception) {
                 false
             }
         }
 
-        // स्क्रीन पर Swipe
+        // ---------------------------------------------
+        // Swipe Gesture
+        // ---------------------------------------------
+
         fun swipe(
             startX: Float,
             startY: Float,
@@ -128,7 +182,8 @@ class IDRAAKAccessibilityService : AccessibilityService() {
 
             if (
                 startX < 0f || startY < 0f ||
-                endX < 0f || endY < 0f
+                endX < 0f || endY < 0f ||
+                duration <= 0L
             ) {
                 return false
             }
@@ -139,7 +194,8 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                     lineTo(endX, endY)
                 }
 
-                val safeDuration = duration.coerceIn(100L, 2000L)
+                val safeDuration =
+                    duration.coerceIn(100L, 2000L)
 
                 val gesture = GestureDescription.Builder()
                     .addStroke(
@@ -151,140 +207,176 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                     )
                     .build()
 
-                service.dispatchGesture(gesture, null, null)
-            } catch (_: Exception) {
-                false
-            }
-        }
-
-        // Scroll
-        fun scrollDown(): Boolean {
-            return scroll(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-        }
-
-        fun scrollUp(): Boolean {
-            return scroll(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
-        }
-
-        private fun scroll(action: Int): Boolean {
-            val service = activeService ?: return false
-
-            return try {
-                val root = service.rootInActiveWindow ?: return false
-
-                fun findScrollable(node: AccessibilityNodeInfo?): Boolean {
-                    if (node == null) return false
-
-                    if (node.isScrollable && node.isEnabled) {
-                        if (node.performAction(action)) {
-                            return true
-                        }
-                    }
-
-                    for (i in 0 until node.childCount) {
-                        if (findScrollable(node.getChild(i))) {
-                            return true
-                        }
-                    }
-
-                    return false
-                }
-
-                findScrollable(root)
-            } catch (_: Exception) {
-                false
-            }
-        }
-
-        // Back
-        fun goBack(): Boolean {
-            return try {
-                activeService?.performGlobalAction(
-                    AccessibilityService.GLOBAL_ACTION_BACK
-                ) ?: false
-            } catch (_: Exception) {
-                false
-            }
-        }
-
-        // Home
-        fun goHome(): Boolean {
-            return try {
-                activeService?.performGlobalAction(
-                    AccessibilityService.GLOBAL_ACTION_HOME
-                ) ?: false
-            } catch (_: Exception) {
-                false
-            }
-        }
-
-        // Recent Apps
-        fun openRecentApps(): Boolean {
-            return try {
-                activeService?.performGlobalAction(
-                    AccessibilityService.GLOBAL_ACTION_RECENTS
-                ) ?: false
-            } catch (_: Exception) {
-                false
-            }
-        }
-
-        // Notification Panel
-        fun openNotifications(): Boolean {
-            return try {
-                activeService?.performGlobalAction(
-                    AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS
-                ) ?: false
-            } catch (_: Exception) {
-                false
-            }
-        }
-
-        // Quick Settings
-        fun openQuickSettings(): Boolean {
-            return try {
-                activeService?.performGlobalAction(
-                    AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS
-                ) ?: false
-            } catch (_: Exception) {
-                false
-            }
-        }
-
-        // सक्रिय Text Field में टेक्स्ट लिखना
-        fun typeText(text: String): Boolean {
-            val service = activeService ?: return false
-
-            return try {
-                val root = service.rootInActiveWindow ?: return false
-
-                val node = root.findFocus(
-                    AccessibilityNodeInfo.FOCUS_INPUT
-                ) ?: return false
-
-                if (!node.isEditable || !node.isEnabled) {
-                    return false
-                }
-
-                val arguments = Bundle().apply {
-                    putCharSequence(
-                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-                        text
-                    )
-                }
-
-                node.performAction(
-                    AccessibilityNodeInfo.ACTION_SET_TEXT,
-                    arguments
+                service.dispatchGesture(
+                    gesture,
+                    null,
+                    null
                 )
             } catch (_: Exception) {
                 false
             }
         }
 
-        // सक्रिय Text Field साफ करना
-        fun clearText(): Boolean = typeText("")
+        // ---------------------------------------------
+        // Scroll
+        // ---------------------------------------------
+
+        fun scrollDown(): Boolean {
+            return scroll(
+                AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            )
+        }
+
+        fun scrollUp(): Boolean {
+            return scroll(
+                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+            )
+        }
+
+        private fun scroll(action: Int): Boolean {
+            val service = activeService ?: return false
+
+            return try {
+                val root = service.rootInActiveWindow
+                    ?: return false
+
+                try {
+                    findScrollableAndPerform(root, action)
+                } finally {
+                    root.recycle()
+                }
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        private fun findScrollableAndPerform(
+            node: AccessibilityNodeInfo,
+            action: Int
+        ): Boolean {
+            if (node.isScrollable && node.isEnabled) {
+                if (node.performAction(action)) {
+                    return true
+                }
+            }
+
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+
+                val handled = try {
+                    findScrollableAndPerform(child, action)
+                } finally {
+                    child.recycle()
+                }
+
+                if (handled) return true
+            }
+
+            return false
+        }
+
+        // ---------------------------------------------
+        // Global Navigation Actions
+        // ---------------------------------------------
+
+        fun goBack(): Boolean {
+            return performGlobalActionSafely(
+                AccessibilityService.GLOBAL_ACTION_BACK
+            )
+        }
+
+        fun goHome(): Boolean {
+            return performGlobalActionSafely(
+                AccessibilityService.GLOBAL_ACTION_HOME
+            )
+        }
+
+        fun openRecentApps(): Boolean {
+            return performGlobalActionSafely(
+                AccessibilityService.GLOBAL_ACTION_RECENTS
+            )
+        }
+
+        fun openNotifications(): Boolean {
+            return performGlobalActionSafely(
+                AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS
+            )
+        }
+
+        fun openQuickSettings(): Boolean {
+            return performGlobalActionSafely(
+                AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS
+            )
+        }
+
+        private fun performGlobalActionSafely(
+            action: Int
+        ): Boolean {
+            val service = activeService ?: return false
+
+            return try {
+                service.performGlobalAction(action)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        // ---------------------------------------------
+        // Text Input
+        // ---------------------------------------------
+
+        fun typeText(text: String): Boolean {
+            val service = activeService ?: return false
+
+            return try {
+                val root = service.rootInActiveWindow
+                    ?: return false
+
+                try {
+                    val node = root.findFocus(
+                        AccessibilityNodeInfo.FOCUS_INPUT
+                    ) ?: return false
+
+                    try {
+                        if (!node.isEditable || !node.isEnabled) {
+                            return false
+                        }
+
+                        val arguments = Bundle().apply {
+                            putCharSequence(
+                                AccessibilityNodeInfo
+                                    .ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                                text
+                            )
+                        }
+
+                        node.performAction(
+                            AccessibilityNodeInfo.ACTION_SET_TEXT,
+                            arguments
+                        )
+                    } finally {
+                        node.recycle()
+                    }
+                } finally {
+                    root.recycle()
+                }
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        // ---------------------------------------------
+        // Clear Text
+        // ---------------------------------------------
+
+        fun clearText(): Boolean {
+            return typeText("")
+        }
     }
+
+    // ---------------------------------------------
+    // Service Connection
+    // ---------------------------------------------
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -300,11 +392,17 @@ class IDRAAKAccessibilityService : AccessibilityService() {
 
             serviceInfo = info
         } catch (_: Exception) {
-            // अतिरिक्त flags लागू न होने पर भी सेवा चालू रहेगी
+            // Service remains usable if extra flags fail.
         }
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+    // ---------------------------------------------
+    // Screen Text Collection
+    // ---------------------------------------------
+
+    override fun onAccessibilityEvent(
+        event: AccessibilityEvent?
+    ) {
         if (event == null) return
 
         try {
@@ -313,48 +411,69 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                 return
             }
 
-            val collected = StringBuilder()
+            try {
+                val collected = LinkedHashSet<String>()
 
-            fun walk(node: AccessibilityNodeInfo?) {
-                if (node == null || collected.length >= 5000) return
+                fun walk(node: AccessibilityNodeInfo?) {
+                    if (node == null) return
+                    if (collected.sumOf { it.length } >= 5000) return
 
-                node.text?.toString()
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let {
-                        collected.append(it).append('\n')
+                    node.text?.toString()
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { collected.add(it) }
+
+                    node.contentDescription?.toString()
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { collected.add(it) }
+
+                    for (i in 0 until node.childCount) {
+                        if (collected.sumOf { it.length } >= 5000) {
+                            break
+                        }
+
+                        val child = node.getChild(i) ?: continue
+
+                        try {
+                            walk(child)
+                        } finally {
+                            child.recycle()
+                        }
                     }
-
-                node.contentDescription?.toString()
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let {
-                        collected.append(it).append('\n')
-                    }
-
-                for (i in 0 until node.childCount) {
-                    if (collected.length >= 5000) break
-                    walk(node.getChild(i))
                 }
+
+                walk(root)
+
+                latestVisibleText =
+                    collected.joinToString("\n").take(5000)
+
+            } finally {
+                root.recycle()
             }
 
-            walk(root)
-
-            latestVisibleText = collected.toString().take(5000)
-
         } catch (_: Exception) {
-            // स्क्रीन पढ़ने में त्रुटि होने पर सेवा सुरक्षित रहेगी
+            latestVisibleText = ""
         }
     }
+
+    // ---------------------------------------------
+    // Service Interrupt
+    // ---------------------------------------------
 
     override fun onInterrupt() {
         latestVisibleText = ""
     }
 
+    // ---------------------------------------------
+    // Service Destroy
+    // ---------------------------------------------
+
     override fun onDestroy() {
         if (activeService === this) {
             activeService = null
+            latestVisibleText = ""
         }
-
-        latestVisibleText = ""
 
         super.onDestroy()
     }
