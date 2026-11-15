@@ -3,6 +3,7 @@ package com.idraak.quantum
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -13,18 +14,12 @@ import java.util.UUID
 /**
  * IDRAAK Voice Engine
  *
- * Responsibilities:
- * 1. Text-to-Speech
- * 2. Voice service control
- * 3. Language management
- * 4. Speech result handling
- * 5. Wake word controller integration
- *
- * SpeechRecognizer remains owned by VoiceForegroundService.
- * This prevents multiple recognizers from competing for microphone access.
+ * TTS is managed here.
+ * Speech recognition remains managed by VoiceForegroundService.
+ * Wake word and command state are managed by WakeWordController.
  */
 class VoiceEngine(
-    private val context: Context,
+    context: Context,
     private val listener: Listener? = null
 ) : TextToSpeech.OnInitListener {
 
@@ -40,10 +35,11 @@ class VoiceEngine(
         fun onRecognizedText(text: String) {}
         fun onWakeWordDetected() {}
         fun onSleepDetected() {}
-        fun onVoiceStateChanged(state: VoiceState) {}
+        fun onVoiceStateChanged(state: EngineState) {}
+        fun onWakeWordStateChanged(state: WakeWordController.VoiceState) {}
     }
 
-    enum class VoiceState {
+    enum class EngineState {
         INITIALIZING,
         READY,
         LISTENING,
@@ -54,18 +50,20 @@ class VoiceEngine(
         DESTROYED
     }
 
+    private val appContext = context.applicationContext
+
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var destroyed = false
 
     private var currentLanguage = "hi"
-    private var currentState = VoiceState.INITIALIZING
+    private var currentState = EngineState.INITIALIZING
 
     private val wakeWordController = WakeWordController(
         onWakeWordDetected = {
             if (!destroyed) {
                 listener?.onWakeWordDetected()
-                setState(VoiceState.READY)
+                setState(EngineState.READY)
             }
         },
         onCommandDetected = { command ->
@@ -76,65 +74,72 @@ class VoiceEngine(
         onSleepDetected = {
             if (!destroyed) {
                 pauseListening()
-                setState(VoiceState.SLEEPING)
+                setState(EngineState.SLEEPING)
                 listener?.onSleepDetected()
+            }
+        },
+        onStateChanged = { state ->
+            if (!destroyed) {
+                listener?.onWakeWordStateChanged(state)
             }
         }
     )
 
     init {
-        tts = TextToSpeech(context.applicationContext, this)
+        tts = TextToSpeech(appContext, this)
     }
 
     override fun onInit(status: Int) {
         if (destroyed) return
 
-        if (status == TextToSpeech.SUCCESS) {
-            ttsReady = true
-            applyTtsLanguage(currentLanguage)
+        if (status != TextToSpeech.SUCCESS) {
+            reportError("Text-to-Speech initialization failed")
+            return
+        }
 
-            tts?.setOnUtteranceProgressListener(
-                object : UtteranceProgressListener() {
+        ttsReady = true
 
-                    override fun onStart(utteranceId: String?) {
-                        if (!destroyed) {
-                            setState(VoiceState.SPEAKING)
-                            listener?.onSpeechStarted()
-                        }
-                    }
+        tts?.setOnUtteranceProgressListener(
+            object : UtteranceProgressListener() {
 
-                    override fun onDone(utteranceId: String?) {
-                        if (!destroyed) {
-                            listener?.onSpeechCompleted()
-                            resumeListening()
-                        }
-                    }
-
-                    @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) {
-                        reportError("Text-to-Speech failed")
-                    }
-
-                    override fun onError(
-                        utteranceId: String?,
-                        errorCode: Int
-                    ) {
-                        reportError("Text-to-Speech error: $errorCode")
+                override fun onStart(utteranceId: String?) {
+                    if (!destroyed) {
+                        setState(EngineState.SPEAKING)
+                        listener?.onSpeechStarted()
                     }
                 }
-            )
 
-            setState(VoiceState.READY)
+                override fun onDone(utteranceId: String?) {
+                    if (!destroyed) {
+                        listener?.onSpeechCompleted()
+                        resumeListening()
+                    }
+                }
+
+                @Deprecated("Deprecated in Java")
+                override fun onError(utteranceId: String?) {
+                    reportError("Text-to-Speech failed")
+                }
+
+                override fun onError(
+                    utteranceId: String?,
+                    errorCode: Int
+                ) {
+                    reportError("Text-to-Speech error: $errorCode")
+                }
+            }
+        )
+
+        val languageReady = applyTtsLanguage(currentLanguage)
+
+        if (languageReady) {
+            setState(EngineState.READY)
             listener?.onEngineReady()
-
-        } else {
-            reportError("Text-to-Speech initialization failed")
         }
     }
 
     /**
-     * Select voice language.
-     * Supported: Hindi, English, Urdu, Arabic.
+     * Set language: Hindi, English, Urdu or Arabic.
      */
     fun setLanguage(language: String): Boolean {
         if (destroyed) return false
@@ -149,11 +154,11 @@ class VoiceEngine(
 
         currentLanguage = normalized
 
-        if (ttsReady) {
-            return applyTtsLanguage(normalized)
+        return if (ttsReady) {
+            applyTtsLanguage(normalized)
+        } else {
+            true
         }
-
-        return true
     }
 
     private fun applyTtsLanguage(language: String): Boolean {
@@ -173,7 +178,7 @@ class VoiceEngine(
             result == TextToSpeech.LANG_NOT_SUPPORTED ||
             result == TextToSpeech.ERROR
         ) {
-            reportError("Selected TTS language is not available: $language")
+            reportError("TTS language is unavailable: $language")
             return false
         }
 
@@ -181,59 +186,62 @@ class VoiceEngine(
     }
 
     /**
-     * Start the existing foreground voice service.
+     * Start Android foreground voice service.
      */
     fun startListening() {
         if (destroyed) return
 
-        val intent = Intent(
-            context,
-            VoiceForegroundService::class.java
-        ).apply {
-            action = VoiceForegroundService.ACTION_START
-            putExtra(
-                VoiceForegroundService.EXTRA_LANGUAGE,
-                currentLanguage
-            )
-        }
-
-        try {
-            if (android.os.Build.VERSION.SDK_INT >= 26) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
-
-            setState(VoiceState.LISTENING)
-
-        } catch (e: Exception) {
-            reportError(
-                e.message ?: "Could not start voice listening service"
-            )
-        }
+        startServiceAction(
+            VoiceForegroundService.ACTION_START,
+            EngineState.LISTENING
+        )
     }
 
     /**
-     * Pause microphone listening.
+     * Pause microphone recognition.
      */
     fun pauseListening() {
         if (destroyed) return
 
-        sendServiceAction(VoiceForegroundService.ACTION_PAUSE)
-        setState(VoiceState.PAUSED)
+        startServiceAction(
+            VoiceForegroundService.ACTION_PAUSE,
+            EngineState.PAUSED
+        )
     }
 
     /**
-     * Resume microphone listening.
+     * Resume microphone recognition.
      */
     fun resumeListening() {
         if (destroyed || !ttsReady) return
 
+        startServiceAction(
+            VoiceForegroundService.ACTION_RESUME,
+            EngineState.LISTENING
+        )
+    }
+
+    /**
+     * Stop microphone service.
+     */
+    fun stopListening() {
+        if (destroyed) return
+
+        startServiceAction(
+            VoiceForegroundService.ACTION_STOP,
+            EngineState.PAUSED
+        )
+    }
+
+    private fun startServiceAction(
+        action: String,
+        newState: EngineState
+    ) {
         val intent = Intent(
-            context,
+            appContext,
             VoiceForegroundService::class.java
         ).apply {
-            action = VoiceForegroundService.ACTION_RESUME
+            this.action = action
             putExtra(
                 VoiceForegroundService.EXTRA_LANGUAGE,
                 currentLanguage
@@ -241,81 +249,48 @@ class VoiceEngine(
         }
 
         try {
-            if (android.os.Build.VERSION.SDK_INT >= 26) {
-                context.startForegroundService(intent)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                action != VoiceForegroundService.ACTION_PAUSE &&
+                action != VoiceForegroundService.ACTION_STOP
+            ) {
+                appContext.startForegroundService(intent)
             } else {
-                context.startService(intent)
+                appContext.startService(intent)
             }
 
-            setState(VoiceState.LISTENING)
+            setState(newState)
 
         } catch (e: Exception) {
             reportError(
-                e.message ?: "Could not resume voice listening"
+                e.message ?: "Voice service action failed"
             )
         }
     }
 
     /**
-     * Stop the foreground voice service.
-     */
-    fun stopListening() {
-        if (destroyed) return
-
-        sendServiceAction(VoiceForegroundService.ACTION_STOP)
-        setState(VoiceState.PAUSED)
-    }
-
-    private fun sendServiceAction(action: String) {
-        val intent = Intent(
-            context,
-            VoiceForegroundService::class.java
-        ).apply {
-            this.action = action
-        }
-
-        try {
-            context.startService(intent)
-        } catch (e: Exception) {
-            reportError(e.message ?: "Voice service action failed")
-        }
-    }
-
-    /**
-     * Process recognized speech received from VoiceForegroundService.
+     * Pass recognized text from MainActivity to this method.
      */
     fun processRecognizedText(text: String) {
         if (destroyed || text.isBlank()) return
 
-        Log.d(TAG, "Recognized: $text")
+        Log.d(TAG, "Recognized speech: $text")
 
-        val result = wakeWordController.processText(text)
+        wakeWordController.processRecognizedText(text)
 
-        when (result) {
-            WakeWordController.Result.WAKE_WORD_DETECTED -> {
-                setState(VoiceState.READY)
+        when (wakeWordController.getState()) {
+            WakeWordController.VoiceState.SLEEPING -> {
+                setState(EngineState.SLEEPING)
             }
 
-            WakeWordController.Result.SLEEP_DETECTED -> {
-                setState(VoiceState.SLEEPING)
-            }
-
-            WakeWordController.Result.COMMAND_DETECTED -> {
-                setState(VoiceState.READY)
-            }
-
-            WakeWordController.Result.IGNORED -> {
-                // No valid command detected.
-            }
-
-            WakeWordController.Result.PROCESSING -> {
-                // A command is already being processed.
+            WakeWordController.VoiceState.ACTIVE,
+            WakeWordController.VoiceState.PROCESSING -> {
+                setState(EngineState.READY)
             }
         }
     }
 
     /**
-     * Speak text using Android TextToSpeech.
+     * Speak text using Android TTS.
      */
     fun speak(text: String) {
         if (destroyed || text.isBlank()) return
@@ -337,12 +312,12 @@ class VoiceEngine(
         ) ?: TextToSpeech.ERROR
 
         if (result == TextToSpeech.ERROR) {
-            reportError("Unable to speak the requested text")
+            reportError("Unable to speak requested text")
         }
     }
 
     /**
-     * Stop current speech output.
+     * Stop current TTS output.
      */
     fun stopSpeaking() {
         if (destroyed) return
@@ -352,30 +327,68 @@ class VoiceEngine(
     }
 
     /**
-     * Tell the wake word controller that command processing is finished.
+     * Mark command processing as started.
+     */
+    fun startProcessing() {
+        if (destroyed) return
+
+        wakeWordController.startProcessing()
+    }
+
+    /**
+     * Mark command processing as completed.
      */
     fun finishProcessing() {
         if (destroyed) return
 
         wakeWordController.finishProcessing()
-        setState(VoiceState.READY)
+
+        if (wakeWordController.getState() ==
+            WakeWordController.VoiceState.ACTIVE
+        ) {
+            setState(EngineState.READY)
+        }
     }
 
-    fun getCurrentLanguage(): String {
-        return currentLanguage
+    /**
+     * Manually activate command mode.
+     */
+    fun activate() {
+        if (destroyed) return
+
+        wakeWordController.activate()
+        setState(EngineState.READY)
     }
 
-    fun getCurrentState(): VoiceState {
-        return currentState
+    /**
+     * Enable or disable wake word processing.
+     */
+    fun setWakeWordEnabled(enabled: Boolean) {
+        if (destroyed) return
+
+        wakeWordController.setEnabled(enabled)
+
+        if (!enabled) {
+            setState(EngineState.SLEEPING)
+        }
     }
 
-    private fun setState(state: VoiceState) {
+    fun getCurrentLanguage(): String = currentLanguage
+
+    fun getCurrentState(): EngineState = currentState
+
+    fun getWakeWordState(): WakeWordController.VoiceState {
+        return wakeWordController.getState()
+    }
+
+    private fun setState(state: EngineState) {
         if (destroyed) return
 
         currentState = state
+
         listener?.onVoiceStateChanged(state)
 
-        Log.d(TAG, "Voice state: $state")
+        Log.d(TAG, "Engine state: $state")
     }
 
     private fun reportError(message: String) {
@@ -383,13 +396,12 @@ class VoiceEngine(
 
         Log.e(TAG, message)
 
-        setState(VoiceState.ERROR)
+        setState(EngineState.ERROR)
         listener?.onSpeechError(message)
     }
 
     /**
-     * Release TTS resources.
-     * Call when the owning Activity/Application is destroyed.
+     * Release engine resources.
      */
     fun release() {
         if (destroyed) return
@@ -400,12 +412,12 @@ class VoiceEngine(
             tts?.stop()
             tts?.shutdown()
         } catch (e: Exception) {
-            Log.w(TAG, "TTS shutdown failed", e)
+            Log.w(TAG, "TTS release failed", e)
         }
 
         tts = null
         ttsReady = false
-        currentState = VoiceState.DESTROYED
+        currentState = EngineState.DESTROYED
 
         Log.d(TAG, "Voice engine released")
     }
