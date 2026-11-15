@@ -53,7 +53,8 @@ class WakeWordController(
         private val ARABIC_DIACRITICS =
             Regex("[\\u064B-\\u065F\\u0670]")
 
-        private const val WORD_BOUNDARY_CHARS = "[\\p{L}\\p{M}\\p{N}]"
+        private const val WORD_BOUNDARY_CHARS =
+            "[\\p{L}\\p{M}\\p{N}]"
     }
 
     @Volatile
