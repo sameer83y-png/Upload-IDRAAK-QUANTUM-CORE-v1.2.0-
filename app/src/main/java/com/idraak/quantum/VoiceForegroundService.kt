@@ -35,7 +35,6 @@ class VoiceForegroundService : Service() {
     private var restartScheduled = false
     private var activeLanguage = "hi-IN"
     private var retryDelay = 1500L
-
     private var recognizerGeneration = 0
 
     private val prefs by lazy {
@@ -62,7 +61,6 @@ class VoiceForegroundService : Service() {
         const val ACTION_RESUME =
             "com.idraak.quantum.RESUME_VOICE"
 
-        // नया diagnostic broadcast
         const val ACTION_ERROR =
             "com.idraak.quantum.VOICE_ERROR"
 
@@ -83,7 +81,7 @@ class VoiceForegroundService : Service() {
         restartScheduled = false
 
         if (listening && !sessionInProgress) {
-            Log.d(TAG, "Restarting speech recognition session")
+            Log.d(TAG, "Restarting recognition session")
             startRecognitionSession()
         }
     }
@@ -189,6 +187,8 @@ class VoiceForegroundService : Service() {
         )
     }
 
+    // केवल वास्तविक Diagnostic Error भेजें।
+    // सामान्य Recognition Error पर Voice State OFF नहीं होगी।
     private fun sendError(
         code: Int,
         message: String
@@ -201,9 +201,6 @@ class VoiceForegroundService : Service() {
             .putExtra(EXTRA_ERROR_MESSAGE, message)
 
         sendBroadcast(intent)
-
-        // पुराने receiver के लिए भी failure state भेजें।
-        sendState(false, false)
     }
 
     private fun sendRecognizedText(text: String) {
@@ -258,6 +255,7 @@ class VoiceForegroundService : Service() {
                         -1,
                         "RECORD_AUDIO permission is not granted"
                     )
+                    sendState(false, false)
                     return START_NOT_STICKY
                 }
 
@@ -290,6 +288,7 @@ class VoiceForegroundService : Service() {
                         -2,
                         "Resume failed: ${e.message ?: e.javaClass.simpleName}"
                     )
+                    sendState(false, false)
                     stopSelf()
 
                     return START_NOT_STICKY
@@ -316,10 +315,8 @@ class VoiceForegroundService : Service() {
                 .putBoolean(PREF_ENABLED, false)
                 .apply()
 
-            sendError(
-                -1,
-                "RECORD_AUDIO permission is not granted"
-            )
+            sendError(-1, "RECORD_AUDIO permission is not granted")
+            sendState(false, false)
             stopSelf()
 
             return START_NOT_STICKY
@@ -347,7 +344,7 @@ class VoiceForegroundService : Service() {
 
             retryDelay = 1500L
 
-            Log.d(TAG, "Starting recognition with language=$activeLanguage")
+            Log.d(TAG, "Starting recognition: $activeLanguage")
 
             resumeListening()
 
@@ -364,6 +361,7 @@ class VoiceForegroundService : Service() {
                 -2,
                 "Service startup failed: ${e.message ?: e.javaClass.simpleName}"
             )
+            sendState(false, false)
             stopSelf()
 
             return START_NOT_STICKY
@@ -409,44 +407,26 @@ class VoiceForegroundService : Service() {
 
     private fun speechErrorName(error: Int): String {
         return when (error) {
-            SpeechRecognizer.ERROR_AUDIO ->
-                "ERROR_AUDIO"
-
-            SpeechRecognizer.ERROR_CLIENT ->
-                "ERROR_CLIENT"
-
+            SpeechRecognizer.ERROR_AUDIO -> "ERROR_AUDIO"
+            SpeechRecognizer.ERROR_CLIENT -> "ERROR_CLIENT"
             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
                 "ERROR_INSUFFICIENT_PERMISSIONS"
-
-            SpeechRecognizer.ERROR_NETWORK ->
-                "ERROR_NETWORK"
-
+            SpeechRecognizer.ERROR_NETWORK -> "ERROR_NETWORK"
             SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
                 "ERROR_NETWORK_TIMEOUT"
-
-            SpeechRecognizer.ERROR_NO_MATCH ->
-                "ERROR_NO_MATCH"
-
+            SpeechRecognizer.ERROR_NO_MATCH -> "ERROR_NO_MATCH"
             SpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
                 "ERROR_RECOGNIZER_BUSY"
-
-            SpeechRecognizer.ERROR_SERVER ->
-                "ERROR_SERVER"
-
+            SpeechRecognizer.ERROR_SERVER -> "ERROR_SERVER"
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
                 "ERROR_SPEECH_TIMEOUT"
-
             SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED ->
                 "ERROR_LANGUAGE_NOT_SUPPORTED"
-
             SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
                 "ERROR_LANGUAGE_UNAVAILABLE"
-
             SpeechRecognizer.ERROR_TOO_MANY_REQUESTS ->
                 "ERROR_TOO_MANY_REQUESTS"
-
-            else ->
-                "UNKNOWN_SPEECH_ERROR"
+            else -> "UNKNOWN_SPEECH_ERROR"
         }
     }
 
@@ -461,10 +441,7 @@ class VoiceForegroundService : Service() {
 
         val generation = ++recognizerGeneration
 
-        Log.d(
-            TAG,
-            "Creating SpeechRecognizer, generation=$generation"
-        )
+        Log.d(TAG, "Creating SpeechRecognizer: generation=$generation")
 
         val speechRecognizer =
             SpeechRecognizer.createSpeechRecognizer(this)
@@ -482,10 +459,11 @@ class VoiceForegroundService : Service() {
                 override fun onReadyForSpeech(params: Bundle?) {
                     if (!isCurrentSession() || !listening) return
 
-                    Log.i(TAG, "Recognizer is READY and listening")
+                    Log.i(TAG, "Recognizer READY")
 
                     retryDelay = 1500L
                     sessionInProgress = true
+
                     sendState(true, false)
                 }
 
@@ -494,9 +472,7 @@ class VoiceForegroundService : Service() {
                     Log.i(TAG, "Speech input detected")
                 }
 
-                override fun onRmsChanged(rmsdB: Float) {
-                    // लगातार Logcat भरने से बचने के लिए RMS log नहीं करते।
-                }
+                override fun onRmsChanged(rmsdB: Float) {}
 
                 override fun onBufferReceived(buffer: ByteArray?) {}
 
@@ -514,9 +490,9 @@ class VoiceForegroundService : Service() {
 
                     val errorName = speechErrorName(error)
 
-                    Log.e(
+                    Log.w(
                         TAG,
-                        "SpeechRecognizer onError: $errorName ($error)"
+                        "Recognition callback error: $errorName ($error)"
                     )
 
                     if (
@@ -533,32 +509,46 @@ class VoiceForegroundService : Service() {
                             error,
                             "$errorName: microphone permission denied"
                         )
-
+                        sendState(false, false)
                         stopSelf()
+
                         return
                     }
 
+                    // NO_MATCH और SPEECH_TIMEOUT सामान्य हैं।
+                    // इन्हें वास्तविक Voice Service failure नहीं मानना है।
+                    val normalRecognitionError =
+                        error == SpeechRecognizer.ERROR_NO_MATCH ||
+                        error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+
                     releaseRecognizer(generation)
 
-                    val delay =
-                        if (
-                            error ==
-                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY
-                        ) {
-                            3000L
-                        } else {
-                            retryDelay
-                        }
+                    val delay = when {
+                        normalRecognitionError -> 700L
 
-                    sendError(
-                        error,
-                        "$errorName: SpeechRecognizer reported an error"
-                    )
+                        error ==
+                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 3000L
 
+                        else -> retryDelay
+                    }
+
+                    if (!normalRecognitionError) {
+                        sendError(
+                            error,
+                            "$errorName: recognition session failed; retrying"
+                        )
+                    }
+
+                    // यहाँ sendState(false, false) जानबूझकर नहीं भेजते।
+                    // Listening loop चालू है और दोबारा शुरू होगी।
                     scheduleRestart(delay)
 
-                    retryDelay =
-                        (retryDelay * 2).coerceAtMost(15000L)
+                    if (!normalRecognitionError) {
+                        retryDelay =
+                            (retryDelay * 2).coerceAtMost(15000L)
+                    } else {
+                        retryDelay = 1500L
+                    }
                 }
 
                 override fun onResults(results: Bundle?) {
@@ -576,7 +566,7 @@ class VoiceForegroundService : Service() {
 
                     Log.d(
                         TAG,
-                        "Recognition results received; hasText=${!recognizedText.isNullOrBlank()}"
+                        "Final results received: $recognizedText"
                     )
 
                     releaseRecognizer(generation)
@@ -584,7 +574,7 @@ class VoiceForegroundService : Service() {
                     if (!recognizedText.isNullOrBlank()) {
                         sendRecognizedText(recognizedText)
                     } else {
-                        Log.w(TAG, "Recognition returned no matching text")
+                        Log.w(TAG, "Recognition returned empty results")
                     }
 
                     retryDelay = 1500L
@@ -615,7 +605,7 @@ class VoiceForegroundService : Service() {
 
     private fun resumeListening() {
         if (listening) {
-            Log.d(TAG, "resumeListening ignored: already listening")
+            Log.d(TAG, "Already listening")
             return
         }
 
@@ -662,8 +652,9 @@ class VoiceForegroundService : Service() {
                 -1,
                 "RECORD_AUDIO permission was revoked"
             )
-
+            sendState(false, false)
             stopSelf()
+
             return
         }
 
@@ -734,7 +725,7 @@ class VoiceForegroundService : Service() {
 
         restartScheduled = true
 
-        Log.d(TAG, "Scheduling recognition restart in ${delay}ms")
+        Log.d(TAG, "Scheduling restart in ${delay}ms")
 
         handler.postDelayed(
             restartRunnable,
