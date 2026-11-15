@@ -4,8 +4,11 @@ package com.idraak.quantum
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.content.pm.PackageManager
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
+import java.util.Locale
 
 data class SoftwareAppInfo(
     val appName: String,
@@ -29,12 +32,24 @@ class SoftwareController(context: Context) {
             addCategory(Intent.CATEGORY_LAUNCHER)
         }
 
-        val activities = packageManager.queryIntentActivities(
-            launcherIntent,
-            0
-        )
+        val activities = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.queryIntentActivities(
+                    launcherIntent,
+                    PackageManager.ResolveInfoFlags.of(0L)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.queryIntentActivities(
+                    launcherIntent,
+                    0
+                )
+            }
+        } catch (e: Exception) {
+            return emptyList()
+        }
 
-        val apps = activities.mapNotNull { resolveInfo ->
+        return activities.mapNotNull { resolveInfo ->
 
             val activityInfo = resolveInfo.activityInfo
                 ?: return@mapNotNull null
@@ -42,13 +57,13 @@ class SoftwareController(context: Context) {
             val packageName = activityInfo.packageName
 
             try {
-                val applicationInfo =
-                    packageManager.getApplicationInfo(packageName, 0)
+                val applicationInfo = getApplicationInfo(packageName)
+                    ?: return@mapNotNull null
 
                 val isSystem = (
                     applicationInfo.flags and
-                    ApplicationInfo.FLAG_SYSTEM
-                ) != 0
+                        ApplicationInfo.FLAG_SYSTEM
+                    ) != 0
 
                 if (!includeSystemApps && isSystem) {
                     return@mapNotNull null
@@ -66,10 +81,10 @@ class SoftwareController(context: Context) {
                 null
             }
         }
-
-        return apps
             .distinctBy { it.packageName }
-            .sortedBy { it.appName.lowercase() }
+            .sortedBy {
+                it.appName.lowercase(Locale.ROOT)
+            }
     }
 
     /**
@@ -81,11 +96,11 @@ class SoftwareController(context: Context) {
             return emptyList()
         }
 
-        val searchText = query.trim().lowercase()
+        val searchText = query.trim().lowercase(Locale.ROOT)
 
         return getInstalledApps().filter {
-            it.appName.lowercase().contains(searchText) ||
-            it.packageName.lowercase().contains(searchText)
+            it.appName.lowercase(Locale.ROOT).contains(searchText) ||
+                it.packageName.lowercase(Locale.ROOT).contains(searchText)
         }
     }
 
@@ -115,7 +130,10 @@ class SoftwareController(context: Context) {
                 packageManager.getLaunchIntentForPackage(packageName)
                     ?: return false
 
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            launchIntent.addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK
+            )
+
             appContext.startActivity(launchIntent)
 
             true
@@ -125,14 +143,22 @@ class SoftwareController(context: Context) {
     }
 
     /**
-     * Find an app by its visible name and open it.
+     * Find an app by its visible name.
+     *
+     * Does not launch an arbitrary app when multiple
+     * applications match the requested name.
      */
     fun openAppByName(appName: String): Boolean {
 
-        val app = searchApps(appName).firstOrNull()
-            ?: return false
+        if (appName.isBlank()) return false
 
-        return openApp(app.packageName)
+        val matches = searchApps(appName)
+
+        if (matches.size != 1) {
+            return false
+        }
+
+        return openApp(matches.first().packageName)
     }
 
     /**
@@ -144,7 +170,7 @@ class SoftwareController(context: Context) {
 
         return try {
             val intent = Intent(
-                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                 Uri.parse("package:$packageName")
             ).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -187,7 +213,7 @@ class SoftwareController(context: Context) {
 
         return try {
             val intent = Intent(
-                android.provider.Settings.ACTION_SETTINGS
+                Settings.ACTION_SETTINGS
             ).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
@@ -209,13 +235,38 @@ class SoftwareController(context: Context) {
 
         return try {
             val applicationInfo =
-                packageManager.getApplicationInfo(packageName, 0)
+                getApplicationInfo(packageName) ?: return null
 
             packageManager.getApplicationLabel(
                 applicationInfo
             ).toString()
 
         } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Android-version-compatible ApplicationInfo lookup.
+     */
+    private fun getApplicationInfo(
+        packageName: String
+    ): ApplicationInfo? {
+
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getApplicationInfo(
+                    packageName,
+                    PackageManager.ApplicationInfoFlags.of(0L)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getApplicationInfo(
+                    packageName,
+                    0
+                )
+            }
+        } catch (_: PackageManager.NameNotFoundException) {
             null
         }
     }
