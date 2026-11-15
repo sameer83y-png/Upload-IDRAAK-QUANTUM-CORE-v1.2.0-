@@ -17,6 +17,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -37,6 +38,7 @@ import java.util.concurrent.Executors
 class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     companion object {
+        private const val TAG = "IDRAAK_MAIN"
         private const val REQUEST_AUDIO = 101
         private const val REQUEST_CAMERA = 102
     }
@@ -65,6 +67,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private var ttsReady = false
     private var speaking = false
     private var pendingSpeech: String? = null
+
+    private var lastVoiceError: String? = null
 
     private var utteranceSequence = 0
     private var activeUtteranceId: String? = null
@@ -98,6 +102,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                             VoiceForegroundService.EXTRA_TEXT
                         ) ?: return
 
+                    Log.d(TAG, "Voice result received")
+
                     if (
                         recognizedText.isNotBlank() &&
                         !speaking &&
@@ -106,6 +112,33 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     ) {
                         wakeWordController.processRecognizedText(
                             recognizedText
+                        )
+                    }
+                }
+
+                VoiceForegroundService.ACTION_ERROR -> {
+
+                    val errorCode = intent.getIntExtra(
+                        VoiceForegroundService.EXTRA_ERROR_CODE,
+                        -999
+                    )
+
+                    val errorMessage =
+                        intent.getStringExtra(
+                            VoiceForegroundService.EXTRA_ERROR_MESSAGE
+                        ) ?: "Unknown voice recognition error"
+
+                    lastVoiceError = errorMessage
+
+                    Log.e(
+                        TAG,
+                        "Voice service error: code=$errorCode, message=$errorMessage"
+                    )
+
+                    if (!speaking && !isFinishing && !isDestroyed) {
+                        homeView.setVoiceStatus(false)
+                        homeView.setLiveStatus(
+                            "VOICE ERROR • ${errorMessage.take(65)}"
                         )
                     }
                 }
@@ -123,7 +156,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     )
 
                     if (running) {
+
                         voiceServiceStarted = true
+                        lastVoiceError = null
 
                         if (!speaking) {
                             homeView.setVoiceStatus(true)
@@ -151,15 +186,21 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                     } else if (!speaking) {
 
-                        // PAUSE के दौरान Service भी false state भेजती है।
-                        // उस समय speaking=true होता है, इसलिए उसे failure
-                        // नहीं माना जाएगा।
                         voiceServiceStarted = false
 
                         homeView.setVoiceStatus(false)
-                        homeView.setLiveStatus(
-                            "VOICE SERVICE NOT READY"
-                        )
+
+                        val error = lastVoiceError
+
+                        if (!error.isNullOrBlank()) {
+                            homeView.setLiveStatus(
+                                "VOICE ERROR • ${error.take(65)}"
+                            )
+                        } else {
+                            homeView.setLiveStatus(
+                                "VOICE SERVICE NOT READY"
+                            )
+                        }
                     }
                 }
             }
@@ -279,8 +320,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     homeView.setLiveStatus("IDRAAK ACTIVE")
                     homeView.setVoiceStatus(true)
 
-                    // Wake Word के साथ Command भी बोला गया हो,
-                    // तो executeCommand इस acknowledgement को cancel करेगा।
                     handler.postDelayed(
                         wakeAcknowledgement,
                         300L
@@ -366,6 +405,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             addAction(
                 VoiceForegroundService.ACTION_STATE
             )
+
+            addAction(
+                VoiceForegroundService.ACTION_ERROR
+            )
         }
 
         try {
@@ -389,8 +432,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
             receiverRegistered = true
 
-        } catch (_: Exception) {
+            Log.d(TAG, "Voice receiver registered")
+
+        } catch (e: Exception) {
+
             receiverRegistered = false
+
+            Log.e(TAG, "Voice receiver registration failed", e)
         }
     }
 
@@ -404,21 +452,23 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         try {
 
+            lastVoiceError = null
+
             voiceManager.start(
                 selectedLocale().toLanguageTag()
             )
 
-            // यह provisional स्थिति है।
-            // वास्तविक Listening की पुष्टि ACTION_STATE से होगी।
             voiceServiceStarted = true
 
             homeView.setLiveStatus(
                 "IDRAAK VOICE STARTING"
             )
 
-        } catch (_: Exception) {
+        } catch (e: Exception) {
 
             voiceServiceStarted = false
+
+            Log.e(TAG, "Voice service start failed", e)
 
             homeView.setVoiceStatus(false)
             homeView.setLiveStatus(
@@ -433,7 +483,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
             voiceManager.pause()
 
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+
+            Log.e(TAG, "Voice pause failed", e)
 
             homeView.setLiveStatus(
                 "VOICE PAUSE ERROR"
@@ -447,15 +499,19 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         try {
 
+            lastVoiceError = null
+
             voiceManager.resume(
                 selectedLocale().toLanguageTag()
             )
 
             voiceServiceStarted = true
 
-        } catch (_: Exception) {
+        } catch (e: Exception) {
 
             voiceServiceStarted = false
+
+            Log.e(TAG, "Voice resume failed", e)
 
             homeView.setVoiceStatus(false)
             homeView.setLiveStatus(
@@ -468,7 +524,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         try {
             voiceManager.stop()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e(TAG, "Voice stop failed", e)
         }
 
         voiceServiceStarted = false
@@ -1049,7 +1106,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                 return result as? Boolean ?: true
 
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e(
+                    TAG,
+                    "Controller method failed: $methodName",
+                    e
+                )
             }
         }
 
@@ -1104,17 +1166,71 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     }
                 }
 
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+
+                Log.e(TAG, "Gemini request failed", e)
+
+                val errorMessage =
+                    e.message ?: "Unknown Gemini error"
 
                 runOnUiThread {
 
                     if (!isFinishing && !isDestroyed) {
 
+                        homeView.setLiveStatus(
+                            "GEMINI ERROR • ${errorMessage.take(55)}"
+                        )
+
                         speak(
-                            "माफ कीजिए, AI से कनेक्शन नहीं हो सका।"
+                            geminiFriendlyError(errorMessage)
                         )
                     }
                 }
+            }
+        }
+    }
+
+    private fun geminiFriendlyError(message: String): String {
+
+        val lower = message.lowercase(Locale.ROOT)
+
+        return when {
+            lower.contains("api key not valid") ||
+                lower.contains("invalid api key") ||
+                lower.contains("api_key_invalid") -> {
+                "आपकी Gemini API Key गलत है। कृपया Settings में सही API Key दर्ज करें।"
+            }
+
+            lower.contains("permission_denied") ||
+                lower.contains("permission denied") ||
+                lower.contains("forbidden") -> {
+                "Gemini API ने अनुमति नहीं दी। API Key और उसकी API permissions जाँचें।"
+            }
+
+            lower.contains("quota") ||
+                lower.contains("resource_exhausted") ||
+                lower.contains("429") -> {
+                "Gemini API की उपयोग सीमा पूरी हो गई है। कृपया बाद में कोशिश करें या अपनी quota जाँचें।"
+            }
+
+            lower.contains("not_found") ||
+                lower.contains("404") ||
+                lower.contains("model not found") -> {
+                "चुना हुआ Gemini Model उपलब्ध नहीं है। Settings में Model ID जाँचें।"
+            }
+
+            lower.contains("timeout") ||
+                lower.contains("failed to connect") ||
+                lower.contains("unable to resolve host") -> {
+                "इंटरनेट कनेक्शन में समस्या है। कृपया अपना इंटरनेट जाँचें।"
+            }
+
+            lower.contains("400") -> {
+                "Gemini ने अनुरोध स्वीकार नहीं किया। Model ID और API request जाँचें।"
+            }
+
+            else -> {
+                "Gemini से जवाब नहीं मिला। त्रुटि का विवरण स्क्रीन पर देखें।"
             }
         }
     }
@@ -1232,13 +1348,33 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 }
 
             val responseText =
-                stream.bufferedReader().use {
+                stream?.bufferedReader()?.use {
                     it.readText()
-                }
+                }.orEmpty()
 
             if (responseCode !in 200..299) {
+
+                val serverMessage = try {
+                    JSONObject(responseText)
+                        .optJSONObject("error")
+                        ?.optString("message")
+                        .orEmpty()
+                } catch (_: Exception) {
+                    ""
+                }
+
+                val safeMessage =
+                    serverMessage.ifBlank {
+                        "Gemini returned HTTP $responseCode"
+                    }
+
+                Log.e(
+                    TAG,
+                    "Gemini HTTP error $responseCode: $safeMessage"
+                )
+
                 throw Exception(
-                    "Gemini HTTP $responseCode"
+                    "HTTP $responseCode: $safeMessage"
                 )
             }
 
@@ -1312,6 +1448,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         } else {
 
             ttsReady = false
+
+            Log.e(TAG, "TextToSpeech initialization failed")
         }
     }
 
@@ -1358,12 +1496,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             return
         }
 
-        // पुरानी pending acknowledgement हटाएँ।
         handler.removeCallbacks(wakeAcknowledgement)
 
         speaking = true
 
-        // Recognition रोकें, Foreground Service बंद न करें।
         pauseVoiceService()
 
         homeView.setLiveStatus(
@@ -1471,8 +1607,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                     runOnUiThread {
 
-                        // QUEUE_FLUSH पुराने utterance को रोक सकता है।
-                        // केवल वर्तमान utterance की callback स्वीकार करें।
                         if (
                             utteranceId != activeUtteranceId
                         ) {
@@ -1609,8 +1743,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                 homeView.setAvatarGender(gender)
 
-                // भाषा बदलने पर उसी Voice Service को नए locale
-                // के साथ resume करें।
                 if (permissionGranted) {
                     resumeVoiceService()
                 }
@@ -1653,7 +1785,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
             try {
                 unregisterReceiver(voiceReceiver)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.w(TAG, "Receiver unregister failed", e)
             }
 
             receiverRegistered = false
@@ -1661,7 +1794,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         try {
             hardwareController.release()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Hardware release failed", e)
         }
 
         if (::tts.isInitialized) {
