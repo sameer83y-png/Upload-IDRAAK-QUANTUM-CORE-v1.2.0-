@@ -1,11 +1,8 @@
-
 package com.idraak.quantum
 
 import android.content.Context
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.RectF
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
@@ -18,11 +15,10 @@ import android.widget.GridView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sin
 
 @Suppress("UNUSED_PARAMETER")
 class LauncherHomeView(
@@ -32,7 +28,6 @@ class LauncherHomeView(
 ) : LinearLayout(context) {
 
     private val cyan = Color.rgb(0, 225, 255)
-    private val purple = Color.rgb(155, 65, 255)
 
     private val launcherEngine = LauncherEngine(context)
 
@@ -55,8 +50,11 @@ class LauncherHomeView(
     private var coreStartY = 0f
     private var coreMoved = false
 
+    private var appLoadExecutor: ExecutorService? = null
+    private var reloadRequestId = 0
+
     private val longPressRunnable = Runnable {
-        if (!coreMoved) {
+        if (coreView.isPressed && !coreMoved) {
             onSettingsClick()
         }
     }
@@ -138,20 +136,18 @@ class LauncherHomeView(
 
         coreView = LiveOrbView(context)
 
-        coreView.setOnTouchListener { _, event ->
+        coreView.setOnTouchListener { view, event ->
 
             when (event.actionMasked) {
 
                 MotionEvent.ACTION_DOWN -> {
-
                     coreStartX = event.x
                     coreStartY = event.y
                     coreMoved = false
 
-                    handler.removeCallbacks(
-                        longPressRunnable
-                    )
+                    view.isPressed = true
 
+                    handler.removeCallbacks(longPressRunnable)
                     handler.postDelayed(
                         longPressRunnable,
                         2000L
@@ -161,36 +157,26 @@ class LauncherHomeView(
                 }
 
                 MotionEvent.ACTION_MOVE -> {
-
-                    val moveX = abs(
-                        event.x - coreStartX
-                    )
-
-                    val moveY = abs(
-                        event.y - coreStartY
-                    )
+                    val moveX = abs(event.x - coreStartX)
+                    val moveY = abs(event.y - coreStartY)
 
                     if (
                         moveX > touchSlop ||
                         moveY > touchSlop
                     ) {
                         coreMoved = true
-
-                        handler.removeCallbacks(
-                            longPressRunnable
-                        )
+                        view.isPressed = false
+                        handler.removeCallbacks(longPressRunnable)
                     }
 
                     true
                 }
 
                 MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL -> {
-
-                    handler.removeCallbacks(
-                        longPressRunnable
-                    )
-
+                MotionEvent.ACTION_CANCEL,
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    view.isPressed = false
+                    handler.removeCallbacks(longPressRunnable)
                     true
                 }
 
@@ -198,12 +184,13 @@ class LauncherHomeView(
             }
         }
 
-        val coreSize = max(
-            dp(180),
-            min(
-                resources.displayMetrics.widthPixels - dp(44),
-                dp(310)
-            )
+        val availableWidth =
+            (resources.displayMetrics.widthPixels - dp(80))
+                .coerceAtLeast(dp(1))
+
+        val coreSize = min(
+            dp(310),
+            availableWidth
         )
 
         homePanel.addView(
@@ -416,33 +403,30 @@ class LauncherHomeView(
                 1f
             )
         )
-
-        reloadApps()
     }
 
     private fun showHome() {
 
-        handler.removeCallbacks(
-            longPressRunnable
-        )
+        handler.removeCallbacks(longPressRunnable)
 
         homePanel.visibility = VISIBLE
         drawerPanel.visibility = GONE
 
-        coreView.startAnimation()
+        if (isAttachedToWindow) {
+            coreView.startAnimation()
+        }
     }
 
     private fun showDrawer() {
 
-        handler.removeCallbacks(
-            longPressRunnable
-        )
+        handler.removeCallbacks(longPressRunnable)
 
         homePanel.visibility = GONE
         drawerPanel.visibility = VISIBLE
 
-        appGrid.setSelection(0)
+        coreView.stopAnimation()
 
+        appGrid.setSelection(0)
         reloadApps()
     }
 
@@ -460,13 +444,38 @@ class LauncherHomeView(
 
     fun reloadApps() {
 
-        if (!::appAdapter.isInitialized) {
-            return
-        }
+        if (!::appAdapter.isInitialized) return
+        if (!isAttachedToWindow) return
+
+        val requestId = ++reloadRequestId
+
+        val executor = appLoadExecutor
+            ?: Executors.newSingleThreadExecutor().also {
+                appLoadExecutor = it
+            }
 
         try {
-            val apps = launcherEngine.getInstalledApps()
-            appAdapter.updateApps(apps)
+            executor.execute {
+
+                val loadedApps = try {
+                    launcherEngine.getInstalledApps()
+                } catch (_: Exception) {
+                    emptyList()
+                }
+
+                handler.post {
+
+                    if (
+                        !isAttachedToWindow ||
+                        requestId != reloadRequestId ||
+                        !::appAdapter.isInitialized
+                    ) {
+                        return@post
+                    }
+
+                    appAdapter.updateApps(loadedApps)
+                }
+            }
         } catch (_: Exception) {
             appAdapter.updateApps(emptyList())
         }
@@ -479,14 +488,14 @@ class LauncherHomeView(
         when (event.actionMasked) {
 
             MotionEvent.ACTION_DOWN -> {
-                startX = event.rawX
-                startY = event.rawY
+                startX = event.x
+                startY = event.y
             }
 
             MotionEvent.ACTION_UP -> {
 
-                val deltaX = event.rawX - startX
-                val deltaY = event.rawY - startY
+                val deltaX = event.x - startX
+                val deltaY = event.y - startY
 
                 val verticalSwipe =
                     abs(deltaY) > dp(85) &&
@@ -503,31 +512,38 @@ class LauncherHomeView(
                     } else if (
                         deltaY > 0 &&
                         isAppDrawerOpen() &&
-                        appGrid.firstVisiblePosition == 0
+                        !startedInsideAppGrid()
                     ) {
-
-                        val firstChild =
-                            appGrid.getChildAt(0)
-
-                        val gridAtTop =
-                            firstChild == null ||
-                            firstChild.top >= 0
-
-                        if (gridAtTop) {
-                            showHome()
-                        }
+                        showHome()
                     }
                 }
             }
 
             MotionEvent.ACTION_CANCEL -> {
-                handler.removeCallbacks(
-                    longPressRunnable
-                )
+                handler.removeCallbacks(longPressRunnable)
             }
         }
 
         return super.dispatchTouchEvent(event)
+    }
+
+    private fun startedInsideAppGrid(): Boolean {
+
+        if (!::appGrid.isInitialized) return false
+
+        val gridRect = Rect()
+
+        appGrid.getHitRect(gridRect)
+
+        gridRect.offset(
+            drawerPanel.left,
+            drawerPanel.top
+        )
+
+        return gridRect.contains(
+            startX.toInt(),
+            startY.toInt()
+        )
     }
 
     fun setAvatarGender(gender: String) {
@@ -535,14 +551,12 @@ class LauncherHomeView(
     }
 
     fun setLiveStatus(status: String) {
-
         if (::statusText.isInitialized) {
             statusText.text = status
         }
     }
 
     fun setVoiceStatus(active: Boolean) {
-
         if (::coreView.isInitialized) {
             coreView.setListening(active)
         }
@@ -552,374 +566,29 @@ class LauncherHomeView(
         super.onAttachedToWindow()
 
         if (::coreView.isInitialized) {
-            coreView.startAnimation()
+            if (homePanel.visibility == VISIBLE) {
+                coreView.startAnimation()
+            } else {
+                coreView.stopAnimation()
+            }
         }
+
+        reloadApps()
     }
 
     override fun onDetachedFromWindow() {
 
-        handler.removeCallbacks(
-            longPressRunnable
-        )
+        handler.removeCallbacks(longPressRunnable)
+
+        reloadRequestId++
+
+        appLoadExecutor?.shutdownNow()
+        appLoadExecutor = null
 
         if (::coreView.isInitialized) {
             coreView.stopAnimation()
         }
 
         super.onDetachedFromWindow()
-    }
-}
-
-/**
- * Abstract IDRAAK AI Core.
- * No human face, body or humanoid avatar.
- */
-class LiveOrbView(context: Context) : View(context) {
-
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-    private val cyan = Color.rgb(0, 225, 255)
-    private val purple = Color.rgb(155, 65, 255)
-
-    private var rotation = 0f
-    private var pulse = 0f
-    private var listening = false
-    private var animationRunning = false
-
-    private val animationRunnable = object : Runnable {
-
-        override fun run() {
-
-            if (!animationRunning) return
-
-            rotation = (rotation + 1.2f) % 360f
-            pulse += 0.055f
-
-            invalidate()
-            postDelayed(this, 35L)
-        }
-    }
-
-    init {
-        contentDescription =
-            "IDRAAK AI Control Core. Long press for settings."
-
-        startAnimation()
-    }
-
-    fun setListening(active: Boolean) {
-        listening = active
-        invalidate()
-    }
-
-    fun startAnimation() {
-
-        if (!animationRunning) {
-            animationRunning = true
-            removeCallbacks(animationRunnable)
-            post(animationRunnable)
-        }
-    }
-
-    fun stopAnimation() {
-
-        animationRunning = false
-        removeCallbacks(animationRunnable)
-    }
-
-    override fun onDraw(canvas: Canvas) {
-
-        super.onDraw(canvas)
-
-        val cx = width / 2f
-        val cy = height / 2f
-        val radius = min(width, height) * 0.29f
-
-        drawGlow(canvas, cx, cy, radius)
-        drawRings(canvas, cx, cy, radius)
-        drawCore(canvas, cx, cy, radius)
-        drawWaveform(canvas, cx, cy, radius)
-        drawText(canvas, cx, cy, radius)
-    }
-
-    private fun drawGlow(
-        canvas: Canvas,
-        cx: Float,
-        cy: Float,
-        radius: Float
-    ) {
-
-        paint.style = Paint.Style.FILL
-
-        paint.shader = android.graphics.RadialGradient(
-            cx,
-            cy,
-            radius * 2.15f,
-            intArrayOf(
-                if (listening) {
-                    Color.argb(110, 0, 255, 255)
-                } else {
-                    Color.argb(65, 0, 160, 255)
-                },
-                Color.argb(25, 115, 50, 255),
-                Color.TRANSPARENT
-            ),
-            null,
-            android.graphics.Shader.TileMode.CLAMP
-        )
-
-        canvas.drawCircle(
-            cx,
-            cy,
-            radius * 2.15f,
-            paint
-        )
-
-        paint.shader = null
-    }
-
-    private fun drawRings(
-        canvas: Canvas,
-        cx: Float,
-        cy: Float,
-        radius: Float
-    ) {
-
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1.5f
-        paint.color = cyan
-        paint.alpha = 175
-
-        canvas.drawCircle(
-            cx,
-            cy,
-            radius * (1.38f + 0.025f * sin(pulse)),
-            paint
-        )
-
-        canvas.save()
-        canvas.rotate(rotation, cx, cy)
-
-        paint.color = purple
-        paint.strokeWidth = 2.3f
-
-        canvas.drawOval(
-            RectF(
-                cx - radius * 1.65f,
-                cy - radius * 0.55f,
-                cx + radius * 1.65f,
-                cy + radius * 0.55f
-            ),
-            paint
-        )
-
-        paint.color = Color.WHITE
-        paint.strokeWidth = 1f
-
-        canvas.drawOval(
-            RectF(
-                cx - radius * 1.45f,
-                cy - radius * 0.38f,
-                cx + radius * 1.45f,
-                cy + radius * 0.38f
-            ),
-            paint
-        )
-
-        canvas.restore()
-
-        paint.style = Paint.Style.FILL
-        paint.color = cyan
-
-        val angle = Math.toRadians(
-            rotation.toDouble()
-        )
-
-        canvas.drawCircle(
-            cx + cos(angle).toFloat() * radius * 1.65f,
-            cy + sin(angle).toFloat() * radius * 0.55f,
-            4.5f,
-            paint
-        )
-    }
-
-    private fun drawCore(
-        canvas: Canvas,
-        cx: Float,
-        cy: Float,
-        radius: Float
-    ) {
-
-        val breathing = 1f + 0.035f * sin(pulse)
-
-        paint.style = Paint.Style.FILL
-
-        paint.shader = android.graphics.RadialGradient(
-            cx - radius * 0.25f,
-            cy - radius * 0.3f,
-            radius * 1.45f,
-            intArrayOf(
-                Color.rgb(35, 115, 175),
-                Color.rgb(12, 45, 105),
-                Color.rgb(3, 10, 35)
-            ),
-            null,
-            android.graphics.Shader.TileMode.CLAMP
-        )
-
-        canvas.drawCircle(
-            cx,
-            cy,
-            radius * breathing,
-            paint
-        )
-
-        paint.shader = null
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2f
-        paint.color = if (listening) Color.WHITE else cyan
-
-        canvas.drawCircle(
-            cx,
-            cy,
-            radius * breathing,
-            paint
-        )
-
-        paint.style = Paint.Style.FILL
-
-        paint.shader = android.graphics.RadialGradient(
-            cx,
-            cy,
-            radius * 0.58f,
-            intArrayOf(
-                Color.argb(190, 0, 235, 255),
-                Color.argb(65, 0, 120, 255),
-                Color.TRANSPARENT
-            ),
-            null,
-            android.graphics.Shader.TileMode.CLAMP
-        )
-
-        canvas.drawCircle(
-            cx,
-            cy,
-            radius * 0.58f,
-            paint
-        )
-
-        paint.shader = null
-    }
-
-    private fun drawWaveform(
-        canvas: Canvas,
-        cx: Float,
-        cy: Float,
-        radius: Float
-    ) {
-
-        val count = 48
-        val baseRadius = radius * 0.76f
-
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2.2f
-        paint.strokeCap = Paint.Cap.ROUND
-
-        for (i in 0 until count) {
-
-            val angle = i * (
-                Math.PI * 2.0 / count
-            )
-
-            val wave = sin(
-                angle * 5.0 + pulse * 2.0
-            ).toFloat()
-
-            val boost = if (listening) 1.7f else 1f
-            val length = (
-                5f + abs(wave) * 11f
-            ) * boost
-
-            val x1 =
-                cx + cos(angle).toFloat() * baseRadius
-
-            val y1 =
-                cy + sin(angle).toFloat() * baseRadius
-
-            val x2 =
-                cx + cos(angle).toFloat() *
-                (baseRadius + length)
-
-            val y2 =
-                cy + sin(angle).toFloat() *
-                (baseRadius + length)
-
-            paint.color = if (i % 4 == 0) {
-                purple
-            } else {
-                cyan
-            }
-
-            paint.alpha = if (listening) 255 else 175
-
-            canvas.drawLine(
-                x1,
-                y1,
-                x2,
-                y2,
-                paint
-            )
-        }
-
-        paint.style = Paint.Style.FILL
-        paint.alpha = 255
-    }
-
-    private fun drawText(
-        canvas: Canvas,
-        cx: Float,
-        cy: Float,
-        radius: Float
-    ) {
-
-        paint.style = Paint.Style.FILL
-        paint.textAlign = Paint.Align.CENTER
-
-        paint.typeface = Typeface.create(
-            "sans-serif-black",
-            Typeface.BOLD
-        )
-
-        paint.textSize = radius * 0.25f
-        paint.color = Color.WHITE
-        paint.setShadowLayer(12f, 0f, 0f, cyan)
-
-        canvas.drawText(
-            "IDRAAK",
-            cx,
-            cy + radius * 0.10f,
-            paint
-        )
-
-        paint.clearShadowLayer()
-        paint.textSize = radius * 0.075f
-        paint.color = if (listening) Color.WHITE else cyan
-
-        canvas.drawText(
-            if (listening) "LISTENING" else "AI CORE",
-            cx,
-            cy + radius * 0.35f,
-            paint
-        )
-
-        paint.textSize = radius * 0.055f
-        paint.color = Color.rgb(155, 190, 225)
-
-        canvas.drawText(
-            "VOICE CONTROL SYSTEM",
-            cx,
-            cy + radius * 1.95f,
-            paint
-        )
     }
 }
