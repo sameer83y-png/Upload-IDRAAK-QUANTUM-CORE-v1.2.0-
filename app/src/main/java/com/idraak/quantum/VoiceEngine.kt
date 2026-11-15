@@ -11,15 +11,23 @@ import java.util.UUID
 /**
  * IDRAAK Voice Engine
  *
- * जिम्मेदारी:
- * - Text-to-Speech इंजन initialize करना
- * - दिए गए टेक्स्ट को आवाज़ में बदलना
- * - Speech playback callbacks संभालना
- * - बोलते समय listening service को अस्थायी रूप से pause/resume करना
+ * केवल जिम्मेदारियाँ:
+ * - TextToSpeech initialization
+ * - Text-to-Speech playback
+ * - Speech callbacks
+ * - Playback state management
  *
- * भाषा और Voice Selection का logic TtsLanguageManager में रहेगा।
- * Speech Recognition का logic VoiceForegroundService में रहेगा।
- * Wake Word का logic WakeWordController में रहेगा।
+ * भाषा और Voice Selection:
+ * TtsLanguageManager
+ *
+ * Recognition service commands:
+ * VoiceManager
+ *
+ * Speech Recognition:
+ * VoiceForegroundService
+ *
+ * Wake Word:
+ * WakeWordController
  */
 class VoiceEngine(
     context: Context,
@@ -33,13 +41,9 @@ class VoiceEngine(
 
     interface Listener {
         fun onEngineReady()
-
         fun onSpeechStarted()
-
         fun onSpeechCompleted()
-
         fun onSpeechError(message: String)
-
         fun onVoiceStateChanged(state: EngineState)
     }
 
@@ -56,15 +60,15 @@ class VoiceEngine(
 
     private val appContext = context.applicationContext
 
-    /*
-     * भाषा और Voice Selection की जिम्मेदारी अलग क्लास की है।
-     * इस फाइल में Locale mapping या Voice selection नहीं होगी।
-     */
-    private val languageManager = TtsLanguageManager(appContext)
+    // Language configuration is delegated to its own class.
+    private val languageManager =
+        TtsLanguageManager(appContext)
 
     private var tts: TextToSpeech? = null
 
     private var engineReady = false
+    private var destroyed = false
+
     private var listeningRequested = false
     private var pausedForSpeech = false
 
@@ -75,19 +79,22 @@ class VoiceEngine(
         private set
 
     init {
-        Log.d(TAG, "Initializing TextToSpeech engine")
+        Log.d(TAG, "Initializing TTS engine")
         tts = TextToSpeech(appContext, this)
     }
 
     // -------------------------------------------------
-    // TextToSpeech initialization
+    // TTS Initialization
     // -------------------------------------------------
 
     override fun onInit(status: Int) {
+        if (destroyed) return
+
         if (status != TextToSpeech.SUCCESS) {
-            Log.e(TAG, "TextToSpeech initialization failed: $status")
+            Log.e(TAG, "TTS initialization failed: $status")
             engineReady = false
             updateState(EngineState.ERROR)
+
             listener?.onSpeechError(
                 "Text-to-Speech इंजन शुरू नहीं हो पाया।"
             )
@@ -100,25 +107,33 @@ class VoiceEngine(
             object : UtteranceProgressListener() {
 
                 override fun onStart(utteranceId: String?) {
+                    if (destroyed) return
+
                     Log.d(TAG, "Speech started: $utteranceId")
+
                     updateState(EngineState.SPEAKING)
                     listener?.onSpeechStarted()
                 }
 
                 override fun onDone(utteranceId: String?) {
+                    if (destroyed) return
+
                     Log.d(TAG, "Speech completed: $utteranceId")
 
-                    if (utteranceId == activeUtteranceId) {
-                        activeUtteranceId = null
-                    }
+                    if (utteranceId != activeUtteranceId) return
+
+                    activeUtteranceId = null
 
                     listener?.onSpeechCompleted()
+
                     resumeAfterSpeech()
                     updateStateAfterSpeech()
                 }
 
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?) {
+                    if (destroyed) return
+
                     handleSpeechError(
                         "आवाज़ चलाने में समस्या आई।",
                         utteranceId
@@ -129,6 +144,8 @@ class VoiceEngine(
                     utteranceId: String?,
                     errorCode: Int
                 ) {
+                    if (destroyed) return
+
                     handleSpeechError(
                         "Text-to-Speech error: $errorCode",
                         utteranceId
@@ -139,14 +156,16 @@ class VoiceEngine(
                     utteranceId: String?,
                     interrupted: Boolean
                 ) {
+                    if (destroyed) return
+
                     Log.d(
                         TAG,
                         "Speech stopped: $utteranceId, interrupted=$interrupted"
                     )
 
-                    if (utteranceId == activeUtteranceId) {
-                        activeUtteranceId = null
-                    }
+                    if (utteranceId != activeUtteranceId) return
+
+                    activeUtteranceId = null
 
                     resumeAfterSpeech()
                     updateStateAfterSpeech()
@@ -156,65 +175,62 @@ class VoiceEngine(
 
         engineReady = true
 
-        /*
-         * TTS की भाषा और Voice configuration अलग manager संभालेगा।
-         * यहाँ केवल उसे configuration लागू करने के लिए कहा जाता है।
-         */
-        val settingsApplied = languageManager.applyTo(engine)
+        // Language and voice configuration is handled externally.
+        val configurationApplied =
+            languageManager.applyTo(engine)
 
-        if (!settingsApplied) {
+        if (!configurationApplied) {
             Log.w(
                 TAG,
-                "TTS language/voice configuration is not ready"
+                "TTS language or voice configuration unavailable"
             )
         }
 
         updateState(EngineState.READY)
+
         listener?.onEngineReady()
 
-        Log.d(TAG, "TextToSpeech engine initialized")
+        Log.d(TAG, "TTS engine initialized")
     }
 
     // -------------------------------------------------
-    // Language configuration delegation
+    // Language Manager Delegation
     // -------------------------------------------------
 
-    /**
-     * भाषा बदलने का वास्तविक logic TtsLanguageManager में है।
-     */
     fun setLanguage(language: String) {
-        val engine = if (engineReady) tts else null
-        val applied = languageManager.setLanguage(language, engine)
+        if (destroyed) return
+
+        val applied = languageManager.setLanguage(
+            language,
+            if (engineReady) tts else null
+        )
 
         Log.d(
             TAG,
-            "Language configuration requested; applied=$applied"
+            "Language configuration result: $applied"
         )
     }
 
-    /**
-     * Voice gender चुनने का वास्तविक logic TtsLanguageManager में है।
-     */
     fun setVoiceGender(gender: String) {
-        val engine = if (engineReady) tts else null
-        val applied = languageManager.setVoiceGender(gender, engine)
+        if (destroyed) return
+
+        val applied = languageManager.setVoiceGender(
+            gender,
+            if (engineReady) tts else null
+        )
 
         Log.d(
             TAG,
-            "Voice gender configuration requested; applied=$applied"
+            "Voice gender configuration result: $applied"
         )
     }
 
     // -------------------------------------------------
-    // Listening service coordination
+    // Listening Service Coordination
     // -------------------------------------------------
 
-    /**
-     * Speech Recognition शुरू करने का निर्देश VoiceManager को देता है।
-     * Recognition का implementation इस फाइल में नहीं है।
-     */
     fun startListening(language: String = recognitionLanguage) {
-        if (currentState == EngineState.DESTROYED) return
+        if (destroyed) return
 
         recognitionLanguage = language
         listeningRequested = true
@@ -224,74 +240,73 @@ class VoiceEngine(
 
         updateState(EngineState.LISTENING)
 
-        Log.d(TAG, "Listening requested: $recognitionLanguage")
+        Log.d(TAG, "Listening started: $recognitionLanguage")
     }
 
     fun pauseListening() {
-        if (currentState == EngineState.DESTROYED) return
+        if (destroyed) return
 
         listeningRequested = false
         pausedForSpeech = false
 
         voiceManager.pause()
+
         updateState(EngineState.PAUSED)
 
         Log.d(TAG, "Listening paused")
     }
 
     fun resumeListening() {
-        if (currentState == EngineState.DESTROYED) return
+        if (destroyed) return
 
         listeningRequested = true
         pausedForSpeech = false
 
         voiceManager.resume(recognitionLanguage)
+
         updateState(EngineState.LISTENING)
 
         Log.d(TAG, "Listening resumed")
     }
 
     fun stopListening() {
-        if (currentState == EngineState.DESTROYED) return
+        if (destroyed) return
 
         listeningRequested = false
         pausedForSpeech = false
 
         voiceManager.stop()
+
         updateState(EngineState.READY)
 
         Log.d(TAG, "Listening stopped")
     }
 
-    /**
-     * TTS बोलने से पहले Recognition service को अस्थायी रूप से रोकता है।
-     */
     private fun pauseForSpeech() {
         if (!listeningRequested || pausedForSpeech) return
 
         pausedForSpeech = true
         voiceManager.pause()
 
-        Log.d(TAG, "Listening paused for speech playback")
+        Log.d(TAG, "Listening paused for TTS playback")
     }
 
-    /**
-     * TTS पूरा होने पर Recognition service फिर शुरू करता है।
-     */
     private fun resumeAfterSpeech() {
         if (!listeningRequested || !pausedForSpeech) return
 
         pausedForSpeech = false
         voiceManager.resume(recognitionLanguage)
 
-        Log.d(TAG, "Listening resumed after speech playback")
+        Log.d(TAG, "Listening resumed after TTS playback")
     }
 
     // -------------------------------------------------
-    // Speech playback
+    // Speech Playback
     // -------------------------------------------------
 
     fun speak(text: String) {
+        if (destroyed) return
+
         val cleanText = text.trim()
 
         if (cleanText.isEmpty()) {
@@ -299,13 +314,9 @@ class VoiceEngine(
             return
         }
 
-        if (currentState == EngineState.DESTROYED) {
-            Log.w(TAG, "Speech request ignored: engine destroyed")
-            return
-        }
-
         if (!engineReady || tts == null) {
-            Log.w(TAG, "Speech request ignored: TTS not ready")
+            Log.w(TAG, "TTS engine is not ready")
+
             listener?.onSpeechError(
                 "आवाज़ का इंजन अभी तैयार नहीं है।"
             )
@@ -332,12 +343,15 @@ class VoiceEngine(
                 utteranceId
             )
         } else {
-            Log.d(TAG, "Speech request submitted: $utteranceId")
+            Log.d(
+                TAG,
+                "Speech request submitted: $utteranceId"
+            )
         }
     }
 
     fun stopSpeaking() {
-        if (currentState == EngineState.DESTROYED) return
+        if (destroyed) return
 
         tts?.stop()
         activeUtteranceId = null
@@ -352,11 +366,16 @@ class VoiceEngine(
         message: String,
         utteranceId: String?
     ) {
-        Log.e(TAG, "$message utteranceId=$utteranceId")
+        if (destroyed) return
 
-        if (utteranceId == activeUtteranceId) {
-            activeUtteranceId = null
-        }
+        Log.e(
+            TAG,
+            "$message utteranceId=$utteranceId"
+        )
+
+        if (utteranceId != activeUtteranceId) return
+
+        activeUtteranceId = null
 
         listener?.onSpeechError(message)
 
@@ -365,11 +384,11 @@ class VoiceEngine(
     }
 
     // -------------------------------------------------
-    // State handling
+    // State Management
     // -------------------------------------------------
 
     private fun updateStateAfterSpeech() {
-        if (currentState == EngineState.DESTROYED) return
+        if (destroyed) return
 
         val nextState = when {
             listeningRequested && !pausedForSpeech ->
@@ -386,22 +405,19 @@ class VoiceEngine(
     }
 
     private fun updateState(newState: EngineState) {
-        if (currentState == EngineState.DESTROYED) return
+        if (destroyed && newState != EngineState.DESTROYED) return
 
         if (currentState == newState) return
 
         currentState = newState
 
-        Log.d(TAG, "Voice state changed: $newState")
+        Log.d(TAG, "State changed: $newState")
+
         listener?.onVoiceStateChanged(newState)
     }
 
-    /**
-     * केवल Voice Engine की state बदलता है।
-     * Wake Word या wake/sleep detection यहाँ नहीं होता।
-     */
     fun setSleeping(sleeping: Boolean) {
-        if (currentState == EngineState.DESTROYED) return
+        if (destroyed) return
 
         if (sleeping) {
             updateState(EngineState.SLEEPING)
@@ -427,9 +443,11 @@ class VoiceEngine(
     // -------------------------------------------------
 
     fun release() {
-        if (currentState == EngineState.DESTROYED) return
+        if (destroyed) return
 
         Log.d(TAG, "Releasing VoiceEngine")
+
+        destroyed = true
 
         listeningRequested = false
         pausedForSpeech = false
@@ -441,7 +459,13 @@ class VoiceEngine(
         tts?.shutdown()
         tts = null
 
-        updateState(EngineState.DESTROYED)
+        languageManager.release()
+
+        currentState = EngineState.DESTROYED
+
+        listener?.onVoiceStateChanged(
+            EngineState.DESTROYED
+        )
 
         Log.d(TAG, "VoiceEngine released")
     }
