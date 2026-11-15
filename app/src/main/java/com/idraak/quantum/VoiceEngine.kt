@@ -63,17 +63,22 @@ class VoiceEngine(
     private var tts: TextToSpeech? = null
 
     private var ttsReady = false
+    private var languageReady = false
     private var destroyed = false
 
     private var desiredListening = false
+
     private var currentLanguage = "hi"
     private var currentGender = "Male"
 
     private var currentState = EngineState.INITIALIZING
+
     private var activeUtteranceId: String? = null
     private var pendingSpeech: String? = null
 
     init {
+        Log.d(TAG, "Creating TextToSpeech engine")
+
         tts = TextToSpeech(appContext, this)
     }
 
@@ -82,30 +87,49 @@ class VoiceEngine(
     // -------------------------------------------------
 
     override fun onInit(status: Int) {
+
         if (destroyed) return
 
         if (status != TextToSpeech.SUCCESS) {
-            reportError("Text-to-Speech initialization failed")
+
+            Log.e(TAG, "TTS initialization failed: $status")
+
+            reportError(
+                "Android Text-to-Speech initialization failed"
+            )
+
             return
         }
 
         ttsReady = true
 
+        Log.d(TAG, "TTS engine initialized successfully")
+
         setupTtsListener()
 
-        if (!applyTtsLanguage(currentLanguage)) {
-            return
+        languageReady = applyTtsLanguage(
+            currentLanguage
+        )
+
+        if (languageReady) {
+            applyVoiceGender()
         }
 
-        applyVoiceGender()
-
         setState(EngineState.READY)
+
         listener?.onEngineReady()
 
-        val pending = pendingSpeech
-        pendingSpeech = null
+        Log.d(
+            TAG,
+            "TTS ready=$ttsReady, languageReady=$languageReady, language=$currentLanguage"
+        )
 
-        if (!pending.isNullOrBlank()) {
+        val pending = pendingSpeech
+
+        if (!pending.isNullOrBlank() && languageReady) {
+
+            pendingSpeech = null
+
             speak(pending)
         }
     }
@@ -115,54 +139,120 @@ class VoiceEngine(
     // -------------------------------------------------
 
     fun setLanguage(language: String): Boolean {
+
         if (destroyed) return false
 
         val normalized = when (
             language.trim().lowercase(Locale.ROOT)
         ) {
+
             "hi", "hindi", "hi-in" -> "hi"
+
             "en", "english", "en-in", "en-us" -> "en"
+
             "ur", "urdu", "ur-pk" -> "ur"
+
             "ar", "arabic", "ar-sa" -> "ar"
-            else -> return false
+
+            else -> {
+                Log.e(TAG, "Unsupported language requested: $language")
+                return false
+            }
         }
 
         currentLanguage = normalized
 
-        if (!ttsReady) return true
-
-        val success = applyTtsLanguage(normalized)
-
-        if (success) {
-            applyVoiceGender()
+        if (!ttsReady) {
+            Log.d(TAG, "Language saved for TTS initialization: $normalized")
+            return true
         }
 
-        return success
+        languageReady = applyTtsLanguage(normalized)
+
+        if (!languageReady) {
+
+            val message =
+                "इस डिवाइस में ${languageName(normalized)} TTS आवाज़ उपलब्ध नहीं है। कृपया Android Text-to-Speech में इस भाषा का Voice Data इंस्टॉल करें।"
+
+            Log.e(
+                TAG,
+                "$message Locale=${getLocale(normalized).toLanguageTag()}"
+            )
+
+            reportError(message)
+
+            return false
+        }
+
+        applyVoiceGender()
+
+        Log.d(
+            TAG,
+            "TTS language selected: ${getLocale(normalized).toLanguageTag()}"
+        )
+
+        val pending = pendingSpeech
+
+        if (!pending.isNullOrBlank()) {
+
+            pendingSpeech = null
+
+            speak(pending)
+        }
+
+        return true
+    }
+
+    private fun languageName(language: String): String {
+
+        return when (language) {
+            "hi" -> "हिंदी"
+            "en" -> "English"
+            "ur" -> "اردو"
+            "ar" -> "العربية"
+            else -> language
+        }
     }
 
     private fun getLocale(language: String): Locale {
+
         return when (language) {
+
             "hi" -> Locale.forLanguageTag("hi-IN")
+
             "en" -> Locale.forLanguageTag("en-IN")
+
             "ur" -> Locale.forLanguageTag("ur-PK")
+
             "ar" -> Locale.forLanguageTag("ar-SA")
+
             else -> Locale.getDefault()
         }
     }
 
     private fun applyTtsLanguage(language: String): Boolean {
+
         val engine = tts ?: return false
 
         val locale = getLocale(language)
 
-        val result = engine.setLanguage(locale)
+        return try {
 
-        if (result < TextToSpeech.LANG_AVAILABLE) {
-            reportError("TTS language is unavailable: $language")
-            return false
+            val result = engine.setLanguage(locale)
+
+            Log.d(
+                TAG,
+                "setLanguage(${locale.toLanguageTag()}) result=$result"
+            )
+
+            result >= TextToSpeech.LANG_AVAILABLE
+
+        } catch (e: Exception) {
+
+            Log.e(TAG, "TTS language selection failed", e)
+
+            false
         }
-
-        return true
     }
 
     // -------------------------------------------------
@@ -170,6 +260,7 @@ class VoiceEngine(
     // -------------------------------------------------
 
     fun setVoiceGender(gender: String) {
+
         if (destroyed) return
 
         currentGender = if (
@@ -180,35 +271,74 @@ class VoiceEngine(
             "Male"
         }
 
-        if (ttsReady) {
+        if (ttsReady && languageReady) {
             applyVoiceGender()
         }
     }
 
     private fun applyVoiceGender() {
+
         val engine = tts ?: return
 
-        val languageCode = getLocale(currentLanguage).language
+        if (!languageReady) return
 
-        val voices = engine.voices?.filter {
-            it.locale.language == languageCode
-        } ?: emptyList()
+        try {
 
-        val selectedVoice = voices.firstOrNull {
-            if (currentGender == "Female") {
-                it.name.contains("female", ignoreCase = true)
-            } else {
-                it.name.contains("male", ignoreCase = true) &&
-                    !it.name.contains("female", ignoreCase = true)
-            }
-        } ?: voices.firstOrNull()
+            val locale = getLocale(currentLanguage)
 
-        if (selectedVoice != null) {
-            try {
+            val voices = engine.voices?.filter {
+
+                it.locale.language == locale.language
+
+            } ?: emptyList()
+
+            Log.d(
+                TAG,
+                "Available ${locale.language} TTS voices: ${voices.map { it.name }}"
+            )
+
+            val selectedVoice = voices.firstOrNull {
+
+                if (currentGender == "Female") {
+
+                    it.name.contains(
+                        "female",
+                        ignoreCase = true
+                    )
+
+                } else {
+
+                    it.name.contains(
+                        "male",
+                        ignoreCase = true
+                    ) && !it.name.contains(
+                        "female",
+                        ignoreCase = true
+                    )
+                }
+
+            } ?: voices.firstOrNull()
+
+            if (selectedVoice != null) {
+
                 engine.voice = selectedVoice
-            } catch (e: Exception) {
-                Log.w(TAG, "Voice selection failed", e)
+
+                Log.d(
+                    TAG,
+                    "Selected TTS voice: ${selectedVoice.name}"
+                )
+
+            } else {
+
+                Log.w(
+                    TAG,
+                    "No matching voice found for ${locale.language}"
+                )
             }
+
+        } catch (e: Exception) {
+
+            Log.e(TAG, "Voice selection failed", e)
         }
     }
 
@@ -217,6 +347,7 @@ class VoiceEngine(
     // -------------------------------------------------
 
     fun startListening(language: String? = null) {
+
         if (destroyed) return
 
         if (!language.isNullOrBlank()) {
@@ -226,13 +357,17 @@ class VoiceEngine(
         desiredListening = true
 
         try {
+
             voiceManager.start(
                 getLocale(currentLanguage).toLanguageTag()
             )
 
             setState(EngineState.LISTENING)
 
+            Log.d(TAG, "Voice recognition service start requested")
+
         } catch (e: Exception) {
+
             reportError(
                 e.message ?: "Unable to start voice service"
             )
@@ -240,14 +375,19 @@ class VoiceEngine(
     }
 
     fun pauseListening() {
+
         if (destroyed) return
 
         desiredListening = false
 
         try {
+
             voiceManager.pause()
+
             setState(EngineState.PAUSED)
+
         } catch (e: Exception) {
+
             reportError(
                 e.message ?: "Unable to pause voice service"
             )
@@ -255,18 +395,23 @@ class VoiceEngine(
     }
 
     fun resumeListening() {
+
         if (destroyed) return
 
         desiredListening = true
 
         try {
+
             voiceManager.resume(
                 getLocale(currentLanguage).toLanguageTag()
             )
 
             setState(EngineState.LISTENING)
 
+            Log.d(TAG, "Voice recognition service resume requested")
+
         } catch (e: Exception) {
+
             reportError(
                 e.message ?: "Unable to resume voice service"
             )
@@ -274,48 +419,61 @@ class VoiceEngine(
     }
 
     fun stopListening() {
+
         if (destroyed) return
 
         desiredListening = false
 
         try {
+
             voiceManager.stop()
+
             setState(EngineState.PAUSED)
+
         } catch (e: Exception) {
+
             reportError(
                 e.message ?: "Unable to stop voice service"
             )
         }
     }
 
-    /**
-     * Internal pause for TTS.
-     * It does not change desiredListening.
-     */
+    // -------------------------------------------------
+    // LISTENING COORDINATION
+    // -------------------------------------------------
+
     private fun pauseForSpeech() {
+
         if (destroyed || !desiredListening) return
 
         try {
+
             voiceManager.pause()
+
+            Log.d(TAG, "Listening paused for TTS")
+
         } catch (e: Exception) {
+
             Log.e(TAG, "Pause before speech failed", e)
         }
     }
 
-    /**
-     * Resume only when listening was previously requested.
-     */
     private fun resumeAfterSpeech() {
+
         if (destroyed || !desiredListening) return
 
         try {
+
             voiceManager.resume(
                 getLocale(currentLanguage).toLanguageTag()
             )
 
             setState(EngineState.LISTENING)
 
+            Log.d(TAG, "Listening resumed after TTS")
+
         } catch (e: Exception) {
+
             reportError(
                 e.message ?: "Unable to resume after speech"
             )
@@ -327,10 +485,29 @@ class VoiceEngine(
     // -------------------------------------------------
 
     fun speak(text: String) {
+
         if (destroyed || text.isBlank()) return
 
         if (!ttsReady) {
+
+            Log.d(TAG, "TTS not ready; speech queued")
+
             pendingSpeech = text
+
+            return
+        }
+
+        if (!languageReady) {
+
+            Log.e(
+                TAG,
+                "Speech blocked because selected TTS language is unavailable"
+            )
+
+            reportError(
+                "चुनी हुई भाषा की TTS आवाज़ उपलब्ध नहीं है। Android Text-to-Speech में Voice Data इंस्टॉल करें।"
+            )
+
             return
         }
 
@@ -339,33 +516,70 @@ class VoiceEngine(
         pauseForSpeech()
 
         val utteranceId = UUID.randomUUID().toString()
+
         activeUtteranceId = utteranceId
 
         setState(EngineState.SPEAKING)
 
-        val result = engine.speak(
-            text.trim(),
-            TextToSpeech.QUEUE_FLUSH,
-            Bundle(),
-            utteranceId
+        Log.d(
+            TAG,
+            "TTS speak requested. Utterance=$utteranceId, length=${text.length}"
         )
 
-        if (result == TextToSpeech.ERROR) {
+        try {
+
+            val result = engine.speak(
+                text.trim(),
+                TextToSpeech.QUEUE_FLUSH,
+                Bundle(),
+                utteranceId
+            )
+
+            Log.d(
+                TAG,
+                "TTS speak() returned: $result"
+            )
+
+            if (result == TextToSpeech.ERROR) {
+
+                activeUtteranceId = null
+
+                reportError(
+                    "Android Text-to-Speech could not start speaking"
+                )
+
+                resumeAfterSpeech()
+            }
+
+        } catch (e: Exception) {
+
             activeUtteranceId = null
-            reportError("Unable to speak requested text")
+
+            Log.e(TAG, "TTS speak request failed", e)
+
+            reportError(
+                e.message ?: "Text-to-Speech request failed"
+            )
+
             resumeAfterSpeech()
         }
     }
 
     fun stopSpeaking() {
+
         if (destroyed) return
 
         activeUtteranceId = null
         pendingSpeech = null
 
         try {
+
             tts?.stop()
+
+            Log.d(TAG, "TTS speech stopped")
+
         } catch (e: Exception) {
+
             Log.e(TAG, "TTS stop failed", e)
         }
 
@@ -377,27 +591,44 @@ class VoiceEngine(
     // -------------------------------------------------
 
     private fun setupTtsListener() {
+
         tts?.setOnUtteranceProgressListener(
+
             object : UtteranceProgressListener() {
 
                 override fun onStart(utteranceId: String?) {
+
                     mainHandler.post {
+
                         if (
                             destroyed ||
                             utteranceId != activeUtteranceId
                         ) return@post
 
+                        Log.d(
+                            TAG,
+                            "TTS playback started: $utteranceId"
+                        )
+
                         setState(EngineState.SPEAKING)
+
                         listener?.onSpeechStarted()
                     }
                 }
 
                 override fun onDone(utteranceId: String?) {
+
                     mainHandler.post {
+
                         if (
                             destroyed ||
                             utteranceId != activeUtteranceId
                         ) return@post
+
+                        Log.d(
+                            TAG,
+                            "TTS playback completed: $utteranceId"
+                        )
 
                         activeUtteranceId = null
 
@@ -409,7 +640,9 @@ class VoiceEngine(
 
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?) {
+
                     mainHandler.post {
+
                         handleTtsError(
                             utteranceId,
                             "Text-to-Speech failed"
@@ -421,7 +654,9 @@ class VoiceEngine(
                     utteranceId: String?,
                     errorCode: Int
                 ) {
+
                     mainHandler.post {
+
                         handleTtsError(
                             utteranceId,
                             "Text-to-Speech error: $errorCode"
@@ -433,17 +668,27 @@ class VoiceEngine(
                     utteranceId: String?,
                     interrupted: Boolean
                 ) {
+
                     mainHandler.post {
+
                         if (
                             destroyed ||
                             utteranceId != activeUtteranceId
                         ) return@post
 
+                        Log.d(
+                            TAG,
+                            "TTS playback stopped: interrupted=$interrupted"
+                        )
+
                         activeUtteranceId = null
 
                         if (desiredListening) {
+
                             resumeAfterSpeech()
+
                         } else {
+
                             setState(EngineState.PAUSED)
                         }
                     }
@@ -456,6 +701,7 @@ class VoiceEngine(
         utteranceId: String?,
         message: String
     ) {
+
         if (
             destroyed ||
             utteranceId != activeUtteranceId
@@ -463,7 +709,10 @@ class VoiceEngine(
 
         activeUtteranceId = null
 
+        Log.e(TAG, message)
+
         reportError(message)
+
         resumeAfterSpeech()
     }
 
@@ -472,11 +721,15 @@ class VoiceEngine(
     // -------------------------------------------------
 
     fun setSleeping(sleeping: Boolean) {
+
         if (destroyed) return
 
         if (sleeping) {
+
             setState(EngineState.SLEEPING)
+
         } else {
+
             setState(
                 if (desiredListening) {
                     EngineState.LISTENING
@@ -503,11 +756,16 @@ class VoiceEngine(
         return ttsReady
     }
 
+    fun isLanguageReady(): Boolean {
+        return languageReady
+    }
+
     fun isListeningRequested(): Boolean {
         return desiredListening
     }
 
     private fun setState(state: EngineState) {
+
         if (destroyed) return
 
         currentState = state
@@ -518,6 +776,7 @@ class VoiceEngine(
     }
 
     private fun reportError(message: String) {
+
         if (destroyed) return
 
         Log.e(TAG, message)
@@ -532,6 +791,7 @@ class VoiceEngine(
     // -------------------------------------------------
 
     fun release() {
+
         if (destroyed) return
 
         destroyed = true
@@ -543,14 +803,20 @@ class VoiceEngine(
         mainHandler.removeCallbacksAndMessages(null)
 
         try {
+
             tts?.stop()
             tts?.shutdown()
+
         } catch (e: Exception) {
+
             Log.e(TAG, "TTS release failed", e)
         }
 
         tts = null
+
         ttsReady = false
+        languageReady = false
+
         currentState = EngineState.DESTROYED
 
         Log.d(TAG, "Voice engine released")
