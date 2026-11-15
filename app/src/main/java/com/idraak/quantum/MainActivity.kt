@@ -15,11 +15,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import android.view.Gravity
-import android.view.View
 import android.view.WindowManager
 import android.widget.ArrayAdapter
 import android.widget.EditText
@@ -35,7 +32,7 @@ import java.net.URLEncoder
 import java.util.Locale
 import java.util.concurrent.Executors
 
-class MainActivity : Activity(), TextToSpeech.OnInitListener {
+class MainActivity : Activity() {
 
     companion object {
         private const val TAG = "IDRAAK_MAIN"
@@ -44,8 +41,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private lateinit var homeView: LauncherHomeView
-    private lateinit var tts: TextToSpeech
     private lateinit var voiceManager: VoiceManager
+    private lateinit var voiceEngine: VoiceEngine
 
     private lateinit var wakeWordController: WakeWordController
     private lateinit var softwareController: SoftwareController
@@ -64,14 +61,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private var permissionGranted = false
     private var receiverRegistered = false
     private var voiceServiceStarted = false
-    private var ttsReady = false
     private var speaking = false
-    private var pendingSpeech: String? = null
 
     private var lastVoiceError: String? = null
-
-    private var utteranceSequence = 0
-    private var activeUtteranceId: String? = null
 
     private val wakeAcknowledgement = Runnable {
         if (
@@ -230,7 +222,75 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         buildInterface()
         registerVoiceReceiver()
 
-        tts = TextToSpeech(this, this)
+        // VoiceEngine owns TextToSpeech.
+        // VoiceManager continues to control the foreground service.
+        voiceEngine = VoiceEngine(
+            this,
+            voiceManager,
+            object : VoiceEngine.Listener {
+
+                override fun onEngineReady() {
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+
+                        voiceEngine.setLanguage(language)
+                        voiceEngine.setVoiceGender(gender)
+
+                        Log.d(TAG, "VoiceEngine ready")
+                    }
+                }
+
+                override fun onSpeechStarted() {
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+
+                        speaking = true
+
+                        homeView.setVoiceStatus(false)
+                        homeView.setLiveStatus(
+                            "IDRAAK • SPEAKING"
+                        )
+                    }
+                }
+
+                override fun onSpeechCompleted() {
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+
+                        speaking = false
+
+                        wakeWordController.finishProcessing()
+
+                        updateVoiceInterfaceAfterSpeech()
+                    }
+                }
+
+                override fun onSpeechError(message: String) {
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+
+                        speaking = false
+                        lastVoiceError = message
+
+                        Log.e(TAG, "VoiceEngine TTS error: $message")
+
+                        wakeWordController.finishProcessing()
+
+                        homeView.setLiveStatus(
+                            "VOICE OUTPUT ERROR • ${message.take(45)}"
+                        )
+
+                        homeView.setVoiceStatus(false)
+                    }
+                }
+
+                override fun onVoiceStateChanged(
+                    state: VoiceEngine.EngineState
+                ) {
+                    Log.d(TAG, "VoiceEngine state: $state")
+                }
+            }
+        )
 
         checkAudioPermission()
     }
@@ -279,7 +339,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 openSettings()
             },
             onVoiceClick = {
-                // Voice activation wake word से नियंत्रित होगी।
+                // Voice activation is controlled by the wake word.
             }
         )
 
@@ -294,12 +354,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         setContentView(homeView)
 
         window.decorView.systemUiVisibility =
-            View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or
+                android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
     }
 
     // -------------------------------------------------
@@ -443,7 +503,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     // -------------------------------------------------
-    // VOICE MANAGER INTEGRATION
+    // VOICE ENGINE INTEGRATION
     // -------------------------------------------------
 
     private fun startVoiceService() {
@@ -454,7 +514,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
             lastVoiceError = null
 
-            voiceManager.start(
+            voiceEngine.startListening(
                 selectedLocale().toLanguageTag()
             )
 
@@ -468,27 +528,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
             voiceServiceStarted = false
 
-            Log.e(TAG, "Voice service start failed", e)
+            Log.e(TAG, "VoiceEngine start failed", e)
 
             homeView.setVoiceStatus(false)
             homeView.setLiveStatus(
                 "VOICE SERVICE ERROR"
-            )
-        }
-    }
-
-    private fun pauseVoiceService() {
-
-        try {
-
-            voiceManager.pause()
-
-        } catch (e: Exception) {
-
-            Log.e(TAG, "Voice pause failed", e)
-
-            homeView.setLiveStatus(
-                "VOICE PAUSE ERROR"
             )
         }
     }
@@ -501,9 +545,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
             lastVoiceError = null
 
-            voiceManager.resume(
-                selectedLocale().toLanguageTag()
-            )
+            voiceEngine.resumeListening()
 
             voiceServiceStarted = true
 
@@ -511,7 +553,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
             voiceServiceStarted = false
 
-            Log.e(TAG, "Voice resume failed", e)
+            Log.e(TAG, "VoiceEngine resume failed", e)
 
             homeView.setVoiceStatus(false)
             homeView.setLiveStatus(
@@ -523,9 +565,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private fun stopVoiceService() {
 
         try {
-            voiceManager.stop()
+            voiceEngine.stopListening()
         } catch (e: Exception) {
-            Log.e(TAG, "Voice stop failed", e)
+            Log.e(TAG, "VoiceEngine stop failed", e)
         }
 
         voiceServiceStarted = false
@@ -599,10 +641,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                 if (granted) {
 
-                    hardwareController.setFlashlight(true)
+                    val done =
+                        hardwareController.setFlashlight(true)
 
                     speak(
-                        "फ्लैशलाइट चालू कर रहा हूँ।"
+                        if (done) {
+                            "फ्लैशलाइट चालू कर रहा हूँ।"
+                        } else {
+                            "फ्लैशलाइट चालू नहीं हो सकी।"
+                        }
                     )
 
                 } else {
@@ -1415,7 +1462,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     // -------------------------------------------------
-    // TEXT TO SPEECH
+    // VOICE OUTPUT
     // -------------------------------------------------
 
     private fun selectedLocale(): Locale {
@@ -1429,202 +1476,47 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
     }
 
-    override fun onInit(status: Int) {
-
-        if (status == TextToSpeech.SUCCESS) {
-
-            ttsReady = true
-
-            applyVoice()
-            setupTtsListener()
-
-            pendingSpeech?.let {
-
-                pendingSpeech = null
-
-                speak(it)
-            }
-
-        } else {
-
-            ttsReady = false
-
-            Log.e(TAG, "TextToSpeech initialization failed")
-        }
-    }
-
-    private fun applyVoice() {
-
-        if (!ttsReady) return
-
-        val locale = selectedLocale()
-
-        val availability =
-            tts.isLanguageAvailable(locale)
-
-        if (availability >= TextToSpeech.LANG_AVAILABLE) {
-            tts.language = locale
-        } else {
-            tts.language = Locale.US
-        }
-
-        val voices = tts.voices?.filter {
-            it.locale.language == locale.language
-        } ?: emptyList()
-
-        val selectedVoice = voices.firstOrNull {
-
-            if (gender == "Female") {
-                it.name.contains("female", true)
-            } else {
-                it.name.contains("male", true) &&
-                    !it.name.contains("female", true)
-            }
-        } ?: voices.firstOrNull()
-
-        if (selectedVoice != null) {
-            tts.voice = selectedVoice
-        }
-    }
-
     private fun speak(text: String) {
 
         if (text.isBlank()) return
 
-        if (!ttsReady) {
-            pendingSpeech = text
+        if (!::voiceEngine.isInitialized) {
+            Log.w(TAG, "VoiceEngine is not initialized; speech skipped")
             return
         }
 
         handler.removeCallbacks(wakeAcknowledgement)
 
-        speaking = true
-
-        pauseVoiceService()
-
-        homeView.setLiveStatus(
-            "IDRAAK • SPEAKING"
-        )
-
-        homeView.setVoiceStatus(false)
-
-        applyVoice()
-
-        val utteranceId =
-            "idraak_response_${++utteranceSequence}"
-
-        activeUtteranceId = utteranceId
-
-        val result = tts.speak(
-            text,
-            TextToSpeech.QUEUE_FLUSH,
-            null,
-            utteranceId
-        )
-
-        if (result == TextToSpeech.ERROR) {
-
-            speaking = false
-            activeUtteranceId = null
-
-            wakeWordController.finishProcessing()
-
-            if (!isFinishing && !isDestroyed) {
-                resumeVoiceService()
-            }
-        }
+        voiceEngine.speak(text)
     }
 
-    private fun setupTtsListener() {
+    private fun updateVoiceInterfaceAfterSpeech() {
 
-        tts.setOnUtteranceProgressListener(
-            object : UtteranceProgressListener() {
+        if (isFinishing || isDestroyed) return
 
-                override fun onStart(
-                    utteranceId: String?
-                ) {
-                }
+        when (wakeWordController.getState()) {
 
-                override fun onDone(
-                    utteranceId: String?
-                ) {
-
-                    runOnUiThread {
-
-                        if (
-                            utteranceId != activeUtteranceId
-                        ) {
-                            return@runOnUiThread
-                        }
-
-                        activeUtteranceId = null
-                        speaking = false
-
-                        wakeWordController.finishProcessing()
-
-                        if (!isFinishing && !isDestroyed) {
-
-                            homeView.setLiveStatus(
-                                if (wakeWordController.isActive()) {
-                                    "IDRAAK ACTIVE"
-                                } else {
-                                    "IDRAAK STANDBY"
-                                }
-                            )
-
-                            resumeVoiceService()
-                        }
-                    }
-                }
-
-                override fun onError(
-                    utteranceId: String?
-                ) {
-
-                    runOnUiThread {
-
-                        if (
-                            utteranceId != activeUtteranceId
-                        ) {
-                            return@runOnUiThread
-                        }
-
-                        activeUtteranceId = null
-                        speaking = false
-
-                        wakeWordController.finishProcessing()
-
-                        if (!isFinishing && !isDestroyed) {
-                            resumeVoiceService()
-                        }
-                    }
-                }
-
-                override fun onStop(
-                    utteranceId: String?,
-                    interrupted: Boolean
-                ) {
-
-                    runOnUiThread {
-
-                        if (
-                            utteranceId != activeUtteranceId
-                        ) {
-                            return@runOnUiThread
-                        }
-
-                        activeUtteranceId = null
-                        speaking = false
-
-                        wakeWordController.finishProcessing()
-
-                        if (!isFinishing && !isDestroyed) {
-                            resumeVoiceService()
-                        }
-                    }
-                }
+            WakeWordController.VoiceState.SLEEPING -> {
+                homeView.setLiveStatus(
+                    "IDRAAK STANDBY"
+                )
+                homeView.setVoiceStatus(false)
             }
-        )
+
+            WakeWordController.VoiceState.ACTIVE -> {
+                homeView.setLiveStatus(
+                    "IDRAAK ACTIVE"
+                )
+                homeView.setVoiceStatus(true)
+            }
+
+            WakeWordController.VoiceState.PROCESSING -> {
+                homeView.setLiveStatus(
+                    "IDRAAK THINKING"
+                )
+                homeView.setVoiceStatus(true)
+            }
+        }
     }
 
     // -------------------------------------------------
@@ -1739,7 +1631,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
                 saveSettings()
 
-                applyVoice()
+                voiceEngine.setLanguage(language)
+                voiceEngine.setVoiceGender(gender)
 
                 homeView.setAvatarGender(gender)
 
@@ -1770,11 +1663,17 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 Manifest.permission.RECORD_AUDIO
             ) == PackageManager.PERMISSION_GRANTED
 
-        if (permissionGranted && !voiceServiceStarted) {
+        if (
+            permissionGranted &&
+            ::voiceEngine.isInitialized &&
+            !voiceServiceStarted
+        ) {
             startVoiceService()
         }
 
-        homeView.reloadApps()
+        if (::homeView.isInitialized) {
+            homeView.reloadApps()
+        }
     }
 
     override fun onDestroy() {
@@ -1792,20 +1691,21 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             receiverRegistered = false
         }
 
-        try {
-            hardwareController.release()
-        } catch (e: Exception) {
-            Log.w(TAG, "Hardware release failed", e)
+        if (::hardwareController.isInitialized) {
+            try {
+                hardwareController.release()
+            } catch (e: Exception) {
+                Log.w(TAG, "Hardware release failed", e)
+            }
         }
 
-        if (::tts.isInitialized) {
-            tts.stop()
-            tts.shutdown()
+        if (::voiceEngine.isInitialized) {
+            voiceEngine.release()
         }
 
         executor.shutdownNow()
 
-        // Foreground Service को यहाँ जानबूझकर बंद नहीं किया गया है।
+        // Foreground Service is intentionally not stopped here.
 
         super.onDestroy()
     }
