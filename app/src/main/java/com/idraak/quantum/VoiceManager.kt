@@ -1,113 +1,138 @@
+
 package com.idraak.quantum
 
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 
 /**
+ * IDRAAK Voice Manager
+ *
+ * जिम्मेदारी:
+ * - Voice service शुरू करना
+ * - Listening pause करना
+ * - Listening resume करना
+ * - Voice service बंद करना
+ *
+ * SpeechRecognizer का निर्माण और नियंत्रण
+ * VoiceForegroundService की जिम्मेदारी है।
+ */
+class VoiceManager(context: Context) {
 
-- IDRAAK Voice Manager
+    private val appContext = context.applicationContext
 
-- 
+    companion object {
+        private const val TAG = "IDRAAK_VOICE_MANAGER"
+    }
 
-- जिम्मेदारी:
+    private fun serviceIntent(
+        action: String? = null,
+        language: String? = null
+    ): Intent {
+        return Intent(
+            appContext,
+            VoiceForegroundService::class.java
+        ).apply {
+            if (action != null) {
+                this.action = action
+            }
 
-- - Voice service शुरू करना
+            if (!language.isNullOrBlank()) {
+                putExtra(
+                    VoiceForegroundService.EXTRA_LANGUAGE,
+                    language
+                )
+            }
+        }
+    }
 
-- - Listening pause करना
-
-- - Listening resume करना
-
-- - Voice service बंद करना
-
-- 
-
-- SpeechRecognizer का निर्माण और नियंत्रण
-
-- VoiceForegroundService की जिम्मेदारी है।
-  */
-  class VoiceManager(context: Context) {
-
-  private val appContext = context.applicationContext
-
-  private fun serviceIntent(
-  action: String? = null,
-  language: String? = null
-  ): Intent {
-  return Intent(
-  appContext,
-  VoiceForegroundService::class.java
-  ).apply {
-  if (action != null) {
-  this.action = action
-  }
-
-  if (!language.isNullOrBlank()) {  
-           putExtra(  
-               VoiceForegroundService.EXTRA_LANGUAGE,  
-               language  
-           )  
-       }  
-   }
-
-  }
-
-  /**
-
-  - पहली बार Voice Service शुरू करता है।
-    */
+    /**
+     * पहली बार Voice Service शुरू करता है।
+     */
     fun start(language: String) {
-    val intent = serviceIntent(
-    language = language
-    )
+        val intent = serviceIntent(
+            language = language
+        )
 
-    startForegroundServiceSafely(intent)
+        startForegroundServiceSafely(intent)
     }
 
-  /**
-
-  - Recognition रोकता है, लेकिन foreground service
-
-  - को बंद नहीं करता।
-    */
+    /**
+     * Recognition रोकता है, लेकिन foreground service
+     * को बंद नहीं करता।
+     */
     fun pause() {
-    val intent = serviceIntent(
-    action = VoiceForegroundService.ACTION_PAUSE
-    )
+        val intent = serviceIntent(
+            action = VoiceForegroundService.ACTION_PAUSE
+        )
 
-    appContext.startService(intent)
+        startServiceSafely(intent)
     }
 
-  /**
-
-  - Recognition दोबारा शुरू करता है।
-    */
+    /**
+     * Recognition दोबारा शुरू करता है।
+     */
     fun resume(language: String) {
-    val intent = serviceIntent(
-    action = VoiceForegroundService.ACTION_RESUME,
-    language = language
-    )
+        val intent = serviceIntent(
+            action = VoiceForegroundService.ACTION_RESUME,
+            language = language
+        )
 
-    startForegroundServiceSafely(intent)
+        startForegroundServiceSafely(intent)
     }
 
-  /**
-
-  - Voice Service पूरी तरह बंद करता है।
-    */
+    /**
+     * Voice Service पूरी तरह बंद करता है।
+     */
     fun stop() {
-    val intent = serviceIntent(
-    action = VoiceForegroundService.ACTION_STOP
-    )
+        val intent = serviceIntent(
+            action = VoiceForegroundService.ACTION_STOP
+        )
 
-    appContext.startService(intent)
+        startServiceSafely(intent)
     }
 
-  private fun startForegroundServiceSafely(intent: Intent) {
-  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-  appContext.startForegroundService(intent)
-  } else {
-  appContext.startService(intent)
-  }
-  }
-  }
+    /**
+     * Foreground service को Android version के अनुसार शुरू करता है।
+     */
+    private fun startForegroundServiceSafely(intent: Intent) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                appContext.startForegroundService(intent)
+            } else {
+                appContext.startService(intent)
+            }
+
+            Log.d(TAG, "Foreground service command sent: ${intent.action ?: "START"}")
+
+        } catch (e: Exception) {
+            Log.e(
+                TAG,
+                "Could not send foreground service command: ${intent.action ?: "START"}",
+                e
+            )
+        }
+    }
+
+    /**
+     * पहले से चल रही service को सामान्य command भेजता है।
+     */
+    private fun startServiceSafely(intent: Intent) {
+        try {
+            appContext.startService(intent)
+
+            Log.d(
+                TAG,
+                "Service command sent: ${intent.action}"
+            )
+
+        } catch (e: Exception) {
+            Log.e(
+                TAG,
+                "Could not send service command: ${intent.action}",
+                e
+            )
+        }
+    }
+}
