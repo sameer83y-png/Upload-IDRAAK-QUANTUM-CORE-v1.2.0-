@@ -1,13 +1,14 @@
-
 package com.idraak.quantum
 
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import android.view.WindowManager
+import kotlin.math.roundToInt
+import java.util.Locale
 
 class SystemController(context: Context) {
 
@@ -16,18 +17,25 @@ class SystemController(context: Context) {
     private val audioManager =
         appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
-    /**
-     * Set media volume from 0 to 100.
-     */
+    private val notificationManager =
+        appContext.getSystemService(Context.NOTIFICATION_SERVICE)
+                as NotificationManager
+
+    // -------------------------------------------------
+    // MEDIA VOLUME
+    // -------------------------------------------------
+
     fun setMediaVolume(percent: Int): Boolean {
         return try {
             val maxVolume = audioManager.getStreamMaxVolume(
                 AudioManager.STREAM_MUSIC
             )
 
+            if (maxVolume <= 0) return false
+
             val volume = (
                 maxVolume * percent.coerceIn(0, 100) / 100f
-            ).toInt()
+            ).roundToInt()
 
             audioManager.setStreamVolume(
                 AudioManager.STREAM_MUSIC,
@@ -35,7 +43,10 @@ class SystemController(context: Context) {
                 0
             )
 
-            true
+            audioManager.getStreamVolume(
+                AudioManager.STREAM_MUSIC
+            ) == volume
+
         } catch (_: Exception) {
             false
         }
@@ -43,12 +54,20 @@ class SystemController(context: Context) {
 
     fun increaseMediaVolume(): Boolean {
         return try {
+            val before = audioManager.getStreamVolume(
+                AudioManager.STREAM_MUSIC
+            )
+
             audioManager.adjustStreamVolume(
                 AudioManager.STREAM_MUSIC,
                 AudioManager.ADJUST_RAISE,
                 0
             )
-            true
+
+            audioManager.getStreamVolume(
+                AudioManager.STREAM_MUSIC
+            ) > before
+
         } catch (_: Exception) {
             false
         }
@@ -56,12 +75,20 @@ class SystemController(context: Context) {
 
     fun decreaseMediaVolume(): Boolean {
         return try {
+            val before = audioManager.getStreamVolume(
+                AudioManager.STREAM_MUSIC
+            )
+
             audioManager.adjustStreamVolume(
                 AudioManager.STREAM_MUSIC,
                 AudioManager.ADJUST_LOWER,
                 0
             )
-            true
+
+            audioManager.getStreamVolume(
+                AudioManager.STREAM_MUSIC
+            ) < before
+
         } catch (_: Exception) {
             false
         }
@@ -71,18 +98,42 @@ class SystemController(context: Context) {
         return setMediaVolume(0)
     }
 
-    /**
-     * Set notification/ring volume from 0 to 100.
-     */
+    fun getMediaVolumePercent(): Int? {
+        return try {
+            val maxVolume = audioManager.getStreamMaxVolume(
+                AudioManager.STREAM_MUSIC
+            )
+
+            if (maxVolume <= 0) return null
+
+            val currentVolume = audioManager.getStreamVolume(
+                AudioManager.STREAM_MUSIC
+            )
+
+            (currentVolume * 100f / maxVolume)
+                .roundToInt()
+                .coerceIn(0, 100)
+
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    // -------------------------------------------------
+    // RING VOLUME
+    // -------------------------------------------------
+
     fun setRingVolume(percent: Int): Boolean {
         return try {
             val maxVolume = audioManager.getStreamMaxVolume(
                 AudioManager.STREAM_RING
             )
 
+            if (maxVolume <= 0) return false
+
             val volume = (
                 maxVolume * percent.coerceIn(0, 100) / 100f
-            ).toInt()
+            ).roundToInt()
 
             audioManager.setStreamVolume(
                 AudioManager.STREAM_RING,
@@ -90,7 +141,63 @@ class SystemController(context: Context) {
                 0
             )
 
-            true
+            audioManager.getStreamVolume(
+                AudioManager.STREAM_RING
+            ) == volume
+
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun getRingVolumePercent(): Int? {
+        return try {
+            val maxVolume = audioManager.getStreamMaxVolume(
+                AudioManager.STREAM_RING
+            )
+
+            if (maxVolume <= 0) return null
+
+            val currentVolume = audioManager.getStreamVolume(
+                AudioManager.STREAM_RING
+            )
+
+            (currentVolume * 100f / maxVolume)
+                .roundToInt()
+                .coerceIn(0, 100)
+
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    // -------------------------------------------------
+    // RINGER MODE AND DND ACCESS
+    // -------------------------------------------------
+
+    fun canChangeRingerMode(): Boolean {
+        return try {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                notificationManager.isNotificationPolicyAccessGranted
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun openNotificationPolicyAccessSettings(): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val intent = Intent(
+                    Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS
+                ).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+
+                appContext.startActivity(intent)
+                true
+            } else {
+                false
+            }
         } catch (_: Exception) {
             false
         }
@@ -98,43 +205,60 @@ class SystemController(context: Context) {
 
     fun setRingerMode(mode: String): Boolean {
         return try {
-            val ringerMode = when (mode.lowercase()) {
+            val normalizedMode = mode.trim().lowercase(Locale.ROOT)
+
+            val ringerMode = when (normalizedMode) {
                 "silent", "mute" ->
                     AudioManager.RINGER_MODE_SILENT
 
-                "vibrate" ->
+                "vibrate", "vibration" ->
                     AudioManager.RINGER_MODE_VIBRATE
 
-                "normal", "ring" ->
+                "normal", "ring", "loud" ->
                     AudioManager.RINGER_MODE_NORMAL
 
                 else -> return false
             }
 
+            if (
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                ringerMode != AudioManager.RINGER_MODE_NORMAL &&
+                !canChangeRingerMode()
+            ) {
+                return false
+            }
+
             audioManager.ringerMode = ringerMode
-            true
+
+            audioManager.ringerMode == ringerMode
+
         } catch (_: Exception) {
             false
         }
     }
 
     fun getRingerMode(): String {
-        return when (audioManager.ringerMode) {
-            AudioManager.RINGER_MODE_SILENT -> "silent"
-            AudioManager.RINGER_MODE_VIBRATE -> "vibrate"
-            else -> "normal"
+        return try {
+            when (audioManager.ringerMode) {
+                AudioManager.RINGER_MODE_SILENT -> "silent"
+                AudioManager.RINGER_MODE_VIBRATE -> "vibrate"
+                else -> "normal"
+            }
+        } catch (_: Exception) {
+            "unknown"
         }
     }
 
-    /**
-     * Change screen brightness.
-     * Android requires the user to grant Modify System Settings access.
-     */
+    // -------------------------------------------------
+    // SYSTEM BRIGHTNESS
+    // -------------------------------------------------
+
     fun canModifySystemSettings(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.System.canWrite(appContext)
-        } else {
-            true
+        return try {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                Settings.System.canWrite(appContext)
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -149,9 +273,10 @@ class SystemController(context: Context) {
                 }
 
                 appContext.startActivity(intent)
+                true
+            } else {
+                false
             }
-
-            true
         } catch (_: Exception) {
             false
         }
@@ -165,13 +290,20 @@ class SystemController(context: Context) {
 
             val brightness = (
                 255 * percent.coerceIn(0, 100) / 100f
-            ).toInt()
+            ).roundToInt().coerceIn(0, 255)
 
-            Settings.System.putInt(
+            val updated = Settings.System.putInt(
                 appContext.contentResolver,
                 Settings.System.SCREEN_BRIGHTNESS,
                 brightness
             )
+
+            if (!updated) return false
+
+            getBrightness() == (
+                brightness * 100f / 255f
+            ).roundToInt()
+
         } catch (_: Exception) {
             false
         }
@@ -184,16 +316,19 @@ class SystemController(context: Context) {
                 Settings.System.SCREEN_BRIGHTNESS
             )
 
-            (brightness * 100) / 255
+            (brightness.coerceIn(0, 255) * 100f / 255f)
+                .roundToInt()
+                .coerceIn(0, 100)
+
         } catch (_: Exception) {
             null
         }
     }
 
-    /**
-     * Open Android's Internet/Wi-Fi controls.
-     * Direct Wi-Fi switching is restricted on newer Android versions.
-     */
+    // -------------------------------------------------
+    // ANDROID SETTINGS SCREENS
+    // -------------------------------------------------
+
     fun openInternetSettings(): Boolean {
         return openSettingsIntent(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -260,6 +395,7 @@ class SystemController(context: Context) {
 
             appContext.startActivity(intent)
             true
+
         } catch (_: Exception) {
             false
         }
