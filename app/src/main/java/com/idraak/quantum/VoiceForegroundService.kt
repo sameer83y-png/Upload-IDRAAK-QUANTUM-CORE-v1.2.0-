@@ -18,6 +18,7 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.util.Log
 import java.util.Locale
 
 class VoiceForegroundService : Service() {
@@ -35,8 +36,6 @@ class VoiceForegroundService : Service() {
     private var activeLanguage = "hi-IN"
     private var retryDelay = 1500L
 
-    // हर recognizer instance की अलग पहचान।
-    // पुराने instance के callbacks नए session को प्रभावित नहीं करेंगे।
     private var recognizerGeneration = 0
 
     private val prefs by lazy {
@@ -44,6 +43,8 @@ class VoiceForegroundService : Service() {
     }
 
     companion object {
+        private const val TAG = "IDRAAK_VOICE"
+
         const val CHANNEL = "idraak_voice_channel"
 
         const val ACTION_STOP =
@@ -61,10 +62,17 @@ class VoiceForegroundService : Service() {
         const val ACTION_RESUME =
             "com.idraak.quantum.RESUME_VOICE"
 
+        // नया diagnostic broadcast
+        const val ACTION_ERROR =
+            "com.idraak.quantum.VOICE_ERROR"
+
         const val EXTRA_TEXT = "recognized_text"
         const val EXTRA_LANGUAGE = "idraak_language"
         const val EXTRA_RUNNING = "voice_running"
         const val EXTRA_USER_STOPPED = "voice_user_stopped"
+
+        const val EXTRA_ERROR_CODE = "voice_error_code"
+        const val EXTRA_ERROR_MESSAGE = "voice_error_message"
 
         private const val NOTIFICATION_ID = 42
         private const val PREF_ENABLED = "voice_enabled"
@@ -75,6 +83,7 @@ class VoiceForegroundService : Service() {
         restartScheduled = false
 
         if (listening && !sessionInProgress) {
+            Log.d(TAG, "Restarting speech recognition session")
             startRecognitionSession()
         }
     }
@@ -84,6 +93,8 @@ class VoiceForegroundService : Service() {
 
         manager = getSystemService(NotificationManager::class.java)
         createChannel()
+
+        Log.d(TAG, "VoiceForegroundService created")
     }
 
     private fun createChannel() {
@@ -157,6 +168,8 @@ class VoiceForegroundService : Service() {
                 notification()
             )
         }
+
+        Log.d(TAG, "Foreground service started")
     }
 
     private fun sendState(
@@ -169,10 +182,34 @@ class VoiceForegroundService : Service() {
             .putExtra(EXTRA_USER_STOPPED, userStopped)
 
         sendBroadcast(intent)
+
+        Log.d(
+            TAG,
+            "Voice state: running=$running, userStopped=$userStopped"
+        )
+    }
+
+    private fun sendError(
+        code: Int,
+        message: String
+    ) {
+        Log.e(TAG, "Voice error: code=$code, message=$message")
+
+        val intent = Intent(ACTION_ERROR)
+            .setPackage(packageName)
+            .putExtra(EXTRA_ERROR_CODE, code)
+            .putExtra(EXTRA_ERROR_MESSAGE, message)
+
+        sendBroadcast(intent)
+
+        // पुराने receiver के लिए भी failure state भेजें।
+        sendState(false, false)
     }
 
     private fun sendRecognizedText(text: String) {
         if (text.isBlank()) return
+
+        Log.i(TAG, "Speech recognized: $text")
 
         val intent = Intent(ACTION_RESULT)
             .setPackage(packageName)
@@ -186,6 +223,11 @@ class VoiceForegroundService : Service() {
         flags: Int,
         startId: Int
     ): Int {
+
+        Log.d(
+            TAG,
+            "onStartCommand: action=${intent?.action ?: "START"}"
+        )
 
         when (intent?.action) {
 
@@ -202,6 +244,7 @@ class VoiceForegroundService : Service() {
             }
 
             ACTION_PAUSE -> {
+                Log.d(TAG, "Pause requested")
                 pauseListening()
                 return START_STICKY
             }
@@ -211,7 +254,10 @@ class VoiceForegroundService : Service() {
                     checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
                     PackageManager.PERMISSION_GRANTED
                 ) {
-                    sendState(false, false)
+                    sendError(
+                        -1,
+                        "RECORD_AUDIO permission is not granted"
+                    )
                     return START_NOT_STICKY
                 }
 
@@ -236,10 +282,16 @@ class VoiceForegroundService : Service() {
 
                     resumeListening()
 
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    Log.e(TAG, "Resume failed", e)
+
                     stopListening()
-                    sendState(false, false)
+                    sendError(
+                        -2,
+                        "Resume failed: ${e.message ?: e.javaClass.simpleName}"
+                    )
                     stopSelf()
+
                     return START_NOT_STICKY
                 }
 
@@ -251,6 +303,7 @@ class VoiceForegroundService : Service() {
             intent == null &&
             !prefs.getBoolean(PREF_ENABLED, false)
         ) {
+            Log.d(TAG, "Service restart ignored: voice is disabled")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -263,7 +316,10 @@ class VoiceForegroundService : Service() {
                 .putBoolean(PREF_ENABLED, false)
                 .apply()
 
-            sendState(false, false)
+            sendError(
+                -1,
+                "RECORD_AUDIO permission is not granted"
+            )
             stopSelf()
 
             return START_NOT_STICKY
@@ -290,16 +346,24 @@ class VoiceForegroundService : Service() {
                 .apply()
 
             retryDelay = 1500L
+
+            Log.d(TAG, "Starting recognition with language=$activeLanguage")
+
             resumeListening()
 
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e(TAG, "Service startup failed", e)
+
             stopListening()
 
             prefs.edit()
                 .putBoolean(PREF_ENABLED, false)
                 .apply()
 
-            sendState(false, false)
+            sendError(
+                -2,
+                "Service startup failed: ${e.message ?: e.javaClass.simpleName}"
+            )
             stopSelf()
 
             return START_NOT_STICKY
@@ -343,16 +407,64 @@ class VoiceForegroundService : Service() {
         }
     }
 
+    private fun speechErrorName(error: Int): String {
+        return when (error) {
+            SpeechRecognizer.ERROR_AUDIO ->
+                "ERROR_AUDIO"
+
+            SpeechRecognizer.ERROR_CLIENT ->
+                "ERROR_CLIENT"
+
+            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
+                "ERROR_INSUFFICIENT_PERMISSIONS"
+
+            SpeechRecognizer.ERROR_NETWORK ->
+                "ERROR_NETWORK"
+
+            SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
+                "ERROR_NETWORK_TIMEOUT"
+
+            SpeechRecognizer.ERROR_NO_MATCH ->
+                "ERROR_NO_MATCH"
+
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
+                "ERROR_RECOGNIZER_BUSY"
+
+            SpeechRecognizer.ERROR_SERVER ->
+                "ERROR_SERVER"
+
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
+                "ERROR_SPEECH_TIMEOUT"
+
+            SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED ->
+                "ERROR_LANGUAGE_NOT_SUPPORTED"
+
+            SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
+                "ERROR_LANGUAGE_UNAVAILABLE"
+
+            SpeechRecognizer.ERROR_TOO_MANY_REQUESTS ->
+                "ERROR_TOO_MANY_REQUESTS"
+
+            else ->
+                "UNKNOWN_SPEECH_ERROR"
+        }
+    }
+
     private fun createRecognizerOnce() {
         if (recognizer != null) return
 
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             throw IllegalStateException(
-                "Speech recognition is unavailable"
+                "Speech recognition is unavailable on this device"
             )
         }
 
         val generation = ++recognizerGeneration
+
+        Log.d(
+            TAG,
+            "Creating SpeechRecognizer, generation=$generation"
+        )
 
         val speechRecognizer =
             SpeechRecognizer.createSpeechRecognizer(this)
@@ -370,18 +482,28 @@ class VoiceForegroundService : Service() {
                 override fun onReadyForSpeech(params: Bundle?) {
                     if (!isCurrentSession() || !listening) return
 
+                    Log.i(TAG, "Recognizer is READY and listening")
+
                     retryDelay = 1500L
                     sessionInProgress = true
                     sendState(true, false)
                 }
 
-                override fun onBeginningOfSpeech() {}
+                override fun onBeginningOfSpeech() {
+                    if (!isCurrentSession()) return
+                    Log.i(TAG, "Speech input detected")
+                }
 
-                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onRmsChanged(rmsdB: Float) {
+                    // लगातार Logcat भरने से बचने के लिए RMS log नहीं करते।
+                }
 
                 override fun onBufferReceived(buffer: ByteArray?) {}
 
-                override fun onEndOfSpeech() {}
+                override fun onEndOfSpeech() {
+                    if (!isCurrentSession()) return
+                    Log.d(TAG, "End of speech detected")
+                }
 
                 override fun onError(error: Int) {
                     if (!isCurrentSession()) return
@@ -389,6 +511,13 @@ class VoiceForegroundService : Service() {
                     sessionInProgress = false
 
                     if (!listening) return
+
+                    val errorName = speechErrorName(error)
+
+                    Log.e(
+                        TAG,
+                        "SpeechRecognizer onError: $errorName ($error)"
+                    )
 
                     if (
                         error ==
@@ -399,7 +528,12 @@ class VoiceForegroundService : Service() {
                             .apply()
 
                         stopListening()
-                        sendState(false, false)
+
+                        sendError(
+                            error,
+                            "$errorName: microphone permission denied"
+                        )
+
                         stopSelf()
                         return
                     }
@@ -415,6 +549,11 @@ class VoiceForegroundService : Service() {
                         } else {
                             retryDelay
                         }
+
+                    sendError(
+                        error,
+                        "$errorName: SpeechRecognizer reported an error"
+                    )
 
                     scheduleRestart(delay)
 
@@ -435,19 +574,36 @@ class VoiceForegroundService : Service() {
 
                     val recognizedText = matches?.firstOrNull()
 
-                    // पुराने recognizer को अगला session शुरू होने से
-                    // पहले invalidate और release करें।
+                    Log.d(
+                        TAG,
+                        "Recognition results received; hasText=${!recognizedText.isNullOrBlank()}"
+                    )
+
                     releaseRecognizer(generation)
 
                     if (!recognizedText.isNullOrBlank()) {
                         sendRecognizedText(recognizedText)
+                    } else {
+                        Log.w(TAG, "Recognition returned no matching text")
                     }
 
                     retryDelay = 1500L
                     scheduleRestart(700L)
                 }
 
-                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onPartialResults(partialResults: Bundle?) {
+                    if (!isCurrentSession()) return
+
+                    val partialText = partialResults
+                        ?.getStringArrayList(
+                            SpeechRecognizer.RESULTS_RECOGNITION
+                        )
+                        ?.firstOrNull()
+
+                    if (!partialText.isNullOrBlank()) {
+                        Log.d(TAG, "Partial speech: $partialText")
+                    }
+                }
 
                 override fun onEvent(
                     eventType: Int,
@@ -458,7 +614,10 @@ class VoiceForegroundService : Service() {
     }
 
     private fun resumeListening() {
-        if (listening) return
+        if (listening) {
+            Log.d(TAG, "resumeListening ignored: already listening")
+            return
+        }
 
         listening = true
         sessionInProgress = false
@@ -467,10 +626,14 @@ class VoiceForegroundService : Service() {
         handler.removeCallbacks(restartRunnable)
         restartScheduled = false
 
+        Log.d(TAG, "Listening loop enabled")
+
         startRecognitionSession()
     }
 
     private fun pauseListening() {
+        Log.d(TAG, "Pausing voice recognition")
+
         listening = false
         sessionInProgress = false
 
@@ -494,7 +657,12 @@ class VoiceForegroundService : Service() {
                 .apply()
 
             stopListening()
-            sendState(false, false)
+
+            sendError(
+                -1,
+                "RECORD_AUDIO permission was revoked"
+            )
+
             stopSelf()
             return
         }
@@ -534,11 +702,26 @@ class VoiceForegroundService : Service() {
             }
 
             sessionInProgress = true
+
+            Log.d(
+                TAG,
+                "Calling startListening(), language=$activeLanguage"
+            )
+
             recognizer?.startListening(speechIntent)
 
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             sessionInProgress = false
+
+            Log.e(TAG, "startRecognitionSession failed", e)
+
             releaseRecognizer()
+
+            sendError(
+                -3,
+                "Could not start recognition: ${e.message ?: e.javaClass.simpleName}"
+            )
+
             scheduleRestart(retryDelay)
 
             retryDelay =
@@ -550,6 +733,8 @@ class VoiceForegroundService : Service() {
         if (!listening || restartScheduled) return
 
         restartScheduled = true
+
+        Log.d(TAG, "Scheduling recognition restart in ${delay}ms")
 
         handler.postDelayed(
             restartRunnable,
@@ -565,8 +750,6 @@ class VoiceForegroundService : Service() {
             return
         }
 
-        // पहले generation बदलें ताकि cancel/destroy के पुराने
-        // callbacks को अनदेखा किया जा सके।
         recognizerGeneration++
 
         val oldRecognizer = recognizer
@@ -575,16 +758,24 @@ class VoiceForegroundService : Service() {
 
         try {
             oldRecognizer?.cancel()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Recognizer cancel failed", e)
         }
 
         try {
             oldRecognizer?.destroy()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Recognizer destroy failed", e)
+        }
+
+        if (oldRecognizer != null) {
+            Log.d(TAG, "SpeechRecognizer released")
         }
     }
 
     private fun stopListening() {
+        Log.d(TAG, "Stopping listening loop")
+
         listening = false
         sessionInProgress = false
         restartScheduled = false
@@ -602,8 +793,11 @@ class VoiceForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        Log.d(TAG, "VoiceForegroundService destroyed")
+
         stopListening()
         sendState(false, false)
+
         super.onDestroy()
     }
 
