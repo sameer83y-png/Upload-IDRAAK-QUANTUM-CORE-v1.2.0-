@@ -37,6 +37,9 @@ class VoiceForegroundService : Service() {
     private var retryDelay = 1500L
     private var recognizerGeneration = 0
 
+    // Explicit STOP और temporary PAUSE को अलग रखता है।
+    private var userStopped = false
+
     private val prefs by lazy {
         getSharedPreferences("idraak_voice_service", MODE_PRIVATE)
     }
@@ -187,8 +190,6 @@ class VoiceForegroundService : Service() {
         )
     }
 
-    // केवल वास्तविक Diagnostic Error भेजें।
-    // सामान्य Recognition Error पर Voice State OFF नहीं होगी।
     private fun sendError(
         code: Int,
         message: String
@@ -229,6 +230,8 @@ class VoiceForegroundService : Service() {
         when (intent?.action) {
 
             ACTION_STOP -> {
+                userStopped = true
+
                 prefs.edit()
                     .putBoolean(PREF_ENABLED, false)
                     .apply()
@@ -242,20 +245,30 @@ class VoiceForegroundService : Service() {
 
             ACTION_PAUSE -> {
                 Log.d(TAG, "Pause requested")
+
                 pauseListening()
+
                 return START_STICKY
             }
 
             ACTION_RESUME -> {
-                if (
-                    checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
-                    PackageManager.PERMISSION_GRANTED
-                ) {
+                userStopped = false
+
+                if (!hasAudioPermission()) {
+                    prefs.edit()
+                        .putBoolean(PREF_ENABLED, false)
+                        .apply()
+
+                    stopListening()
+
                     sendError(
                         -1,
                         "RECORD_AUDIO permission is not granted"
                     )
+
                     sendState(false, false)
+                    stopSelf()
+
                     return START_NOT_STICKY
                 }
 
@@ -263,20 +276,38 @@ class VoiceForegroundService : Service() {
                     val requestedLanguage =
                         intent.getStringExtra(EXTRA_LANGUAGE)
 
-                    if (!requestedLanguage.isNullOrBlank()) {
-                        activeLanguage =
+                    val newLanguage =
+                        if (!requestedLanguage.isNullOrBlank()) {
                             selectedLanguage(requestedLanguage)
+                        } else {
+                            prefs.getString(PREF_LANGUAGE, null)
+                                ?.let { selectedLanguage(it) }
+                                ?: activeLanguage
+                        }
 
-                        prefs.edit()
-                            .putString(PREF_LANGUAGE, activeLanguage)
-                            .apply()
+                    // भाषा बदलने पर पुराने recognizer को रोकना जरूरी है।
+                    if (
+                        listening &&
+                        activeLanguage != newLanguage
+                    ) {
+                        Log.d(
+                            TAG,
+                            "Language changed: $activeLanguage -> $newLanguage"
+                        )
+
+                        pauseListening()
                     }
+
+                    activeLanguage = newLanguage
+
+                    prefs.edit()
+                        .putString(PREF_LANGUAGE, activeLanguage)
+                        .putBoolean(PREF_ENABLED, true)
+                        .apply()
 
                     startForegroundSafely()
 
-                    prefs.edit()
-                        .putBoolean(PREF_ENABLED, true)
-                        .apply()
+                    retryDelay = 1500L
 
                     resumeListening()
 
@@ -284,10 +315,16 @@ class VoiceForegroundService : Service() {
                     Log.e(TAG, "Resume failed", e)
 
                     stopListening()
+
+                    prefs.edit()
+                        .putBoolean(PREF_ENABLED, false)
+                        .apply()
+
                     sendError(
                         -2,
                         "Resume failed: ${e.message ?: e.javaClass.simpleName}"
                     )
+
                     sendState(false, false)
                     stopSelf()
 
@@ -303,24 +340,31 @@ class VoiceForegroundService : Service() {
             !prefs.getBoolean(PREF_ENABLED, false)
         ) {
             Log.d(TAG, "Service restart ignored: voice is disabled")
+
             stopSelf()
+
             return START_NOT_STICKY
         }
 
-        if (
-            checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
+        if (!hasAudioPermission()) {
             prefs.edit()
                 .putBoolean(PREF_ENABLED, false)
                 .apply()
 
-            sendError(-1, "RECORD_AUDIO permission is not granted")
+            stopListening()
+
+            sendError(
+                -1,
+                "RECORD_AUDIO permission is not granted"
+            )
+
             sendState(false, false)
             stopSelf()
 
             return START_NOT_STICKY
         }
+
+        userStopped = false
 
         try {
             startForegroundSafely()
@@ -361,6 +405,7 @@ class VoiceForegroundService : Service() {
                 -2,
                 "Service startup failed: ${e.message ?: e.javaClass.simpleName}"
             )
+
             sendState(false, false)
             stopSelf()
 
@@ -368,6 +413,12 @@ class VoiceForegroundService : Service() {
         }
 
         return START_STICKY
+    }
+
+    private fun hasAudioPermission(): Boolean {
+        return checkSelfPermission(
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun selectedLanguage(requestedValue: String?): String {
@@ -441,7 +492,10 @@ class VoiceForegroundService : Service() {
 
         val generation = ++recognizerGeneration
 
-        Log.d(TAG, "Creating SpeechRecognizer: generation=$generation")
+        Log.d(
+            TAG,
+            "Creating SpeechRecognizer: generation=$generation"
+        )
 
         val speechRecognizer =
             SpeechRecognizer.createSpeechRecognizer(this)
@@ -469,6 +523,7 @@ class VoiceForegroundService : Service() {
 
                 override fun onBeginningOfSpeech() {
                     if (!isCurrentSession()) return
+
                     Log.i(TAG, "Speech input detected")
                 }
 
@@ -478,6 +533,7 @@ class VoiceForegroundService : Service() {
 
                 override fun onEndOfSpeech() {
                     if (!isCurrentSession()) return
+
                     Log.d(TAG, "End of speech detected")
                 }
 
@@ -509,6 +565,7 @@ class VoiceForegroundService : Service() {
                             error,
                             "$errorName: microphone permission denied"
                         )
+
                         sendState(false, false)
                         stopSelf()
 
@@ -516,7 +573,6 @@ class VoiceForegroundService : Service() {
                     }
 
                     // NO_MATCH और SPEECH_TIMEOUT सामान्य हैं।
-                    // इन्हें वास्तविक Voice Service failure नहीं मानना है।
                     val normalRecognitionError =
                         error == SpeechRecognizer.ERROR_NO_MATCH ||
                         error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
@@ -539,8 +595,7 @@ class VoiceForegroundService : Service() {
                         )
                     }
 
-                    // यहाँ sendState(false, false) जानबूझकर नहीं भेजते।
-                    // Listening loop चालू है और दोबारा शुरू होगी।
+                    // सामान्य recognition error पर Voice State OFF नहीं होगी।
                     scheduleRestart(delay)
 
                     if (!normalRecognitionError) {
@@ -574,7 +629,10 @@ class VoiceForegroundService : Service() {
                     if (!recognizedText.isNullOrBlank()) {
                         sendRecognizedText(recognizedText)
                     } else {
-                        Log.w(TAG, "Recognition returned empty results")
+                        Log.w(
+                            TAG,
+                            "Recognition returned empty results"
+                        )
                     }
 
                     retryDelay = 1500L
@@ -638,10 +696,7 @@ class VoiceForegroundService : Service() {
     private fun startRecognitionSession() {
         if (!listening || sessionInProgress) return
 
-        if (
-            checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
+        if (!hasAudioPermission()) {
             prefs.edit()
                 .putBoolean(PREF_ENABLED, false)
                 .apply()
@@ -652,6 +707,7 @@ class VoiceForegroundService : Service() {
                 -1,
                 "RECORD_AUDIO permission was revoked"
             )
+
             sendState(false, false)
             stopSelf()
 
@@ -787,7 +843,10 @@ class VoiceForegroundService : Service() {
         Log.d(TAG, "VoiceForegroundService destroyed")
 
         stopListening()
-        sendState(false, false)
+
+        // Explicit STOP के बाद userStopped=true ही रहेगा।
+        // इससे MainActivity को गलत state broadcast नहीं मिलेगा।
+        sendState(false, userStopped)
 
         super.onDestroy()
     }
