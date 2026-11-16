@@ -23,10 +23,6 @@ class IDRAAKAccessibilityService : AccessibilityService() {
 
         fun getScreenText(): String = latestVisibleText
 
-        // ---------------------------------------------
-        // Node Click Helpers
-        // ---------------------------------------------
-
         private fun clickNodeOrParent(
             node: AccessibilityNodeInfo
         ): Boolean {
@@ -61,10 +57,6 @@ class IDRAAKAccessibilityService : AccessibilityService() {
             }
         }
 
-        // ---------------------------------------------
-        // Click By Text
-        // ---------------------------------------------
-
         fun clickText(text: String): Boolean {
             if (text.isBlank()) return false
 
@@ -96,10 +88,6 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                 false
             }
         }
-
-        // ---------------------------------------------
-        // Click By View ID
-        // ---------------------------------------------
 
         fun clickViewId(viewId: String): Boolean {
             if (viewId.isBlank()) return false
@@ -133,13 +121,8 @@ class IDRAAKAccessibilityService : AccessibilityService() {
             }
         }
 
-        // ---------------------------------------------
-        // Tap Gesture
-        // ---------------------------------------------
-
         fun tap(x: Float, y: Float): Boolean {
             val service = activeService ?: return false
-
             if (x < 0f || y < 0f) return false
 
             return try {
@@ -157,19 +140,11 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                     )
                     .build()
 
-                service.dispatchGesture(
-                    gesture,
-                    null,
-                    null
-                )
+                service.dispatchGesture(gesture, null, null)
             } catch (_: Exception) {
                 false
             }
         }
-
-        // ---------------------------------------------
-        // Swipe Gesture
-        // ---------------------------------------------
 
         fun swipe(
             startX: Float,
@@ -194,8 +169,7 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                     lineTo(endX, endY)
                 }
 
-                val safeDuration =
-                    duration.coerceIn(100L, 2000L)
+                val safeDuration = duration.coerceIn(100L, 2000L)
 
                 val gesture = GestureDescription.Builder()
                     .addStroke(
@@ -207,19 +181,11 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                     )
                     .build()
 
-                service.dispatchGesture(
-                    gesture,
-                    null,
-                    null
-                )
+                service.dispatchGesture(gesture, null, null)
             } catch (_: Exception) {
                 false
             }
         }
-
-        // ---------------------------------------------
-        // Scroll
-        // ---------------------------------------------
 
         fun scrollDown(): Boolean {
             return scroll(
@@ -275,10 +241,6 @@ class IDRAAKAccessibilityService : AccessibilityService() {
             return false
         }
 
-        // ---------------------------------------------
-        // Global Navigation Actions
-        // ---------------------------------------------
-
         fun goBack(): Boolean {
             return performGlobalActionSafely(
                 AccessibilityService.GLOBAL_ACTION_BACK
@@ -309,9 +271,7 @@ class IDRAAKAccessibilityService : AccessibilityService() {
             )
         }
 
-        private fun performGlobalActionSafely(
-            action: Int
-        ): Boolean {
+        private fun performGlobalActionSafely(action: Int): Boolean {
             val service = activeService ?: return false
 
             return try {
@@ -320,10 +280,6 @@ class IDRAAKAccessibilityService : AccessibilityService() {
                 false
             }
         }
-
-        // ---------------------------------------------
-        // Text Input
-        // ---------------------------------------------
 
         fun typeText(text: String): Boolean {
             val service = activeService ?: return false
@@ -365,18 +321,8 @@ class IDRAAKAccessibilityService : AccessibilityService() {
             }
         }
 
-        // ---------------------------------------------
-        // Clear Text
-        // ---------------------------------------------
-
-        fun clearText(): Boolean {
-            return typeText("")
-        }
+        fun clearText(): Boolean = typeText("")
     }
-
-    // ---------------------------------------------
-    // Service Connection
-    // ---------------------------------------------
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -392,17 +338,11 @@ class IDRAAKAccessibilityService : AccessibilityService() {
 
             serviceInfo = info
         } catch (_: Exception) {
-            // Service remains usable if extra flags fail.
+            // Service remains usable if optional flags fail.
         }
     }
 
-    // ---------------------------------------------
-    // Screen Text Collection
-    // ---------------------------------------------
-
-    override fun onAccessibilityEvent(
-        event: AccessibilityEvent?
-    ) {
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
         try {
@@ -457,17 +397,9 @@ class IDRAAKAccessibilityService : AccessibilityService() {
         }
     }
 
-    // ---------------------------------------------
-    // Service Interrupt
-    // ---------------------------------------------
-
     override fun onInterrupt() {
         latestVisibleText = ""
     }
-
-    // ---------------------------------------------
-    // Service Destroy
-    // ---------------------------------------------
 
     override fun onDestroy() {
         if (activeService === this) {
