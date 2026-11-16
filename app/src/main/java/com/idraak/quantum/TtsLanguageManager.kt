@@ -10,22 +10,16 @@ import java.util.Locale
 /**
  * IDRAAK TTS Language Manager
  *
- * इस फाइल की केवल ये जिम्मेदारियाँ हैं:
+ * जिम्मेदारी:
  * - TTS भाषा चुनना
  * - Locale mapping करना
  * - भाषा की उपलब्धता जाँचना
  * - Male/Female voice चुनना
- *
- * इसमें Speech Recognition, Wake Word या TTS playback
- * का implementation नहीं रखा गया है।
  */
-class TtsLanguageManager(
-    context: Context
-) {
+class TtsLanguageManager(context: Context) {
 
     companion object {
         private const val TAG = "IDRAAK_TTS_Language"
-
         private const val DEFAULT_LANGUAGE = "hi"
         private const val DEFAULT_GENDER = "Male"
     }
@@ -34,94 +28,62 @@ class TtsLanguageManager(
 
     private var selectedLanguage = DEFAULT_LANGUAGE
     private var selectedGender = DEFAULT_GENDER
-
     private var configuredEngine: TextToSpeech? = null
 
     init {
         Log.d(TAG, "TtsLanguageManager initialized")
     }
 
-    // -------------------------------------------------
-    // Supported languages
-    // -------------------------------------------------
-
     private fun normalizeLanguage(language: String): String {
         return when (language.trim().lowercase(Locale.ROOT)) {
-
             "hi", "hindi", "hi-in" -> "hi"
-
             "en", "english", "en-in", "en-us" -> "en"
-
             "ur", "urdu", "ur-pk" -> "ur"
-
             "ar", "arabic", "ar-sa" -> "ar"
-
             else -> ""
         }
     }
 
     private fun getLocale(language: String): Locale? {
         return when (normalizeLanguage(language)) {
-
             "hi" -> Locale.forLanguageTag("hi-IN")
-
             "en" -> Locale.forLanguageTag("en-IN")
-
             "ur" -> Locale.forLanguageTag("ur-PK")
-
             "ar" -> Locale.forLanguageTag("ar-SA")
-
             else -> null
         }
     }
 
-    fun getSelectedLanguage(): String {
-        return selectedLanguage
-    }
+    fun getSelectedLanguage(): String = selectedLanguage
 
-    fun getSelectedGender(): String {
-        return selectedGender
-    }
-
-    // -------------------------------------------------
-    // Apply configuration
-    // -------------------------------------------------
+    fun getSelectedGender(): String = selectedGender
 
     /**
-     * TextToSpeech initialize होने के बाद configuration लागू करता है।
+     * TTS initialize होने के बाद configuration लागू करता है।
      */
     fun applyTo(engine: TextToSpeech): Boolean {
         configuredEngine = engine
 
-        val languageApplied = applyLanguage(engine)
-
-        if (!languageApplied) {
-            Log.e(
-                TAG,
-                "Selected language is unavailable: $selectedLanguage"
-            )
+        if (!applyLanguage(engine)) {
+            Log.e(TAG, "Selected language unavailable: $selectedLanguage")
             return false
         }
 
-        val genderApplied = applyGender(engine)
+        // Gender voice उपलब्ध न हो तो system की default voice रहने दें।
+        applyGender(engine)
 
         Log.d(
             TAG,
             "TTS configuration applied: language=$selectedLanguage, gender=$selectedGender"
         )
 
-        return genderApplied
+        return true
     }
-
-    // -------------------------------------------------
-    // Language selection
-    // -------------------------------------------------
 
     fun setLanguage(
         language: String,
         engine: TextToSpeech?
     ): Boolean {
-
         val normalized = normalizeLanguage(language)
 
         if (normalized.isEmpty()) {
@@ -131,30 +93,19 @@ class TtsLanguageManager(
 
         selectedLanguage = normalized
 
-        Log.d(TAG, "Language selected: $selectedLanguage")
-
         val activeEngine = engine ?: configuredEngine
 
         if (activeEngine == null) {
-            Log.d(TAG, "Language saved; TTS engine not ready yet")
+            Log.d(TAG, "Language saved; TTS engine not ready")
             return true
         }
 
         configuredEngine = activeEngine
-
         return applyLanguage(activeEngine)
     }
 
-    private fun applyLanguage(
-        engine: TextToSpeech
-    ): Boolean {
-
-        val locale = getLocale(selectedLanguage)
-
-        if (locale == null) {
-            Log.e(TAG, "Invalid locale for $selectedLanguage")
-            return false
-        }
+    private fun applyLanguage(engine: TextToSpeech): Boolean {
+        val locale = getLocale(selectedLanguage) ?: return false
 
         return try {
             val availability = engine.isLanguageAvailable(locale)
@@ -177,28 +128,18 @@ class TtsLanguageManager(
                 return false
             }
 
-            Log.d(
-                TAG,
-                "Language successfully applied: ${locale.toLanguageTag()}"
-            )
-
+            Log.d(TAG, "Language applied: ${locale.toLanguageTag()}")
             true
-
         } catch (exception: Exception) {
             Log.e(TAG, "Language configuration error", exception)
             false
         }
     }
 
-    // -------------------------------------------------
-    // Voice gender selection
-    // -------------------------------------------------
-
     fun setVoiceGender(
         gender: String,
         engine: TextToSpeech?
     ): Boolean {
-
         selectedGender = when (gender.trim().lowercase(Locale.ROOT)) {
             "female", "फीमेल", "महिला" -> "Female"
             "male", "मेल", "पुरुष" -> "Male"
@@ -208,27 +149,20 @@ class TtsLanguageManager(
             }
         }
 
-        Log.d(TAG, "Voice gender selected: $selectedGender")
-
         val activeEngine = engine ?: configuredEngine
 
         if (activeEngine == null) {
-            Log.d(TAG, "Voice gender saved; TTS engine not ready yet")
+            Log.d(TAG, "Voice gender saved; TTS engine not ready")
             return true
         }
 
         configuredEngine = activeEngine
-
         return applyGender(activeEngine)
     }
 
-    private fun applyGender(
-        engine: TextToSpeech
-    ): Boolean {
-
+    private fun applyGender(engine: TextToSpeech): Boolean {
         return try {
-            val locale = getLocale(selectedLanguage)
-                ?: return false
+            val locale = getLocale(selectedLanguage) ?: return false
 
             val availableVoices = engine.voices
                 ?.filter { voice ->
@@ -240,57 +174,34 @@ class TtsLanguageManager(
                 ?: emptyList()
 
             if (availableVoices.isEmpty()) {
-                Log.w(
-                    TAG,
-                    "No matching offline voices found for $selectedLanguage"
-                )
+                Log.w(TAG, "No matching offline voices for $selectedLanguage")
                 return false
             }
 
-            val genderKeyword = if (selectedGender == "Female") {
-                "female"
-            } else {
-                "male"
-            }
+            val genderKeyword =
+                if (selectedGender == "Female") "female" else "male"
 
             val selectedVoice = availableVoices.firstOrNull {
-                it.name.contains(
-                    genderKeyword,
-                    ignoreCase = true
-                )
+                it.name.contains(genderKeyword, ignoreCase = true)
             }
 
             if (selectedVoice == null) {
-                Log.w(
-                    TAG,
-                    "Requested gender voice not found: $selectedGender"
-                )
+                Log.w(TAG, "Requested gender voice not found: $selectedGender")
                 return false
             }
 
             engine.voice = selectedVoice
 
-            Log.d(
-                TAG,
-                "Voice selected: ${selectedVoice.name}"
-            )
-
+            Log.d(TAG, "Voice selected: ${selectedVoice.name}")
             true
-
         } catch (exception: Exception) {
             Log.e(TAG, "Voice selection failed", exception)
             false
         }
     }
 
-    // -------------------------------------------------
-    // Availability information
-    // -------------------------------------------------
-
     fun isLanguageAvailable(language: String): Boolean {
-
         val locale = getLocale(language) ?: return false
-
         val engine = configuredEngine ?: return false
 
         return try {
@@ -304,7 +215,6 @@ class TtsLanguageManager(
 
     fun getAvailableVoices(): List<Voice> {
         val engine = configuredEngine ?: return emptyList()
-
         val locale = getLocale(selectedLanguage) ?: return emptyList()
 
         return try {
@@ -321,10 +231,6 @@ class TtsLanguageManager(
             emptyList()
         }
     }
-
-    // -------------------------------------------------
-    // Release
-    // -------------------------------------------------
 
     fun release() {
         configuredEngine = null
