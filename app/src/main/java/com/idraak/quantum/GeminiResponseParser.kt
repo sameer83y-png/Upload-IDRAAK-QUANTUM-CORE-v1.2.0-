@@ -1,11 +1,16 @@
+
 package com.idraak.quantum
 
 /**
- * IDRAAK - Gemini API Client
+ * IDRAAK - Gemini Response Parser
  *
  * Responsibility:
- * Handles communication with Gemini API.
+ * Parses and extracts useful response data
+ * received from the Gemini API.
  *
- * Implementation will be added later.
+ * Does not send HTTP requests, build API requests,
+ * or execute phone commands.
+ *
+ * Actual implementation will be added later.
  */
-internal class GeminiApiClient
+internal class GeminiResponseParser
