@@ -1,11 +1,16 @@
+
 package com.idraak.quantum
 
 /**
- * IDRAAK - Gemini API Client
+ * IDRAAK - Gemini Error Mapper
  *
  * Responsibility:
- * Handles communication with Gemini API.
+ * Converts Gemini API errors into understandable
+ * IDRAAK error messages.
  *
- * Implementation will be added later.
+ * Does not send API requests, parse successful
+ * responses, or execute commands.
+ *
+ * Actual implementation will be added later.
  */
-internal class GeminiApiClient
+internal class GeminiErrorMapper
