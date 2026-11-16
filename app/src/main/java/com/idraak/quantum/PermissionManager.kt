@@ -1,157 +1,73 @@
-
 package com.idraak.quantum
 
 import android.Manifest
-import android.accessibilityservice.AccessibilityService
-import android.app.Activity
-import android.content.ComponentName
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
 
 /**
- * IDRAAK - Permission Manager
- *
- * Responsibility:
- * 1. Checks required Android runtime permissions.
- * 2. Requests missing runtime permissions.
- * 3. Checks Accessibility Service authorization.
- * 4. Opens Android Accessibility Settings.
- *
- * Does not handle voice recognition, AI requests,
- * command execution, or settings storage.
+ * Android permissions और विशेष access की स्थिति जाँचता है।
+ * Permission prompts Activity से ही माँगे जाने चाहिए।
  */
-internal class PermissionManager {
+class PermissionManager(context: Context) {
 
-    companion object {
+    private val appContext = context.applicationContext
 
-        const val REQUEST_CODE = 4101
+    fun hasMicrophonePermission(): Boolean =
+        hasPermission(Manifest.permission.RECORD_AUDIO)
 
-        /**
-         * Returns the runtime permissions required by IDRAAK.
-         */
-        fun getRequiredPermissions(): Array<String> {
+    fun hasCameraPermission(): Boolean =
+        hasPermission(Manifest.permission.CAMERA)
 
-            val permissions = mutableListOf(
-                Manifest.permission.RECORD_AUDIO
-            )
+    fun hasNotificationPermission(): Boolean =
+        Build.VERSION.SDK_INT < 33 ||
+            hasPermission(Manifest.permission.POST_NOTIFICATIONS)
 
-            // Notification permission is required on Android 13+.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                permissions.add(
-                    Manifest.permission.POST_NOTIFICATIONS
-                )
-            }
+    fun hasPermission(permission: String): Boolean =
+        appContext.checkSelfPermission(permission) ==
+            PackageManager.PERMISSION_GRANTED
 
-            return permissions.toTypedArray()
-        }
+    fun isAccessibilityServiceEnabled(): Boolean {
+        val manager = appContext.getSystemService(
+            Context.ACCESSIBILITY_SERVICE
+        ) as? AccessibilityManager ?: return false
 
-        /**
-         * Checks whether a specific permission is granted.
-         */
-        fun hasPermission(
-            context: Context,
-            permission: String
-        ): Boolean {
-
-            return context.checkSelfPermission(permission) ==
-                PackageManager.PERMISSION_GRANTED
-        }
-
-        /**
-         * Returns all currently missing runtime permissions.
-         */
-        fun getMissingPermissions(
-            context: Context
-        ): Array<String> {
-
-            return getRequiredPermissions().filter { permission ->
-                !hasPermission(context, permission)
-            }.toTypedArray()
-        }
-
-        /**
-         * Checks whether all required runtime permissions are granted.
-         */
-        fun hasAllRequiredPermissions(
-            context: Context
-        ): Boolean {
-
-            return getMissingPermissions(context).isEmpty()
-        }
-
-        /**
-         * Requests missing runtime permissions from the user.
-         *
-         * Returns true if a permission request was started.
-         * Returns false if no permission is missing.
-         */
-        fun requestMissingPermissions(
-            activity: Activity,
-            requestCode: Int = REQUEST_CODE
-        ): Boolean {
-
-            val missingPermissions =
-                getMissingPermissions(activity)
-
-            if (missingPermissions.isEmpty()) {
-                return false
-            }
-
-            activity.requestPermissions(
-                missingPermissions,
-                requestCode
-            )
-
-            return true
-        }
-
-        /**
-         * Checks whether the specified Accessibility Service
-         * has been enabled by the user in Android Settings.
-         */
-        fun isAccessibilityServiceEnabled(
-            context: Context,
-            serviceClass: Class<out AccessibilityService>
-        ): Boolean {
-
-            val enabledServices = Settings.Secure.getString(
-                context.contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ) ?: return false
-
-            val expectedComponent =
-                ComponentName(context, serviceClass).flattenToString()
-
-            return enabledServices
-                .split(":")
-                .any { enabledService ->
-                    enabledService.equals(
-                        expectedComponent,
-                        ignoreCase = true
-                    )
-                }
-        }
-
-        /**
-         * Opens Android Accessibility Settings.
-         *
-         * The user must manually enable IDRAAK's service.
-         */
-        fun openAccessibilitySettings(
-            context: Context
-        ) {
-
-            val intent = Intent(
-                Settings.ACTION_ACCESSIBILITY_SETTINGS
-            ).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-
-            context.startActivity(intent)
+        return manager.getEnabledAccessibilityServiceList(
+            AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+        ).any {
+            it.resolveInfo.serviceInfo.packageName == appContext.packageName &&
+                it.resolveInfo.serviceInfo.name ==
+                IDRAAKAccessibilityService::class.java.name
         }
     }
-}
 
+    fun openAccessibilitySettings(): Boolean =
+        openSystemSettings(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+
+    fun openAppDetailsSettings(): Boolean =
+        try {
+            val intent = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:${appContext.packageName}")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            appContext.startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+
+    private fun openSystemSettings(action: String): Boolean =
+        try {
+            appContext.startActivity(
+                Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            true
+        } catch (_: Exception) {
+            false
+        }
+}
