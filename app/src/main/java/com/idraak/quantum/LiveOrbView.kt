@@ -1,3 +1,4 @@
+
 package com.idraak.quantum
 
 import android.content.Context
@@ -17,13 +18,13 @@ import kotlin.math.sin
 /**
  * IDRAAK AI Core Orb
  *
- * Responsible only for:
+ * जिम्मेदारी:
  * - Orb rendering
  * - Visual waveform
  * - Listening state
  * - Orb animation
  *
- * No human avatar or extra buttons.
+ * इसमें voice recognition या command execution नहीं है।
  */
 class LiveOrbView(context: Context) : View(context) {
 
@@ -46,9 +47,7 @@ class LiveOrbView(context: Context) : View(context) {
     }
 
     private val animationRunnable = object : Runnable {
-
         override fun run() {
-
             if (!animationRunning || !isAttachedToWindow) {
                 return
             }
@@ -57,7 +56,6 @@ class LiveOrbView(context: Context) : View(context) {
             pulse += 0.055f
 
             invalidate()
-
             postDelayed(this, 35L)
         }
     }
@@ -71,7 +69,6 @@ class LiveOrbView(context: Context) : View(context) {
     }
 
     fun setListening(active: Boolean) {
-
         if (listening == active) return
 
         listening = active
@@ -79,7 +76,6 @@ class LiveOrbView(context: Context) : View(context) {
     }
 
     fun startAnimation() {
-
         if (!isAttachedToWindow || animationRunning) {
             return
         }
@@ -91,9 +87,7 @@ class LiveOrbView(context: Context) : View(context) {
     }
 
     fun stopAnimation() {
-
         animationRunning = false
-
         removeCallbacks(animationRunnable)
     }
 
@@ -102,14 +96,11 @@ class LiveOrbView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
-
         stopAnimation()
-
         super.onDetachedFromWindow()
     }
 
     override fun onDraw(canvas: Canvas) {
-
         super.onDraw(canvas)
 
         if (width <= 0 || height <= 0) return
@@ -134,7 +125,6 @@ class LiveOrbView(context: Context) : View(context) {
         cy: Float,
         radius: Float
     ) {
-
         paint.style = Paint.Style.FILL
 
         paint.shader = RadialGradient(
@@ -154,13 +144,7 @@ class LiveOrbView(context: Context) : View(context) {
             Shader.TileMode.CLAMP
         )
 
-        canvas.drawCircle(
-            cx,
-            cy,
-            radius * 2.15f,
-            paint
-        )
-
+        canvas.drawCircle(cx, cy, radius * 2.15f, paint)
         paint.shader = null
     }
 
@@ -170,7 +154,6 @@ class LiveOrbView(context: Context) : View(context) {
         cy: Float,
         radius: Float
     ) {
-
         paint.shader = null
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = dp(1.5f)
@@ -185,12 +168,7 @@ class LiveOrbView(context: Context) : View(context) {
         )
 
         canvas.save()
-
-        canvas.rotate(
-            rotation,
-            cx,
-            cy
-        )
+        canvas.rotate(rotation, cx, cy)
 
         paint.color = purple
         paint.strokeWidth = dp(2.3f)
@@ -224,9 +202,7 @@ class LiveOrbView(context: Context) : View(context) {
         paint.color = cyan
         paint.alpha = 255
 
-        val angle = Math.toRadians(
-            rotation.toDouble()
-        )
+        val angle = Math.toRadians(rotation.toDouble())
 
         canvas.drawCircle(
             cx + cos(angle).toFloat() * radius * 1.65f,
@@ -242,9 +218,7 @@ class LiveOrbView(context: Context) : View(context) {
         cy: Float,
         radius: Float
     ) {
-
-        val breathing =
-            1f + 0.035f * sin(pulse)
+        val breathing = 1f + 0.035f * sin(pulse)
 
         paint.style = Paint.Style.FILL
 
@@ -271,11 +245,7 @@ class LiveOrbView(context: Context) : View(context) {
         paint.shader = null
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = dp(2f)
-        paint.color = if (listening) {
-            Color.WHITE
-        } else {
-            cyan
-        }
+        paint.color = if (listening) Color.WHITE else cyan
 
         canvas.drawCircle(
             cx,
@@ -299,13 +269,7 @@ class LiveOrbView(context: Context) : View(context) {
             Shader.TileMode.CLAMP
         )
 
-        canvas.drawCircle(
-            cx,
-            cy,
-            radius * 0.58f,
-            paint
-        )
-
+        canvas.drawCircle(cx, cy, radius * 0.58f, paint)
         paint.shader = null
     }
 
@@ -315,7 +279,6 @@ class LiveOrbView(context: Context) : View(context) {
         cy: Float,
         radius: Float
     ) {
-
         val count = 48
         val baseRadius = radius * 0.76f
 
@@ -325,20 +288,13 @@ class LiveOrbView(context: Context) : View(context) {
         paint.strokeCap = Paint.Cap.ROUND
 
         for (i in 0 until count) {
-
-            val angle = i * (
-                Math.PI * 2.0 / count
-            )
+            val angle = i * (Math.PI * 2.0 / count)
 
             val wave = sin(
                 angle * 5.0 + pulse * 2.0
             ).toFloat()
 
-            val boost = if (listening) {
-                1.7f
-            } else {
-                1f
-            }
+            val boost = if (listening) 1.7f else 1f
 
             val length = (
                 dp(5f) + abs(wave) * dp(11f)
@@ -358,25 +314,10 @@ class LiveOrbView(context: Context) : View(context) {
                 cy + sin(angle).toFloat() *
                 (baseRadius + length)
 
-            paint.color = if (i % 4 == 0) {
-                purple
-            } else {
-                cyan
-            }
+            paint.color = if (i % 4 == 0) purple else cyan
+            paint.alpha = if (listening) 255 else 175
 
-            paint.alpha = if (listening) {
-                255
-            } else {
-                175
-            }
-
-            canvas.drawLine(
-                x1,
-                y1,
-                x2,
-                y2,
-                paint
-            )
+            canvas.drawLine(x1, y1, x2, y2, paint)
         }
 
         paint.style = Paint.Style.FILL
@@ -389,7 +330,6 @@ class LiveOrbView(context: Context) : View(context) {
         cy: Float,
         radius: Float
     ) {
-
         paint.shader = null
         paint.style = Paint.Style.FILL
         paint.textAlign = Paint.Align.CENTER
@@ -402,12 +342,7 @@ class LiveOrbView(context: Context) : View(context) {
         paint.textSize = radius * 0.25f
         paint.color = Color.WHITE
 
-        paint.setShadowLayer(
-            dp(12f),
-            0f,
-            0f,
-            cyan
-        )
+        paint.setShadowLayer(dp(12f), 0f, 0f, cyan)
 
         canvas.drawText(
             "IDRAAK",
@@ -419,11 +354,7 @@ class LiveOrbView(context: Context) : View(context) {
         paint.clearShadowLayer()
 
         paint.textSize = radius * 0.075f
-        paint.color = if (listening) {
-            Color.WHITE
-        } else {
-            cyan
-        }
+        paint.color = if (listening) Color.WHITE else cyan
 
         canvas.drawText(
             if (listening) "LISTENING" else "AI CORE",
