@@ -1,148 +1,97 @@
-
 package com.idraak.quantum
 
+import android.content.Context
+
 /**
- * IDRAAK - AI Engine
+ * IDRAAK AI orchestration layer.
  *
- * Responsibility:
- * Coordinates online and offline AI processing.
+ * जिम्मेदारियाँ:
+ * - बातचीत का इतिहास लेना और अपडेट करना
+ * - Prompt तैयार करवाना
+ * - GeminiApiClient को request देना
+ * - Response validate करवाना
+ * - Error को user-readable बनाना
  *
- * GeminiApiClient handles the Kotlin-to-Python
- * bridge for online Gemini processing.
- *
- * OfflineCommandEngine handles local processing.
- *
- * This class does not perform HTTP requests,
- * initialize Python, recognize speech, parse phone
- * commands, or execute Android actions.
+ * यह Android phone commands execute नहीं करता।
  */
-internal class AIEngine(
-    private val geminiApiClient: GeminiApiClient,
-    private val offlineCommandEngine: OfflineCommandEngine
-) {
+internal class AIEngine(context: Context) {
 
-    enum class Mode {
-        ONLINE,
-        OFFLINE
-    }
+    private val settingsManager = SettingsManager(
+        context.applicationContext
+    )
 
-    sealed class Result {
+    private val geminiApiClient = GeminiApiClient(
+        context.applicationContext
+    )
 
-        data class Success(
-            val response: String,
-            val mode: Mode
-        ) : Result()
+    private val requestBuilder = GeminiRequestBuilder()
+    private val responseParser = GeminiResponseParser()
+    private val errorMapper = GeminiErrorMapper()
 
-        data class Failure(
-            val message: String,
-            val mode: Mode
-        ) : Result()
-    }
+    val conversationContext = ConversationContextManager()
 
-    /**
-     * Processes a text prompt using the selected AI mode.
-     */
-    suspend fun process(
-        prompt: String,
-        offlineMode: Boolean,
-        apiKey: String,
-        model: String
-    ): Result {
+    @Volatile
+    private var requestInProgress = false
 
-        val cleanPrompt = prompt.trim()
+    suspend fun generateResponse(userMessage: String): String {
+        val message = userMessage.trim()
 
-        if (cleanPrompt.isEmpty()) {
-            return Result.Failure(
-                message = "कोई संदेश प्राप्त नहीं हुआ।",
-                mode = if (offlineMode) Mode.OFFLINE else Mode.ONLINE
-            )
+        if (message.isEmpty()) {
+            return "कृपया अपना सवाल बताइए।"
         }
 
-        return if (offlineMode) {
-            processOffline(cleanPrompt)
-        } else {
-            processOnline(
-                prompt = cleanPrompt,
-                apiKey = apiKey,
-                model = model
-            )
+        synchronized(this) {
+            if (requestInProgress) {
+                return "मैं अभी पिछले सवाल का जवाब तैयार कर रहा हूँ।"
+            }
+            requestInProgress = true
         }
-    }
-
-    /**
-     * Handles offline AI processing.
-     */
-    private suspend fun processOffline(
-        prompt: String
-    ): Result {
 
         return try {
-            val response = offlineCommandEngine
-                .process(prompt)
-                .trim()
-
-            if (response.isEmpty()) {
-                Result.Failure(
-                    message = "इस कमांड के लिए ऑफलाइन सहायता उपलब्ध नहीं है।",
-                    mode = Mode.OFFLINE
-                )
-            } else {
-                Result.Success(
-                    response = response,
-                    mode = Mode.OFFLINE
-                )
+            if (settingsManager.offlineMode) {
+                return "ऑफलाइन मोड चालू है। इस समय Gemini AI उपलब्ध नहीं है।"
             }
 
-        } catch (exception: Exception) {
-            Result.Failure(
-                message = exception.message
-                    ?: "ऑफलाइन प्रोसेसिंग में समस्या आई।",
-                mode = Mode.OFFLINE
+            val apiKey = settingsManager.apiKey.trim()
+
+            if (apiKey.isEmpty()) {
+                return "पहले IDRAAK Settings में Gemini API key डालें।"
+            }
+
+            val prompt = requestBuilder.build(
+                userMessage = message,
+                conversation = conversationContext.getMessages()
             )
-        }
-    }
 
-    /**
-     * Handles online Gemini processing.
-     */
-    private suspend fun processOnline(
-        prompt: String,
-        apiKey: String,
-        model: String
-    ): Result {
+            if (prompt.isBlank()) {
+                return "आपका सवाल पढ़ा नहीं जा सका। कृपया दोबारा बोलें।"
+            }
 
-        if (apiKey.isBlank()) {
-            return Result.Failure(
-                message = "Gemini API Key उपलब्ध नहीं है। Settings में API Key दर्ज करें।",
-                mode = Mode.ONLINE
-            )
-        }
-
-        return try {
-            val response = geminiApiClient.generateResponse(
+            val rawResponse = geminiApiClient.generateResponse(
                 prompt = prompt,
                 apiKey = apiKey,
-                model = model
-            ).trim()
-
-            if (response.isEmpty()) {
-                Result.Failure(
-                    message = "Gemini से खाली जवाब प्राप्त हुआ।",
-                    mode = Mode.ONLINE
-                )
-            } else {
-                Result.Success(
-                    response = response,
-                    mode = Mode.ONLINE
-                )
-            }
-
-        } catch (exception: Exception) {
-            Result.Failure(
-                message = exception.message
-                    ?: "Gemini से संपर्क नहीं हो सका।",
-                mode = Mode.ONLINE
+                model = settingsManager.geminiModel
             )
+
+            val answer = responseParser.parse(rawResponse)
+
+            conversationContext.addUserMessage(message)
+            conversationContext.addAssistantMessage(answer)
+
+            answer
+        } catch (error: Exception) {
+            errorMapper.map(error)
+        } finally {
+            synchronized(this) {
+                requestInProgress = false
+            }
         }
     }
+
+    fun clearConversation() {
+        conversationContext.clear()
+    }
+
+    fun isRequestInProgress(): Boolean =
+        requestInProgress
 }
