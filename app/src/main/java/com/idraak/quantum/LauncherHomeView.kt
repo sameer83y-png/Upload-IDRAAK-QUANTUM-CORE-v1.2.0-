@@ -1,3 +1,4 @@
+
 package com.idraak.quantum
 
 import android.content.Context
@@ -28,7 +29,6 @@ class LauncherHomeView(
 ) : LinearLayout(context) {
 
     private val cyan = Color.rgb(0, 225, 255)
-
     private val launcherEngine = LauncherEngine(context)
 
     private lateinit var homePanel: LinearLayout
@@ -84,16 +84,10 @@ class LauncherHomeView(
     }
 
     private fun buildHome() {
-
         homePanel = LinearLayout(context).apply {
             orientation = VERTICAL
             gravity = Gravity.CENTER
-            setPadding(
-                dp(18),
-                dp(18),
-                dp(18),
-                dp(12)
-            )
+            setPadding(dp(18), dp(18), dp(18), dp(12))
         }
 
         val header = TextView(context).apply {
@@ -137,9 +131,7 @@ class LauncherHomeView(
         coreView = LiveOrbView(context)
 
         coreView.setOnTouchListener { view, event ->
-
             when (event.actionMasked) {
-
                 MotionEvent.ACTION_DOWN -> {
                     coreStartX = event.x
                     coreStartY = event.y
@@ -148,10 +140,7 @@ class LauncherHomeView(
                     view.isPressed = true
 
                     handler.removeCallbacks(longPressRunnable)
-                    handler.postDelayed(
-                        longPressRunnable,
-                        2000L
-                    )
+                    handler.postDelayed(longPressRunnable, 2000L)
 
                     true
                 }
@@ -160,10 +149,7 @@ class LauncherHomeView(
                     val moveX = abs(event.x - coreStartX)
                     val moveY = abs(event.y - coreStartY)
 
-                    if (
-                        moveX > touchSlop ||
-                        moveY > touchSlop
-                    ) {
+                    if (moveX > touchSlop || moveY > touchSlop) {
                         coreMoved = true
                         view.isPressed = false
                         handler.removeCallbacks(longPressRunnable)
@@ -188,17 +174,11 @@ class LauncherHomeView(
             (resources.displayMetrics.widthPixels - dp(80))
                 .coerceAtLeast(dp(1))
 
-        val coreSize = min(
-            dp(310),
-            availableWidth
-        )
+        val coreSize = min(dp(310), availableWidth)
 
         homePanel.addView(
             coreView,
-            LayoutParams(
-                coreSize,
-                coreSize
-            ).apply {
+            LayoutParams(coreSize, coreSize).apply {
                 gravity = Gravity.CENTER
                 topMargin = dp(12)
                 bottomMargin = dp(12)
@@ -268,16 +248,10 @@ class LauncherHomeView(
     }
 
     private fun buildDrawer() {
-
         drawerPanel = LinearLayout(context).apply {
             orientation = VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(
-                dp(16),
-                dp(18),
-                dp(16),
-                dp(12)
-            )
+            setPadding(dp(16), dp(18), dp(16), dp(12))
             visibility = GONE
         }
 
@@ -343,10 +317,7 @@ class LauncherHomeView(
             context,
             emptyList()
         ) { app ->
-
-            val launched = launcherEngine.launchApp(
-                app.packageName
-            )
+            val launched = launcherEngine.launchApp(app.packageName)
 
             if (!launched) {
                 Toast.makeText(
@@ -406,7 +377,6 @@ class LauncherHomeView(
     }
 
     private fun showHome() {
-
         handler.removeCallbacks(longPressRunnable)
 
         homePanel.visibility = VISIBLE
@@ -418,7 +388,6 @@ class LauncherHomeView(
     }
 
     private fun showDrawer() {
-
         handler.removeCallbacks(longPressRunnable)
 
         homePanel.visibility = GONE
@@ -443,7 +412,6 @@ class LauncherHomeView(
     }
 
     fun reloadApps() {
-
         if (!::appAdapter.isInitialized) return
         if (!isAttachedToWindow) return
 
@@ -456,7 +424,6 @@ class LauncherHomeView(
 
         try {
             executor.execute {
-
                 val loadedApps = try {
                     launcherEngine.getInstalledApps()
                 } catch (_: Exception) {
@@ -464,7 +431,6 @@ class LauncherHomeView(
                 }
 
                 handler.post {
-
                     if (
                         !isAttachedToWindow ||
                         requestId != reloadRequestId ||
@@ -481,19 +447,14 @@ class LauncherHomeView(
         }
     }
 
-    override fun dispatchTouchEvent(
-        event: MotionEvent
-    ): Boolean {
-
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
-
             MotionEvent.ACTION_DOWN -> {
                 startX = event.x
                 startY = event.y
             }
 
             MotionEvent.ACTION_UP -> {
-
                 val deltaX = event.x - startX
                 val deltaY = event.y - startY
 
@@ -502,13 +463,8 @@ class LauncherHomeView(
                     abs(deltaY) > abs(deltaX) * 1.25f
 
                 if (verticalSwipe) {
-
-                    if (
-                        deltaY < 0 &&
-                        !isAppDrawerOpen()
-                    ) {
+                    if (deltaY < 0 && !isAppDrawerOpen()) {
                         showDrawer()
-
                     } else if (
                         deltaY > 0 &&
                         isAppDrawerOpen() &&
@@ -528,11 +484,9 @@ class LauncherHomeView(
     }
 
     private fun startedInsideAppGrid(): Boolean {
-
         if (!::appGrid.isInitialized) return false
 
         val gridRect = Rect()
-
         appGrid.getHitRect(gridRect)
 
         gridRect.offset(
@@ -577,7 +531,6 @@ class LauncherHomeView(
     }
 
     override fun onDetachedFromWindow() {
-
         handler.removeCallbacks(longPressRunnable)
 
         reloadRequestId++
