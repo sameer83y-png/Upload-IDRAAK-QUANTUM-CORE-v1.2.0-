@@ -1,3 +1,4 @@
+
 package com.idraak.quantum
 
 import android.Manifest
@@ -12,7 +13,6 @@ import android.hardware.SensorManager
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.os.BatteryManager
-import android.os.Build
 import android.provider.MediaStore
 
 data class BatteryInfo(
@@ -40,16 +40,16 @@ data class SensorReading(
 
 class HardwareController(context: Context) : SensorEventListener {
 
-    private val appContext = context.applicationContext
+    private val appContext: Context = context.applicationContext
 
-    private val sensorManager =
-        appContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    private val sensorManager: SensorManager? =
+        appContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
 
-    private val cameraManager =
-        appContext.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+    private val cameraManager: CameraManager? =
+        appContext.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
 
-    private val batteryManager =
-        appContext.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+    private val batteryManager: BatteryManager? =
+        appContext.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
 
     @Volatile
     private var activeSensor: Sensor? = null
@@ -60,60 +60,92 @@ class HardwareController(context: Context) : SensorEventListener {
     @Volatile
     private var lastError: String = ""
 
+    // --------------------------------------------------
+    // CAMERA
+    // --------------------------------------------------
+
     fun isCameraAvailable(): Boolean {
         return try {
             appContext.packageManager.hasSystemFeature(
                 PackageManager.FEATURE_CAMERA_ANY
             )
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            lastError = e.message ?: "Unable to check camera availability"
             false
         }
     }
 
     fun openCamera(): Boolean {
-        return try {
+        try {
             if (!isCameraAvailable()) {
                 lastError = "Camera hardware is unavailable"
-                false
-            } else {
-                appContext.startActivity(
-                    Intent(MediaStore.ACTION_IMAGE_CAPTURE).addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK
-                    )
-                )
-                lastError = ""
-                true
+                return false
             }
+
+            val intent = Intent(
+                MediaStore.ACTION_IMAGE_CAPTURE
+            ).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            appContext.startActivity(intent)
+
+            lastError = ""
+            return true
+
         } catch (e: Exception) {
             lastError = e.message ?: "Unable to open camera"
-            false
+            return false
         }
     }
 
-    private fun getFlashCameraId(): String? {
-        return try {
-            val ids = cameraManager.cameraIdList
+    // --------------------------------------------------
+    // FLASHLIGHT
+    // --------------------------------------------------
 
-            val rear = ids.firstOrNull { id ->
+    private fun getFlashCameraId(): String? {
+        try {
+            val manager = cameraManager ?: run {
+                lastError = "Camera service is unavailable"
+                return null
+            }
+
+            val cameraIds = manager.cameraIdList
+
+            val rearCamera = cameraIds.firstOrNull { id ->
                 val characteristics =
-                    cameraManager.getCameraCharacteristics(id)
+                    manager.getCameraCharacteristics(id)
+
+                val hasFlash =
+                    characteristics.get(
+                        CameraCharacteristics.FLASH_INFO_AVAILABLE
+                    ) == true
+
+                val facing =
+                    characteristics.get(
+                        CameraCharacteristics.LENS_FACING
+                    )
+
+                hasFlash &&
+                    facing == CameraCharacteristics.LENS_FACING_BACK
+            }
+
+            if (rearCamera != null) {
+                return rearCamera
+            }
+
+            return cameraIds.firstOrNull { id ->
+                val characteristics =
+                    manager.getCameraCharacteristics(id)
 
                 characteristics.get(
                     CameraCharacteristics.FLASH_INFO_AVAILABLE
-                ) == true &&
-                    characteristics.get(
-                        CameraCharacteristics.LENS_FACING
-                    ) == CameraCharacteristics.LENS_FACING_BACK
+                ) == true
             }
 
-            rear ?: ids.firstOrNull { id ->
-                cameraManager.getCameraCharacteristics(id)
-                    .get(
-                        CameraCharacteristics.FLASH_INFO_AVAILABLE
-                    ) == true
-            }
-        } catch (_: Exception) {
-            null
+        } catch (e: Exception) {
+            lastError = e.message ?: "Unable to detect flashlight"
+            return null
         }
     }
 
@@ -122,112 +154,175 @@ class HardwareController(context: Context) : SensorEventListener {
     }
 
     fun setFlashlight(enabled: Boolean): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            lastError = "Flashlight control requires Android 6.0 or newer"
-            return false
-        }
-
         if (
-            appContext.checkSelfPermission(Manifest.permission.CAMERA) !=
-            PackageManager.PERMISSION_GRANTED
+            appContext.checkSelfPermission(
+                Manifest.permission.CAMERA
+            ) != PackageManager.PERMISSION_GRANTED
         ) {
-            lastError = "Camera permission is required"
+            lastError = "Camera permission is required for flashlight control"
             return false
         }
 
-        return try {
-            val id = getFlashCameraId()
-
-            if (id == null) {
-                lastError = "Flashlight is unavailable"
-                false
-            } else {
-                cameraManager.setTorchMode(id, enabled)
-                lastError = ""
-                true
+        try {
+            val manager = cameraManager ?: run {
+                lastError = "Camera service is unavailable"
+                return false
             }
+
+            val cameraId = getFlashCameraId()
+
+            if (cameraId == null) {
+                if (lastError.isBlank()) {
+                    lastError = "Flashlight is unavailable"
+                }
+                return false
+            }
+
+            manager.setTorchMode(cameraId, enabled)
+
+            lastError = ""
+            return true
+
         } catch (e: SecurityException) {
             lastError = "Camera permission denied"
-            false
+            return false
+
         } catch (e: Exception) {
             lastError = e.message ?: "Flashlight operation failed"
-            false
+            return false
         }
     }
 
-    fun flashlightOn(): Boolean = setFlashlight(true)
+    fun flashlightOn(): Boolean {
+        return setFlashlight(true)
+    }
 
-    fun flashlightOff(): Boolean = setFlashlight(false)
+    fun flashlightOff(): Boolean {
+        return setFlashlight(false)
+    }
+
+    // --------------------------------------------------
+    // BATTERY
+    // --------------------------------------------------
 
     fun getBatteryInfo(): BatteryInfo {
-        return try {
-            val intent = appContext.registerReceiver(
+        try {
+            val batteryIntent = appContext.registerReceiver(
                 null,
                 IntentFilter(Intent.ACTION_BATTERY_CHANGED)
             )
 
-            val level =
-                intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val level = batteryIntent?.getIntExtra(
+                BatteryManager.EXTRA_LEVEL,
+                -1
+            ) ?: -1
 
-            val scale =
-                intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            val scale = batteryIntent?.getIntExtra(
+                BatteryManager.EXTRA_SCALE,
+                -1
+            ) ?: -1
 
             val percentage = if (level >= 0 && scale > 0) {
-                ((level * 100f) / scale).toInt().coerceIn(0, 100)
+                ((level * 100f) / scale)
+                    .toInt()
+                    .coerceIn(0, 100)
             } else {
-                batteryManager.getIntProperty(
+                val capacity = batteryManager?.getIntProperty(
                     BatteryManager.BATTERY_PROPERTY_CAPACITY
-                ).takeIf { it in 0..100 } ?: -1
+                ) ?: -1
+
+                if (capacity in 0..100) capacity else -1
             }
 
-            val status =
-                intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+            val status = batteryIntent?.getIntExtra(
+                BatteryManager.EXTRA_STATUS,
+                -1
+            ) ?: -1
 
-            val plugged =
-                intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+            val charging =
+                status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                    status == BatteryManager.BATTERY_STATUS_FULL
 
-            val temperature =
-                intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1) ?: -1
+            val plugged = batteryIntent?.getIntExtra(
+                BatteryManager.EXTRA_PLUGGED,
+                0
+            ) ?: 0
 
-            BatteryInfo(
+            val temperature = batteryIntent?.getIntExtra(
+                BatteryManager.EXTRA_TEMPERATURE,
+                -1
+            ) ?: -1
+
+            lastError = ""
+
+            return BatteryInfo(
                 percentage = percentage,
-                charging =
-                    status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                    status == BatteryManager.BATTERY_STATUS_FULL,
-                temperatureCelsius =
-                    if (temperature > 0) temperature / 10f else -1f,
+                charging = charging,
+                temperatureCelsius = if (temperature >= 0) {
+                    temperature / 10f
+                } else {
+                    -1f
+                },
                 pluggedIn = plugged != 0
             )
+
         } catch (e: Exception) {
             lastError = e.message ?: "Unable to read battery information"
-            BatteryInfo(-1, false, -1f, false)
+
+            return BatteryInfo(
+                percentage = -1,
+                charging = false,
+                temperatureCelsius = -1f,
+                pluggedIn = false
+            )
         }
     }
 
+    // --------------------------------------------------
+    // SENSOR INFORMATION
+    // --------------------------------------------------
+
     fun getAvailableSensors(): List<SensorInfo> {
-        return try {
-            sensorManager.getSensorList(Sensor.TYPE_ALL).map {
-                SensorInfo(
-                    name = it.name,
-                    vendor = it.vendor,
-                    type = it.type,
-                    maximumRange = it.maximumRange,
-                    resolution = it.resolution
-                )
+        try {
+            val manager = sensorManager ?: run {
+                lastError = "Sensor service is unavailable"
+                return emptyList()
             }
+
+            val result = manager
+                .getSensorList(Sensor.TYPE_ALL)
+                .map { sensor ->
+                    SensorInfo(
+                        name = sensor.name,
+                        vendor = sensor.vendor,
+                        type = sensor.type,
+                        maximumRange = sensor.maximumRange,
+                        resolution = sensor.resolution
+                    )
+                }
+
+            lastError = ""
+            return result
+
         } catch (e: Exception) {
             lastError = e.message ?: "Unable to read available sensors"
-            emptyList()
+            return emptyList()
         }
     }
 
     fun hasSensor(sensorType: Int): Boolean {
         return try {
-            sensorManager.getDefaultSensor(sensorType) != null
-        } catch (_: Exception) {
+            val manager = sensorManager ?: return false
+            manager.getDefaultSensor(sensorType) != null
+        } catch (e: Exception) {
+            lastError = e.message ?: "Unable to check sensor"
             false
         }
     }
+
+    // --------------------------------------------------
+    // SENSOR MONITORING
+    // --------------------------------------------------
 
     @Synchronized
     fun startSensorMonitoring(
@@ -236,55 +331,67 @@ class HardwareController(context: Context) : SensorEventListener {
     ): Boolean {
         stopSensorMonitoring()
 
-        return try {
-            val sensor = sensorManager.getDefaultSensor(sensorType)
+        val manager = sensorManager
+
+        if (manager == null) {
+            lastError = "Sensor service is unavailable"
+            return false
+        }
+
+        try {
+            val sensor = manager.getDefaultSensor(sensorType)
 
             if (sensor == null) {
                 lastError = "Requested sensor is unavailable"
-                false
-            } else {
-                val registered = sensorManager.registerListener(
-                    this,
-                    sensor,
-                    SensorManager.SENSOR_DELAY_NORMAL
-                )
-
-                if (!registered) {
-                    sensorManager.unregisterListener(this)
-                    activeSensor = null
-                    sensorCallback = null
-                    lastError = "Unable to register sensor listener"
-                    false
-                } else {
-                    activeSensor = sensor
-                    sensorCallback = callback
-                    lastError = ""
-                    true
-                }
+                return false
             }
+
+            val registered = manager.registerListener(
+                this,
+                sensor,
+                SensorManager.SENSOR_DELAY_NORMAL
+            )
+
+            if (!registered) {
+                manager.unregisterListener(this)
+                activeSensor = null
+                sensorCallback = null
+                lastError = "Unable to register sensor listener"
+                return false
+            }
+
+            activeSensor = sensor
+            sensorCallback = callback
+
+            lastError = ""
+            return true
+
         } catch (e: Exception) {
-            sensorManager.unregisterListener(this)
+            manager.unregisterListener(this)
+
             activeSensor = null
             sensorCallback = null
+
             lastError = e.message ?: "Sensor monitoring failed"
-            false
+            return false
         }
     }
 
     @Synchronized
     fun stopSensorMonitoring() {
         try {
-            sensorManager.unregisterListener(this)
+            sensorManager?.unregisterListener(this)
         } catch (e: Exception) {
             lastError = e.message ?: "Unable to stop sensor monitoring"
+        } finally {
+            activeSensor = null
+            sensorCallback = null
         }
-
-        activeSensor = null
-        sensorCallback = null
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event == null || event.sensor != activeSensor) return
+        if (event == null) return
+        if (event.sensor != activeSensor) return
 
         val reading = SensorReading(
             sensorName = event.sensor.name,
@@ -304,9 +411,25 @@ class HardwareController(context: Context) : SensorEventListener {
     override fun onAccuracyChanged(
         sensor: Sensor?,
         accuracy: Int
-    ) = Unit
+    ) {
+        // Sensor accuracy updates are optional.
+    }
 
-    fun getLastError(): String = lastError
+    // --------------------------------------------------
+    // ERROR INFORMATION
+    // --------------------------------------------------
+
+    fun getLastError(): String {
+        return lastError
+    }
+
+    fun clearLastError() {
+        lastError = ""
+    }
+
+    // --------------------------------------------------
+    // RESOURCE CLEANUP
+    // --------------------------------------------------
 
     fun release() {
         stopSensorMonitoring()
