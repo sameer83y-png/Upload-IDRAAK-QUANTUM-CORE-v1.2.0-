@@ -1,11 +1,13 @@
 package com.idraak.quantum
 
 /**
- * IDRAAK - Gemini API Client
+ * IDRAAK - AI Engine
  *
  * Responsibility:
- * Handles communication with Gemini API.
+ * Coordinates AI processing between online
+ * and offline AI components.
  *
- * Implementation will be added later.
+ * Does not directly handle HTTP communication.
+ * Actual implementation will be added later.
  */
-internal class GeminiApiClient
+internal class AIEngine
