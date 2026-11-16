@@ -1,7 +1,14 @@
 
 package com.idraak.quantum
 
+import android.Manifest
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.WindowManager
@@ -12,17 +19,91 @@ class MainActivity : Activity() {
 
     private lateinit var settingsManager: SettingsManager
     private lateinit var homeView: LauncherHomeView
+    private lateinit var voiceManager: VoiceManager
+    private lateinit var voiceEngine: VoiceEngine
+    private lateinit var voiceSessionController: VoiceSessionController
 
     private var settingsVisible = false
+    private var voiceStarted = false
+    private var receiverRegistered = false
+
+    companion object {
+        private const val REQUEST_VOICE_PERMISSIONS = 7101
+    }
+
+    private val voiceReceiver = object : BroadcastReceiver() {
+
+        override fun onReceive(context: Context?, intent: Intent?) {
+
+            if (intent == null) return
+
+            when (intent.action) {
+
+                VoiceForegroundService.ACTION_RESULT -> {
+
+                    val recognizedText =
+                        intent.getStringExtra(
+                            VoiceForegroundService.EXTRA_TEXT
+                        ) ?: return
+
+                    if (::voiceSessionController.isInitialized) {
+                        voiceSessionController.onRecognizedText(
+                            recognizedText
+                        )
+                    }
+                }
+
+                VoiceForegroundService.ACTION_STATE -> {
+
+                    val running = intent.getBooleanExtra(
+                        VoiceForegroundService.EXTRA_RUNNING,
+                        false
+                    )
+
+                    if (::homeView.isInitialized) {
+                        homeView.setVoiceStatus(
+                            if (running) "LISTENING" else "STANDBY"
+                        )
+                    }
+                }
+
+                VoiceForegroundService.ACTION_ERROR -> {
+
+                    val errorMessage =
+                        intent.getStringExtra(
+                            VoiceForegroundService.EXTRA_ERROR_MESSAGE
+                        ) ?: "Microphone service error"
+
+                    if (::homeView.isInitialized) {
+                        homeView.setVoiceStatus("VOICE ERROR")
+                    }
+
+                    android.util.Log.e(
+                        "IDRAAK_VOICE",
+                        errorMessage
+                    )
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         configureWindow()
-        initializeIDRAAK()
+
+        try {
+            initializeIDRAAK()
+            registerVoiceReceiver()
+            requestVoicePermissions()
+
+        } catch (exception: Exception) {
+            showStartupError(exception)
+        }
     }
 
     private fun configureWindow() {
+
         window.setFlags(
             WindowManager.LayoutParams.FLAG_FULLSCREEN,
             WindowManager.LayoutParams.FLAG_FULLSCREEN
@@ -30,39 +111,233 @@ class MainActivity : Activity() {
     }
 
     private fun initializeIDRAAK() {
-        try {
-            settingsManager = SettingsManager(this)
 
-            homeView = LauncherHomeView(
-                context = this,
-                onSettingsClick = {
-                    showSettings()
-                },
-                onVoiceClick = {
-                    // Voice interaction का संचालन dedicated
-                    // voice components करेंगे।
-                    // Home screen पर कोई mic button नहीं होगा।
+        settingsManager = SettingsManager(this)
+
+        homeView = LauncherHomeView(
+            context = this,
+
+            onSettingsClick = {
+                showSettings()
+            },
+
+            onVoiceClick = {
+                // No visible microphone button.
+                // Voice operation is handled by dedicated components.
+            }
+        )
+
+        voiceManager = VoiceManager(this)
+
+        voiceEngine = VoiceEngine(
+            context = this,
+            voiceManager = voiceManager
+        )
+
+        voiceSessionController = VoiceSessionController(
+            context = this,
+
+            onResponse = { response ->
+
+                runOnUiThread {
+
+                    if (::voiceEngine.isInitialized) {
+                        homeView.setVoiceStatus("SPEAKING")
+                        voiceEngine.speak(response)
+                    }
                 }
+            },
+
+            onStateChanged = { state ->
+
+                runOnUiThread {
+
+                    if (::homeView.isInitialized) {
+
+                        homeView.setVoiceStatus(
+                            when (state) {
+                                WakeWordController.VoiceState.SLEEPING ->
+                                    "STANDBY"
+
+                                WakeWordController.VoiceState.ACTIVE ->
+                                    "ACTIVE"
+
+                                WakeWordController.VoiceState.PROCESSING ->
+                                    "THINKING"
+                            }
+                        )
+                    }
+
+                    if (::voiceEngine.isInitialized) {
+                        voiceEngine.setSleeping(
+                            state == WakeWordController.VoiceState.SLEEPING
+                        )
+                    }
+                }
+            }
+        )
+
+        voiceSessionController.setWakeWordEnabled(
+            settingsManager.wakeWordEnabled
+        )
+
+        showHome()
+    }
+
+    private fun registerVoiceReceiver() {
+
+        if (receiverRegistered) return
+
+        val filter = IntentFilter().apply {
+            addAction(VoiceForegroundService.ACTION_RESULT)
+            addAction(VoiceForegroundService.ACTION_STATE)
+            addAction(VoiceForegroundService.ACTION_ERROR)
+        }
+
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(
+                voiceReceiver,
+                filter,
+                Context.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(voiceReceiver, filter)
+        }
+
+        receiverRegistered = true
+    }
+
+    private fun requestVoicePermissions() {
+
+        if (
+            Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+
+            if (
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissions(
+                    arrayOf(
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ),
+                    REQUEST_VOICE_PERMISSIONS
+                )
+            }
+
+            startVoiceSystem()
+            return
+        }
+
+        if (
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            startVoiceSystem()
+            return
+        }
+
+        val permissions = mutableListOf(
+            Manifest.permission.RECORD_AUDIO
+        )
+
+        if (Build.VERSION.SDK_INT >= 33) {
+            permissions.add(
+                Manifest.permission.POST_NOTIFICATIONS
+            )
+        }
+
+        requestPermissions(
+            permissions.toTypedArray(),
+            REQUEST_VOICE_PERMISSIONS
+        )
+    }
+
+    @Deprecated("Deprecated in Android API 23")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+
+        super.onRequestPermissionsResult(
+            requestCode,
+            permissions,
+            grantResults
+        )
+
+        if (requestCode != REQUEST_VOICE_PERMISSIONS) return
+
+        val audioGranted =
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+
+        if (audioGranted) {
+            startVoiceSystem()
+        } else {
+            homeView.setVoiceStatus("MICROPHONE PERMISSION REQUIRED")
+        }
+    }
+
+    private fun startVoiceSystem() {
+
+        if (voiceStarted) return
+
+        if (
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            homeView.setVoiceStatus("MICROPHONE PERMISSION REQUIRED")
+            return
+        }
+
+        try {
+
+            val language = settingsManager.voiceLanguage
+                .takeIf { it.isNotBlank() && it != "auto" }
+                ?: "hi-IN"
+
+            voiceSessionController.setWakeWordEnabled(
+                settingsManager.wakeWordEnabled
             )
 
-            showHome()
+            // VoiceEngine owns microphone start/pause/resume.
+            // VoiceSessionController receives recognized speech.
+            voiceEngine.startListening(language)
+
+            voiceStarted = true
+
+            homeView.setVoiceStatus("STANDBY")
 
         } catch (exception: Exception) {
-            showStartupError(exception)
+
+            voiceStarted = false
+
+            homeView.setVoiceStatus("VOICE START ERROR")
+
+            android.util.Log.e(
+                "IDRAAK_VOICE",
+                "Voice startup failed",
+                exception
+            )
         }
     }
 
     private fun showHome() {
+
         settingsVisible = false
         setContentView(homeView)
     }
 
     private fun showSettings() {
-        if (!::settingsManager.isInitialized) {
-            return
-        }
+
+        if (!::settingsManager.isInitialized) return
 
         try {
+
             settingsVisible = true
 
             val settingsView = SettingsView(
@@ -76,13 +351,16 @@ class MainActivity : Activity() {
             setContentView(settingsView)
 
         } catch (exception: Exception) {
+
             settingsVisible = false
             showStartupError(exception)
         }
     }
 
     private fun showStartupError(exception: Exception) {
+
         val errorView = TextView(this).apply {
+
             text = "IDRAAK STARTUP ERROR\n\n" +
                 (exception.message ?: "Unknown error")
 
@@ -93,6 +371,7 @@ class MainActivity : Activity() {
         }
 
         val container = FrameLayout(this).apply {
+
             setBackgroundColor(0xFF03071C.toInt())
 
             addView(
@@ -109,6 +388,7 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Android API 33")
     override fun onBackPressed() {
+
         if (settingsVisible) {
             showHome()
             return
@@ -123,5 +403,32 @@ class MainActivity : Activity() {
         }
 
         super.onBackPressed()
+    }
+
+    override fun onDestroy() {
+
+        if (receiverRegistered) {
+            try {
+                unregisterReceiver(voiceReceiver)
+            } catch (exception: Exception) {
+                android.util.Log.e(
+                    "IDRAAK_VOICE",
+                    "Receiver cleanup failed",
+                    exception
+                )
+            }
+
+            receiverRegistered = false
+        }
+
+        if (::voiceSessionController.isInitialized) {
+            voiceSessionController.release()
+        }
+
+        if (::voiceEngine.isInitialized) {
+            voiceEngine.release()
+        }
+
+        super.onDestroy()
     }
 }
