@@ -4,7 +4,7 @@ package com.idraak.quantum
 import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
-import android.view.Gravity
+import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
@@ -14,19 +14,15 @@ import android.widget.TextView
  * IDRAAK - Main Activity
  *
  * Responsibility:
- * Acts as the main application entry point
- * and coordinates the application lifecycle.
+ * Application entry point and lifecycle coordinator.
  *
- * This initial foundation intentionally has
- * no dependency on Voice, Gemini, Controllers,
- * Settings, or other feature modules.
- *
- * Each feature will be integrated through
- * its dedicated component in later stages.
+ * Starts the actual LauncherHomeView.
+ * Feature-specific logic remains in dedicated modules.
  */
 class MainActivity : Activity() {
 
     companion object {
+        private const val TAG = "IDRAAK_MAIN_ACTIVITY"
         private const val BACKGROUND_COLOR = 0xFF03071C.toInt()
         private const val TEXT_COLOR = 0xFF00FFFF.toInt()
     }
@@ -35,14 +31,13 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
 
         configureWindow()
-        showInitialInterface()
+        launchMainInterface()
     }
 
     /**
-     * Configures the main application window.
+     * Configure the application window.
      */
     private fun configureWindow() {
-
         window.statusBarColor = BACKGROUND_COLOR
         window.navigationBarColor = BACKGROUND_COLOR
 
@@ -61,52 +56,60 @@ class MainActivity : Activity() {
     }
 
     /**
-     * Displays the initial IDRAAK application screen.
-     *
-     * This is a temporary foundation interface.
-     * The actual launcher interface will be integrated
-     * through LauncherHomeView in a later stage.
+     * Launch the actual IDRAAK home interface.
      */
-    private fun showInitialInterface() {
+    private fun launchMainInterface() {
+        try {
+            val homeView = LauncherHomeView(this) {
+                // Voice interaction is managed by
+                // the dedicated voice components.
+            }
 
+            setContentView(homeView)
+
+            Log.i(TAG, "IDRAAK launcher interface started")
+
+        } catch (exception: Exception) {
+            Log.e(
+                TAG,
+                "Failed to start IDRAAK launcher interface",
+                exception
+            )
+
+            showStartupError(exception)
+        }
+    }
+
+    /**
+     * Display a diagnostic screen if launcher startup fails.
+     */
+    private fun showStartupError(exception: Exception) {
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
+            gravity = android.view.Gravity.CENTER
             setBackgroundColor(BACKGROUND_COLOR)
             setPadding(24, 24, 24, 24)
         }
 
         val title = TextView(this).apply {
-            text = "IDRAAK"
-            textSize = 32f
-            gravity = Gravity.CENTER
+            text = "IDRAAK STARTUP ERROR"
+            textSize = 20f
+            gravity = android.view.Gravity.CENTER
             setTextColor(TEXT_COLOR)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
 
-        val status = TextView(this).apply {
-            text = "CORE INITIALIZED"
+        val details = TextView(this).apply {
+            text = exception.message
+                ?: exception.javaClass.simpleName
             textSize = 14f
-            gravity = Gravity.CENTER
+            gravity = android.view.Gravity.CENTER
             setTextColor(Color.WHITE)
-            setPadding(0, 16, 0, 0)
+            setPadding(0, 20, 0, 0)
         }
 
-        rootLayout.addView(
-            title,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        rootLayout.addView(
-            status,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        )
+        rootLayout.addView(title)
+        rootLayout.addView(details)
 
         setContentView(rootLayout)
     }
