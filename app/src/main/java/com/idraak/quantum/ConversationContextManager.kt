@@ -1,11 +1,16 @@
+
 package com.idraak.quantum
 
 /**
- * IDRAAK - Gemini API Client
+ * IDRAAK - Conversation Context Manager
  *
  * Responsibility:
- * Handles communication with Gemini API.
+ * Maintains conversation context and message history
+ * for AI processing.
  *
- * Implementation will be added later.
+ * Does not communicate with Gemini directly,
+ * recognize speech, or execute phone commands.
+ *
+ * Actual implementation will be added later.
  */
-internal class GeminiApiClient
+internal class ConversationContextManager
