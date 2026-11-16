@@ -5,22 +5,31 @@ package com.idraak.quantum
  * IDRAAK - Offline Command Engine
  *
  * Responsibility:
- * Handles supported offline commands in Hindi, English,
- * Urdu, and Arabic.
+ * Handles supported offline commands in Hindi,
+ * English, Urdu, and Arabic.
  *
- * Does not communicate with Gemini API
- * or handle speech recognition.
+ * This component performs local processing only.
+ * It does not communicate with Gemini API,
+ * recognize speech, or execute Android actions.
+ *
+ * Android actions are delegated to the dedicated
+ * command execution subsystem.
  */
 internal class OfflineCommandEngine {
 
     /**
      * Processes a command locally without internet.
      *
-     * An empty response means that the requested
-     * command is not implemented or supported yet.
+     * Returns an empty response when the requested
+     * offline capability is not implemented yet.
      */
-    @Suppress("UNUSED_PARAMETER")
     suspend fun process(prompt: String): String {
+        if (prompt.isBlank()) {
+            return ""
+        }
+
+        // Offline command handling will be integrated
+        // through the dedicated command subsystem.
         return ""
     }
 }
