@@ -11,9 +11,10 @@ import java.util.Locale
  * - Detect IDRAAK wake words.
  * - Manage SLEEPING, ACTIVE and PROCESSING states.
  * - Detect sleep commands in every state.
- * - Forward recognized commands to the command handler.
+ * - Forward recognized commands exactly once.
  *
  * Speech recognition is handled by VoiceForegroundService.
+ * Microphone lifecycle is not controlled by this class.
  */
 class WakeWordController(
     private val onWakeWordDetected: () -> Unit,
@@ -61,7 +62,7 @@ class WakeWordController(
         private val ARABIC_TATWEEL =
             Regex("\\u0640")
 
-        private val WORD_BOUNDARY_CHARS =
+        private const val WORD_BOUNDARY_CHARS =
             "[\\p{L}\\p{M}\\p{N}]"
 
         private val WHITESPACE =
@@ -69,6 +70,15 @@ class WakeWordController(
 
         private val PUNCTUATION =
             Regex("[،,!?؛:।؟.!]+")
+
+        private val INVISIBLE_CHARACTERS =
+            Regex("[\\u200C\\u200D\\uFEFF]")
+
+        private val NORMALIZED_WAKE_WORDS =
+            WAKE_WORDS.map { normalizeText(it) }
+
+        private val NORMALIZED_SLEEP_WORDS =
+            SLEEP_WORDS.map { normalizeText(it) }
     }
 
     @Volatile
@@ -90,20 +100,23 @@ class WakeWordController(
     /**
      * Processes recognized speech.
      *
-     * Sleep commands have priority in every state.
-     * Commands are accepted only in ACTIVE state.
+     * Priority:
+     * 1. Sleep command in every state.
+     * 2. Wake word while sleeping.
+     * 3. Commands while active.
+     * 4. Ignore commands while processing.
      */
     @Synchronized
     fun processRecognizedText(recognizedText: String) {
 
         if (!enabled || recognizedText.isBlank()) return
 
-        val text = normalize(recognizedText)
+        val text = normalizeText(recognizedText)
 
         if (text.isBlank()) return
 
-        // Sleep command works in every state.
-        if (containsAny(text, SLEEP_WORDS)) {
+        // Sleep commands always have priority.
+        if (containsAnyPhrase(text, NORMALIZED_SLEEP_WORDS)) {
             sleep()
             return
         }
@@ -112,56 +125,53 @@ class WakeWordController(
 
             VoiceState.SLEEPING -> {
 
-                if (!containsWakeWord(text)) return
+                if (!containsAnyPhrase(text, NORMALIZED_WAKE_WORDS)) {
+                    return
+                }
 
-                val remainingCommand = removeWakeWord(text)
+                val remainingCommand =
+                    removeWakeWords(text)
 
                 setState(VoiceState.ACTIVE)
 
-                onWakeWordDetected()
+                safelyInvoke {
+                    onWakeWordDetected()
+                }
 
-                // Supports combined speech:
+                // Supports:
                 // "IDRAAK open WhatsApp"
                 if (remainingCommand.isNotBlank()) {
-                    onCommandDetected(remainingCommand)
+                    safelyInvoke {
+                        onCommandDetected(remainingCommand)
+                    }
                 }
             }
 
             VoiceState.ACTIVE -> {
 
-                val command = if (containsWakeWord(text)) {
-                    removeWakeWord(text)
-                } else {
-                    text
-                }
+                val command =
+                    if (containsAnyPhrase(text, NORMALIZED_WAKE_WORDS)) {
+                        removeWakeWords(text)
+                    } else {
+                        text
+                    }
 
                 if (command.isNotBlank()) {
-                    onCommandDetected(command)
+                    safelyInvoke {
+                        onCommandDetected(command)
+                    }
                 }
             }
 
             VoiceState.PROCESSING -> {
-                // Ignore additional commands while processing.
-                // Sleep commands are already handled above.
+                // Ignore additional commands.
+                // Sleep commands are handled above.
             }
         }
     }
 
     /**
-     * Call when command processing has completed.
-     */
-    @Synchronized
-    fun finishProcessing() {
-
-        if (!enabled) return
-
-        if (currentState == VoiceState.PROCESSING) {
-            setState(VoiceState.ACTIVE)
-        }
-    }
-
-    /**
-     * Call immediately before processing a command.
+     * Called when command processing starts.
      */
     @Synchronized
     fun startProcessing() {
@@ -174,7 +184,25 @@ class WakeWordController(
     }
 
     /**
-     * Moves IDRAAK into sleeping state.
+     * Called when command processing finishes.
+     *
+     * Does not wake IDRAAK if it was put to sleep
+     * while the command was processing.
+     */
+    @Synchronized
+    fun finishProcessing() {
+
+        if (!enabled) return
+
+        if (currentState == VoiceState.PROCESSING) {
+            setState(VoiceState.ACTIVE)
+        }
+    }
+
+    /**
+     * Puts IDRAAK into sleeping state.
+     *
+     * Microphone recognition continues running.
      */
     @Synchronized
     fun sleep() {
@@ -183,11 +211,13 @@ class WakeWordController(
 
         setState(VoiceState.SLEEPING)
 
-        onSleepDetected()
+        safelyInvoke {
+            onSleepDetected()
+        }
     }
 
     /**
-     * Enables or disables voice command processing.
+     * Enables or disables wake-word processing.
      */
     @Synchronized
     fun setEnabled(value: Boolean) {
@@ -198,17 +228,21 @@ class WakeWordController(
 
         if (!value) {
 
-            if (currentState != VoiceState.SLEEPING) {
-                setState(VoiceState.SLEEPING)
-                onSleepDetected()
-            } else {
-                setState(VoiceState.SLEEPING)
+            val wasNotSleeping =
+                currentState != VoiceState.SLEEPING
+
+            setState(VoiceState.SLEEPING)
+
+            if (wasNotSleeping) {
+                safelyInvoke {
+                    onSleepDetected()
+                }
             }
         }
     }
 
     /**
-     * Manually activates the controller.
+     * Manually activates IDRAAK.
      */
     @Synchronized
     fun activate() {
@@ -219,27 +253,17 @@ class WakeWordController(
     }
 
     /**
-     * Checks whether recognized text contains a wake word.
+     * Removes recognized wake words from the command.
      */
-    private fun containsWakeWord(text: String): Boolean =
-        WAKE_WORDS.any { word ->
-            containsPhrase(text, normalize(word))
-        }
-
-    /**
-     * Removes all recognized wake words from the text.
-     */
-    private fun removeWakeWord(text: String): String {
+    private fun removeWakeWords(text: String): String {
 
         var result = text
 
-        for (word in WAKE_WORDS) {
-
-            val normalizedWord = normalize(word)
+        for (word in NORMALIZED_WAKE_WORDS) {
 
             val pattern = Regex(
                 "(?<!$WORD_BOUNDARY_CHARS)" +
-                    Regex.escape(normalizedWord) +
+                    Regex.escape(word) +
                     "(?!$WORD_BOUNDARY_CHARS)"
             )
 
@@ -252,19 +276,20 @@ class WakeWordController(
     }
 
     /**
-     * Checks recognized text against sleep phrases.
+     * Checks whether any complete phrase exists.
      */
-    private fun containsAny(
+    private fun containsAnyPhrase(
         text: String,
         phrases: List<String>
-    ): Boolean =
-        phrases.any { phrase ->
-            containsPhrase(text, normalize(phrase))
+    ): Boolean {
+
+        return phrases.any { phrase ->
+            containsPhrase(text, phrase)
         }
+    }
 
     /**
-     * Matches complete words or phrases.
-     * Prevents accidental partial-word matches.
+     * Matches complete words or phrases only.
      */
     private fun containsPhrase(
         text: String,
@@ -283,9 +308,9 @@ class WakeWordController(
     }
 
     /**
-     * Normalizes recognized text across supported languages.
+     * Normalizes text across supported languages.
      */
-    private fun normalize(value: String): String {
+    private fun normalizeText(value: String): String {
 
         var result = Normalizer.normalize(
             value,
@@ -302,7 +327,7 @@ class WakeWordController(
             .replace("’", "'")
             .replace("'", "")
             .replace(PUNCTUATION, " ")
-            .replace(Regex("[\\u200C\\u200D\\uFEFF]"), "")
+            .replace(INVISIBLE_CHARACTERS, "")
             .replace(WHITESPACE, " ")
             .trim()
 
@@ -310,7 +335,7 @@ class WakeWordController(
     }
 
     /**
-     * Updates voice state and notifies the state listener.
+     * Updates the current state.
      */
     private fun setState(newState: VoiceState) {
 
@@ -318,6 +343,25 @@ class WakeWordController(
 
         currentState = newState
 
-        onStateChanged(newState)
+        safelyInvoke {
+            onStateChanged(newState)
+        }
+    }
+
+    /**
+     * Prevents listener exceptions from crashing
+     * the voice recognition callback.
+     */
+    private inline fun safelyInvoke(action: () -> Unit) {
+
+        try {
+            action()
+        } catch (exception: Exception) {
+            android.util.Log.e(
+                "IDRAAK_WAKE_WORD",
+                "Wake word callback failed",
+                exception
+            )
+        }
     }
 }
