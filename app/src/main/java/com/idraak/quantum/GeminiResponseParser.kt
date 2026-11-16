@@ -1,21 +1,25 @@
-
 package com.idraak.quantum
 
 /**
- * IDRAAK - Gemini Response Parser
+ * GeminiApiClient से प्राप्त text को validate और normalize करता है।
  *
- * Responsibility:
- * Parses and extracts useful response data
- * received from the Gemini API.
- *
- * Does not send HTTP requests, build API requests,
- * or execute phone commands.
- *
- * Current architecture:
- * Python idraak_core.py currently parses the
- * Gemini API response.
- *
- * This class remains a dedicated Kotlin component
- * without duplicating the Python implementation.
+ * Gemini के HTTP response और Python JSON envelope को दोबारा parse
+ * नहीं करता; वह काम idraak_core.py और GeminiApiClient के पास रहता है।
  */
-internal class GeminiResponseParser
+internal class GeminiResponseParser {
+
+    fun parse(response: String?): String {
+        val result = response
+            ?.replace("\u0000", "")
+            ?.trim()
+            .orEmpty()
+
+        if (result.isBlank()) {
+            throw IllegalStateException(
+                "Gemini returned an empty response"
+            )
+        }
+
+        return result
+    }
+}
