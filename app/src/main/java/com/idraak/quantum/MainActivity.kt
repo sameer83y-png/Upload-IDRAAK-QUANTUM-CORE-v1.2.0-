@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.TextView
+import android.util.Log
 
 class MainActivity : Activity() {
 
@@ -29,6 +30,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_VOICE_PERMISSIONS = 7101
+        private const val TAG = "IDRAAK_MAIN"
     }
 
     private val voiceReceiver = object : BroadcastReceiver() {
@@ -61,9 +63,7 @@ class MainActivity : Activity() {
                     )
 
                     if (::homeView.isInitialized) {
-                        homeView.setVoiceStatus(
-                            if (running) "LISTENING" else "STANDBY"
-                        )
+                        homeView.setVoiceStatus(running)
                     }
                 }
 
@@ -75,13 +75,10 @@ class MainActivity : Activity() {
                         ) ?: "Microphone service error"
 
                     if (::homeView.isInitialized) {
-                        homeView.setVoiceStatus("VOICE ERROR")
+                        homeView.setVoiceStatus(false)
                     }
 
-                    android.util.Log.e(
-                        "IDRAAK_VOICE",
-                        errorMessage
-                    )
+                    Log.e(TAG, errorMessage)
                 }
             }
         }
@@ -96,8 +93,8 @@ class MainActivity : Activity() {
             initializeIDRAAK()
             registerVoiceReceiver()
             requestVoicePermissions()
-
         } catch (exception: Exception) {
+            Log.e(TAG, "Startup failed", exception)
             showStartupError(exception)
         }
     }
@@ -116,14 +113,12 @@ class MainActivity : Activity() {
 
         homeView = LauncherHomeView(
             context = this,
-
             onSettingsClick = {
                 showSettings()
             },
-
             onVoiceClick = {
-                // No visible microphone button.
-                // Voice operation is handled by dedicated components.
+                // Voice control is handled by dedicated components.
+                // No visible microphone button is required.
             }
         )
 
@@ -142,7 +137,7 @@ class MainActivity : Activity() {
                 runOnUiThread {
 
                     if (::voiceEngine.isInitialized) {
-                        homeView.setVoiceStatus("SPEAKING")
+                        homeView.setVoiceStatus(true)
                         voiceEngine.speak(response)
                     }
                 }
@@ -154,18 +149,10 @@ class MainActivity : Activity() {
 
                     if (::homeView.isInitialized) {
 
-                        homeView.setVoiceStatus(
-                            when (state) {
-                                WakeWordController.VoiceState.SLEEPING ->
-                                    "STANDBY"
+                        val active =
+                            state != WakeWordController.VoiceState.SLEEPING
 
-                                WakeWordController.VoiceState.ACTIVE ->
-                                    "ACTIVE"
-
-                                WakeWordController.VoiceState.PROCESSING ->
-                                    "THINKING"
-                            }
-                        )
+                        homeView.setVoiceStatus(active)
                     }
 
                     if (::voiceEngine.isInitialized) {
@@ -195,12 +182,15 @@ class MainActivity : Activity() {
         }
 
         if (Build.VERSION.SDK_INT >= 33) {
+
             registerReceiver(
                 voiceReceiver,
                 filter,
                 Context.RECEIVER_NOT_EXPORTED
             )
+
         } else {
+
             @Suppress("DEPRECATION")
             registerReceiver(voiceReceiver, filter)
         }
@@ -210,32 +200,13 @@ class MainActivity : Activity() {
 
     private fun requestVoicePermissions() {
 
-        if (
-            Build.VERSION.SDK_INT >= 33 &&
+        val audioGranted =
             checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
-        ) {
-
-            if (
-                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
                 PackageManager.PERMISSION_GRANTED
-            ) {
-                requestPermissions(
-                    arrayOf(
-                        Manifest.permission.POST_NOTIFICATIONS
-                    ),
-                    REQUEST_VOICE_PERMISSIONS
-                )
-            }
 
-            startVoiceSystem()
-            return
-        }
+        if (audioGranted) {
 
-        if (
-            checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
-        ) {
+            requestNotificationPermissionIfNeeded()
             startVoiceSystem()
             return
         }
@@ -256,6 +227,23 @@ class MainActivity : Activity() {
         )
     }
 
+    private fun requestNotificationPermissionIfNeeded() {
+
+        if (Build.VERSION.SDK_INT < 33) return
+
+        if (
+            checkSelfPermission(
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+
+            requestPermissions(
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                REQUEST_VOICE_PERMISSIONS
+            )
+        }
+    }
+
     @Deprecated("Deprecated in Android API 23")
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -273,12 +261,13 @@ class MainActivity : Activity() {
 
         val audioGranted =
             checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
+                PackageManager.PERMISSION_GRANTED
 
         if (audioGranted) {
             startVoiceSystem()
         } else {
-            homeView.setVoiceStatus("MICROPHONE PERMISSION REQUIRED")
+            homeView.setVoiceStatus(false)
+            Log.e(TAG, "Microphone permission was denied")
         }
     }
 
@@ -290,39 +279,34 @@ class MainActivity : Activity() {
             checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
             PackageManager.PERMISSION_GRANTED
         ) {
-            homeView.setVoiceStatus("MICROPHONE PERMISSION REQUIRED")
+            homeView.setVoiceStatus(false)
             return
         }
 
         try {
 
             val language = settingsManager.voiceLanguage
-                .takeIf { it.isNotBlank() && it != "auto" }
-                ?: "hi-IN"
+                .takeIf {
+                    it.isNotBlank() && it != "auto"
+                } ?: "hi-IN"
 
             voiceSessionController.setWakeWordEnabled(
                 settingsManager.wakeWordEnabled
             )
 
-            // VoiceEngine owns microphone start/pause/resume.
-            // VoiceSessionController receives recognized speech.
+            // VoiceEngine starts and controls the microphone service.
+            // The receiver forwards recognized speech to VoiceSessionController.
             voiceEngine.startListening(language)
 
             voiceStarted = true
-
-            homeView.setVoiceStatus("STANDBY")
+            homeView.setVoiceStatus(true)
 
         } catch (exception: Exception) {
 
             voiceStarted = false
+            homeView.setVoiceStatus(false)
 
-            homeView.setVoiceStatus("VOICE START ERROR")
-
-            android.util.Log.e(
-                "IDRAAK_VOICE",
-                "Voice startup failed",
-                exception
-            )
+            Log.e(TAG, "Voice startup failed", exception)
         }
     }
 
@@ -353,6 +337,7 @@ class MainActivity : Activity() {
         } catch (exception: Exception) {
 
             settingsVisible = false
+            Log.e(TAG, "Settings screen failed", exception)
             showStartupError(exception)
         }
     }
@@ -408,14 +393,11 @@ class MainActivity : Activity() {
     override fun onDestroy() {
 
         if (receiverRegistered) {
+
             try {
                 unregisterReceiver(voiceReceiver)
             } catch (exception: Exception) {
-                android.util.Log.e(
-                    "IDRAAK_VOICE",
-                    "Receiver cleanup failed",
-                    exception
-                )
+                Log.e(TAG, "Receiver cleanup failed", exception)
             }
 
             receiverRegistered = false
