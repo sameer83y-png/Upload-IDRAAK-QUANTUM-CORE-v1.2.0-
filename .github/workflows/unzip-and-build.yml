@@ -1,4 +1,3 @@
-
 name: IDRAAK QUANTUM CORE Build
 
 on:
@@ -39,6 +38,21 @@ jobs:
           test -f app/src/main/AndroidManifest.xml
           echo "IDRAAK source files verified."
 
+      - name: Validate Android Manifest XML
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          path = "app/src/main/AndroidManifest.xml"
+
+          try:
+              ET.parse(path)
+              print("MANIFEST XML IS VALID")
+          except ET.ParseError as e:
+              print("MANIFEST XML ERROR:", e)
+              raise
+          PY
+
       - name: Build APK
         run: |
           gradle --no-daemon clean :app:assembleDebug
@@ -50,4 +64,3 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
-          
