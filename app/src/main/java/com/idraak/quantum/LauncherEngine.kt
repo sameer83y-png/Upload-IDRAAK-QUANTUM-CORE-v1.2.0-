@@ -1,3 +1,4 @@
+
 package com.idraak.quantum
 
 import android.content.Context
@@ -28,13 +29,11 @@ class LauncherEngine(context: Context) {
      * One entry is maintained per package.
      */
     fun getInstalledApps(): List<LauncherApp> {
-
         val intent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_LAUNCHER)
         }
 
         val activities = try {
-
             if (Build.VERSION.SDK_INT >= 33) {
                 packageManager.queryIntentActivities(
                     intent,
@@ -44,24 +43,14 @@ class LauncherEngine(context: Context) {
                 @Suppress("DEPRECATION")
                 packageManager.queryIntentActivities(intent, 0)
             }
-
         } catch (e: Exception) {
-
-            Log.e(
-                TAG,
-                "Unable to query installed applications",
-                e
-            )
-
+            Log.e(TAG, "Unable to query installed applications", e)
             return emptyList()
         }
 
         return try {
-
             activities.mapNotNull { resolveInfo ->
-
                 try {
-
                     val activity = resolveInfo.activityInfo
                         ?: return@mapNotNull null
 
@@ -90,31 +79,16 @@ class LauncherEngine(context: Context) {
                         packageName = packageName,
                         icon = appIcon
                     )
-
                 } catch (e: Exception) {
-
-                    Log.w(
-                        TAG,
-                        "Skipping an unavailable application",
-                        e
-                    )
-
+                    Log.w(TAG, "Skipping unavailable application", e)
                     null
                 }
             }
                 .distinctBy { it.packageName }
-                .sortedBy {
-                    it.name.lowercase(Locale.ROOT)
-                }
+                .sortedBy { it.name.lowercase(Locale.ROOT) }
 
         } catch (e: Exception) {
-
-            Log.e(
-                TAG,
-                "Application list processing failed",
-                e
-            )
-
+            Log.e(TAG, "Application list processing failed", e)
             emptyList()
         }
     }
@@ -126,7 +100,6 @@ class LauncherEngine(context: Context) {
         query: String,
         apps: List<LauncherApp>
     ): List<LauncherApp> {
-
         val searchQuery = query.trim()
 
         if (searchQuery.isEmpty()) {
@@ -134,7 +107,6 @@ class LauncherEngine(context: Context) {
         }
 
         return apps.filter { app ->
-
             app.name.contains(
                 searchQuery,
                 ignoreCase = true
@@ -149,51 +121,28 @@ class LauncherEngine(context: Context) {
      * Launches an application using its package name.
      */
     fun launchApp(packageName: String): Boolean {
-
         if (packageName.isBlank()) {
             Log.w(TAG, "Cannot launch an empty package name")
             return false
         }
 
         return try {
-
             val launchIntent =
-                packageManager.getLaunchIntentForPackage(
-                    packageName
-                ) ?: run {
-                    Log.w(
-                        TAG,
-                        "No launch intent found for $packageName"
-                    )
-                    return false
-                }
+                packageManager.getLaunchIntentForPackage(packageName)
+                    ?: run {
+                        Log.w(TAG, "No launch intent found for $packageName")
+                        return false
+                    }
 
-            launchIntent.addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK
-            )
-
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             appContext.startActivity(launchIntent)
 
             true
-
         } catch (e: SecurityException) {
-
-            Log.e(
-                TAG,
-                "Permission denied while launching $packageName",
-                e
-            )
-
+            Log.e(TAG, "Permission denied while launching $packageName", e)
             false
-
         } catch (e: Exception) {
-
-            Log.e(
-                TAG,
-                "Unable to launch $packageName",
-                e
-            )
-
+            Log.e(TAG, "Unable to launch $packageName", e)
             false
         }
     }
