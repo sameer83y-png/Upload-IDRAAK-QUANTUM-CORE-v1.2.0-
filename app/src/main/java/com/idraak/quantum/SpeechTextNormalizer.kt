@@ -11,24 +11,30 @@ import java.util.Locale
  * Cleans and normalizes recognized speech text.
  *
  * Supports Hindi, English, Urdu, and Arabic text.
+ * Preserves ZWNJ and ZWJ characters required
+ * for correct Urdu and Arabic text shaping.
+ *
  * Does not recognize speech, interpret commands,
  * or execute actions.
  */
 internal class SpeechTextNormalizer {
 
     /**
-     * Removes unnecessary whitespace and control characters.
+     * Removes unnecessary control and format characters
+     * while preserving ZWNJ and ZWJ.
      */
     fun clean(text: String): String {
         return text
-            .replace(Regex("[\\p{Cc}\\p{Cf}]"), " ")
+            .replace(
+                Regex("[\\p{Cc}\\p{Cf}&&[^\\u200C\\u200D]]"),
+                " "
+            )
             .replace(Regex("\\s+"), " ")
             .trim()
     }
 
     /**
-     * Normalizes Unicode text without removing
-     * Hindi, Urdu, or Arabic characters.
+     * Normalizes Unicode text using NFC.
      */
     fun normalize(text: String): String {
         return Normalizer.normalize(
@@ -38,9 +44,7 @@ internal class SpeechTextNormalizer {
     }
 
     /**
-     * Produces a comparison-friendly version of text.
-     * English letters are converted to lowercase.
-     * Other supported scripts are preserved.
+     * Produces comparison-friendly normalized text.
      */
     fun normalizeForComparison(text: String): String {
         return normalize(text).lowercase(Locale.ROOT)
