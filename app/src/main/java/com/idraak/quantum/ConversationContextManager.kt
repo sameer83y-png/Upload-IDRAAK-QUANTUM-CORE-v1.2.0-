@@ -1,127 +1,91 @@
-
 package com.idraak.quantum
 
 /**
- * IDRAAK - Conversation Context Manager
- *
- * Responsibility:
- * Maintains conversation context and message history
- * for online and offline AI processing.
- *
- * Does not communicate with Gemini,
- * recognize speech, parse phone commands,
- * or execute Android actions.
- *
- * Conversation history is maintained in memory only.
+ * बातचीत का सीमित इतिहास रखता है।
+ * यह API call या command execution नहीं करता।
  */
-internal class ConversationContextManager(
-    private val maxMessages: Int = 20
+data class ConversationMessage(
+    val role: String,
+    val content: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+class ConversationContextManager(
+    private val maxMessages: Int = 12
 ) {
 
-    enum class Role {
-        USER,
-        ASSISTANT
-    }
-
-    data class Message(
-        val role: Role,
-        val content: String,
-        val timestamp: Long
-    )
-
-    private val messages = mutableListOf<Message>()
+    private val lock = Any()
+    private val messages = ArrayDeque<ConversationMessage>()
 
     init {
-        require(maxMessages > 0) {
-            "Maximum message count must be greater than zero."
+        require(maxMessages >= 2) {
+            "Conversation history must allow at least two messages"
         }
     }
 
-    /**
-     * Adds a user message to conversation history.
-     */
-    @Synchronized
-    fun addUserMessage(content: String) {
-        addMessage(Role.USER, content)
+    fun addUserMessage(message: String) {
+        addMessage("user", message)
     }
 
-    /**
-     * Adds an assistant response to conversation history.
-     */
-    @Synchronized
-    fun addAssistantMessage(content: String) {
-        addMessage(Role.ASSISTANT, content)
+    fun addAssistantMessage(message: String) {
+        addMessage("assistant", message)
     }
 
-    /**
-     * Adds a message and removes the oldest messages
-     * when the configured history limit is exceeded.
-     */
-    @Synchronized
-    private fun addMessage(
-        role: Role,
-        content: String
-    ) {
+    private fun addMessage(role: String, content: String) {
         val cleanContent = content.trim()
-
         if (cleanContent.isEmpty()) return
 
-        messages.add(
-            Message(
-                role = role,
-                content = cleanContent,
-                timestamp = System.currentTimeMillis()
+        synchronized(lock) {
+            messages.addLast(
+                ConversationMessage(
+                    role = role,
+                    content = cleanContent
+                )
             )
-        )
 
-        while (messages.size > maxMessages) {
-            messages.removeAt(0)
+            while (messages.size > maxMessages) {
+                messages.removeFirst()
+            }
         }
     }
 
-    /**
-     * Returns a safe copy of the complete conversation history.
-     */
-    @Synchronized
-    fun getMessages(): List<Message> {
-        return messages.toList()
-    }
-
-    /**
-     * Returns the most recent messages.
-     */
-    @Synchronized
-    fun getRecentMessages(limit: Int): List<Message> {
-        if (limit <= 0 || messages.isEmpty()) {
-            return emptyList()
+    fun getMessages(): List<ConversationMessage> {
+        return synchronized(lock) {
+            messages.toList()
         }
-
-        return messages
-            .takeLast(limit)
-            .toList()
     }
 
-    /**
-     * Returns the current number of stored messages.
-     */
-    @Synchronized
-    fun getMessageCount(): Int {
-        return messages.size
+    fun getRecentMessages(limit: Int): List<ConversationMessage> {
+        if (limit <= 0) return emptyList()
+
+        return synchronized(lock) {
+            messages.toList().takeLast(limit)
+        }
     }
 
-    /**
-     * Checks whether conversation history is empty.
-     */
-    @Synchronized
-    fun isEmpty(): Boolean {
-        return messages.isEmpty()
-    }
-
-    /**
-     * Clears all conversation history from memory.
-     */
-    @Synchronized
     fun clear() {
-        messages.clear()
+        synchronized(lock) {
+            messages.clear()
+        }
+    }
+
+    fun size(): Int {
+        return synchronized(lock) {
+            messages.size
+        }
+    }
+
+    fun buildConversationText(): String {
+        return synchronized(lock) {
+            messages.joinToString("\n") { message ->
+                val speaker = if (message.role == "user") {
+                    "User"
+                } else {
+                    "IDRAAK"
+                }
+
+                "$speaker: ${message.content}"
+            }
+        }
     }
 }
