@@ -10,11 +10,11 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.TextView
-import android.util.Log
 
 class MainActivity : Activity() {
 
@@ -29,7 +29,9 @@ class MainActivity : Activity() {
     private var receiverRegistered = false
 
     companion object {
-        private const val REQUEST_VOICE_PERMISSIONS = 7101
+        private const val REQUEST_AUDIO_PERMISSION = 7101
+        private const val REQUEST_NOTIFICATION_PERMISSION = 7102
+
         private const val TAG = "IDRAAK_MAIN"
     }
 
@@ -62,8 +64,24 @@ class MainActivity : Activity() {
                         false
                     )
 
-                    if (::homeView.isInitialized) {
-                        homeView.setVoiceStatus(running)
+                    /*
+                     * Service का running होना यह नहीं बताता
+                     * कि IDRAAK ACTIVE है या SLEEPING।
+                     *
+                     * Service TTS के दौरान भी pause हो सकती है,
+                     * इसलिए false मिलने पर UI को forcefully
+                     * inactive नहीं करेंगे।
+                     */
+                    if (
+                        running &&
+                        ::homeView.isInitialized &&
+                        ::voiceSessionController.isInitialized
+                    ) {
+                        val awake =
+                            voiceSessionController.getVoiceState() !=
+                                WakeWordController.VoiceState.SLEEPING
+
+                        homeView.setVoiceStatus(awake)
                     }
                 }
 
@@ -73,6 +91,8 @@ class MainActivity : Activity() {
                         intent.getStringExtra(
                             VoiceForegroundService.EXTRA_ERROR_MESSAGE
                         ) ?: "Microphone service error"
+
+                    voiceStarted = false
 
                     if (::homeView.isInitialized) {
                         homeView.setVoiceStatus(false)
@@ -136,7 +156,11 @@ class MainActivity : Activity() {
 
                 runOnUiThread {
 
-                    if (::voiceEngine.isInitialized) {
+                    if (
+                        !isFinishing &&
+                        ::voiceEngine.isInitialized &&
+                        ::homeView.isInitialized
+                    ) {
                         homeView.setVoiceStatus(true)
                         voiceEngine.speak(response)
                     }
@@ -198,6 +222,10 @@ class MainActivity : Activity() {
         receiverRegistered = true
     }
 
+    /**
+     * पहले microphone permission माँगता है।
+     * Notification permission अलग request में माँगी जाती है।
+     */
     private fun requestVoicePermissions() {
 
         val audioGranted =
@@ -205,25 +233,14 @@ class MainActivity : Activity() {
                 PackageManager.PERMISSION_GRANTED
 
         if (audioGranted) {
-
             requestNotificationPermissionIfNeeded()
             startVoiceSystem()
             return
         }
 
-        val permissions = mutableListOf(
-            Manifest.permission.RECORD_AUDIO
-        )
-
-        if (Build.VERSION.SDK_INT >= 33) {
-            permissions.add(
-                Manifest.permission.POST_NOTIFICATIONS
-            )
-        }
-
         requestPermissions(
-            permissions.toTypedArray(),
-            REQUEST_VOICE_PERMISSIONS
+            arrayOf(Manifest.permission.RECORD_AUDIO),
+            REQUEST_AUDIO_PERMISSION
         )
     }
 
@@ -231,15 +248,15 @@ class MainActivity : Activity() {
 
         if (Build.VERSION.SDK_INT < 33) return
 
-        if (
+        val notificationGranted =
             checkSelfPermission(
                 Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
+            ) == PackageManager.PERMISSION_GRANTED
 
+        if (!notificationGranted) {
             requestPermissions(
                 arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                REQUEST_VOICE_PERMISSIONS
+                REQUEST_NOTIFICATION_PERMISSION
             )
         }
     }
@@ -257,20 +274,52 @@ class MainActivity : Activity() {
             grantResults
         )
 
-        if (requestCode != REQUEST_VOICE_PERMISSIONS) return
+        when (requestCode) {
 
-        val audioGranted =
-            checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
-                PackageManager.PERMISSION_GRANTED
+            REQUEST_AUDIO_PERMISSION -> {
 
-        if (audioGranted) {
-            startVoiceSystem()
-        } else {
-            homeView.setVoiceStatus(false)
-            Log.e(TAG, "Microphone permission was denied")
+                val audioGranted =
+                    checkSelfPermission(
+                        Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+
+                if (audioGranted) {
+
+                    requestNotificationPermissionIfNeeded()
+                    startVoiceSystem()
+
+                } else {
+
+                    voiceStarted = false
+
+                    if (::homeView.isInitialized) {
+                        homeView.setVoiceStatus(false)
+                    }
+
+                    Log.e(
+                        TAG,
+                        "Microphone permission was denied"
+                    )
+                }
+            }
+
+            REQUEST_NOTIFICATION_PERMISSION -> {
+                // Notification permission का परिणाम
+                // microphone permission को प्रभावित नहीं करता।
+                if (
+                    checkSelfPermission(
+                        Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    startVoiceSystem()
+                }
+            }
         }
     }
 
+    /**
+     * Persistent Vosk voice service शुरू करता है।
+     */
     private fun startVoiceSystem() {
 
         if (voiceStarted) return
@@ -279,34 +328,57 @@ class MainActivity : Activity() {
             checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
             PackageManager.PERMISSION_GRANTED
         ) {
-            homeView.setVoiceStatus(false)
+            if (::homeView.isInitialized) {
+                homeView.setVoiceStatus(false)
+            }
+            return
+        }
+
+        if (
+            !::voiceEngine.isInitialized ||
+            !::voiceSessionController.isInitialized
+        ) {
+            Log.e(TAG, "Voice components are not initialized")
             return
         }
 
         try {
 
-            val language = settingsManager.voiceLanguage
-                .takeIf {
-                    it.isNotBlank() && it != "auto"
-                } ?: "hi-IN"
+            val language =
+                settingsManager.voiceLanguage
+                    .takeIf {
+                        it.isNotBlank() && it != "auto"
+                    } ?: "hi-IN"
 
             voiceSessionController.setWakeWordEnabled(
                 settingsManager.wakeWordEnabled
             )
 
-            // VoiceEngine starts and controls the microphone service.
-            // The receiver forwards recognized speech to VoiceSessionController.
+            /*
+             * VoiceEngine service को शुरू करता है।
+             * Recognized text receiver के माध्यम से
+             * VoiceSessionController तक पहुँचता है।
+             */
             voiceEngine.startListening(language)
 
             voiceStarted = true
-            homeView.setVoiceStatus(true)
+
+            val awake =
+                voiceSessionController.getVoiceState() !=
+                    WakeWordController.VoiceState.SLEEPING
+
+            homeView.setVoiceStatus(awake)
 
         } catch (exception: Exception) {
 
             voiceStarted = false
             homeView.setVoiceStatus(false)
 
-            Log.e(TAG, "Voice startup failed", exception)
+            Log.e(
+                TAG,
+                "Voice startup failed",
+                exception
+            )
         }
     }
 
@@ -337,7 +409,13 @@ class MainActivity : Activity() {
         } catch (exception: Exception) {
 
             settingsVisible = false
-            Log.e(TAG, "Settings screen failed", exception)
+
+            Log.e(
+                TAG,
+                "Settings screen failed",
+                exception
+            )
+
             showStartupError(exception)
         }
     }
@@ -397,7 +475,11 @@ class MainActivity : Activity() {
             try {
                 unregisterReceiver(voiceReceiver)
             } catch (exception: Exception) {
-                Log.e(TAG, "Receiver cleanup failed", exception)
+                Log.e(
+                    TAG,
+                    "Receiver cleanup failed",
+                    exception
+                )
             }
 
             receiverRegistered = false
@@ -407,6 +489,12 @@ class MainActivity : Activity() {
             voiceSessionController.release()
         }
 
+        /*
+         * TTS और Activity-side resources release होते हैं।
+         * यहाँ VoiceManager.stop() नहीं बुलाया जाता,
+         * ताकि persistent foreground voice service
+         * Activity destruction के कारण बंद न हो।
+         */
         if (::voiceEngine.isInitialized) {
             voiceEngine.release()
         }
