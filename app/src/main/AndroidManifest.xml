@@ -1,14 +1,25 @@
 
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Internet and microphone -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Foreground voice service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+    <!-- Notifications and wake lock -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- Allow discovery of installed launcher apps -->
+    <!-- Microphone is supported but not mandatory for installation -->
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
+
+    <!-- Discover installed launcher apps -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
@@ -22,6 +33,7 @@
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false">
 
+        <!-- Main launcher activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -32,7 +44,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Android Home Launcher option -->
+            <!-- Android Home Launcher -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
@@ -41,13 +53,14 @@
 
         </activity>
 
-        <!-- Voice foreground service -->
+        <!-- Persistent Vosk voice recognition service -->
         <service
             android:name=".VoiceForegroundService"
+            android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
-        <!-- IDRAAK screen-control accessibility service -->
+        <!-- Accessibility phone controller -->
         <service
             android:name=".IDRAAKAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
