@@ -16,8 +16,8 @@ import java.net.URL
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.zip.ZipInputStream
 
 internal class VoskModelManager(context: Context) : AutoCloseable {
 
@@ -48,12 +48,14 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
             ModelInfo(
                 language = "hi",
                 directoryName = "vosk-model-small-hi-0.22",
-                downloadUrl = "https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip"
+                downloadUrl =
+                    "https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip"
             ),
             ModelInfo(
                 language = "en",
                 directoryName = "vosk-model-small-en-us-0.15",
-                downloadUrl = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
+                downloadUrl =
+                    "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
             )
         )
     }
@@ -74,23 +76,31 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
     private val modelDirectory =
         File(appContext.filesDir, "vosk-models")
 
+    /*
+     * Models remain alive until the manager is closed.
+     *
+     * A recognizer may still be using an older model when
+     * the requested language changes. Therefore, replacing
+     * activeModel must not immediately close the old model.
+     */
+    private val ownedModels = mutableListOf<Model>()
+
     private var activeModel: Model? = null
     private var activeLanguage: String? = null
 
-    /**
-     * Loads the requested language model.
-     *
-     * All disk and model-loading operations run on one background
-     * executor, preventing simultaneous downloads and installations.
-     */
     fun ensureModel(language: String, listener: Listener) {
         val normalizedLanguage = normalizeLanguage(language)
+
         val info = MODEL_INFOS.firstOrNull {
             it.language == normalizedLanguage
         }
 
         if (closed.get()) {
-            notifyError(listener, language, "Vosk model manager is closed.")
+            notifyError(
+                listener,
+                language,
+                "Vosk model manager is closed."
+            )
             return
         }
 
@@ -105,13 +115,15 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
 
         try {
             executor.execute {
+
                 if (closed.get()) return@execute
 
                 try {
                     val existing = synchronized(lock) {
-                        if (closed.get()) {
-                            null
-                        } else if (activeLanguage == info.language) {
+                        if (
+                            !closed.get() &&
+                            activeLanguage == info.language
+                        ) {
                             activeModel
                         } else {
                             null
@@ -136,7 +148,7 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                         downloadAndInstall(info, listener)
                     }
 
-                    if (closed.get()) return@execute
+                    checkNotClosed()
 
                     if (!isValidModelDirectory(modelFolder)) {
                         throw IOException(
@@ -144,47 +156,70 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                         )
                     }
 
-                    val newModel = Model(modelFolder.absolutePath)
+                    /*
+                     * Native model initialization.
+                     *
+                     * LinkageError is handled separately because
+                     * it is not an Exception.
+                     */
+                    val newModel = try {
+                        Model(modelFolder.absolutePath)
+                    } catch (error: LinkageError) {
+                        Log.e(
+                            TAG,
+                            "Vosk native library initialization failed.",
+                            error
+                        )
 
-                    val previousModel: Model?
-                    val accepted: Boolean
+                        throw IOException(
+                            "Vosk native library could not be initialized: " +
+                                (error.message ?: error.javaClass.simpleName),
+                            error
+                        )
+                    }
 
-                    synchronized(lock) {
+                    val accepted = synchronized(lock) {
                         if (closed.get()) {
-                            accepted = false
-                            previousModel = null
+                            false
                         } else {
-                            previousModel = activeModel
+                            ownedModels.add(newModel)
                             activeModel = newModel
                             activeLanguage = info.language
-                            accepted = true
+                            true
                         }
                     }
 
                     if (!accepted) {
                         try {
                             newModel.close()
-                        } catch (_: Exception) {
-                        }
-                        return@execute
-                    }
-
-                    if (previousModel != null && previousModel !== newModel) {
-                        try {
-                            previousModel.close()
                         } catch (exception: Exception) {
                             Log.w(
                                 TAG,
-                                "Previous model cleanup failed",
+                                "Unused model cleanup failed.",
                                 exception
                             )
                         }
+                        return@execute
                     }
 
                     notifyReadyIfCurrent(
                         listener,
                         info.language,
                         newModel
+                    )
+
+                } catch (error: LinkageError) {
+                    Log.e(
+                        TAG,
+                        "Vosk native loading error.",
+                        error
+                    )
+
+                    notifyError(
+                        listener,
+                        info.language,
+                        "Vosk native loading error: " +
+                            (error.message ?: error.javaClass.simpleName)
                     )
 
                 } catch (exception: Exception) {
@@ -201,11 +236,13 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                     )
                 }
             }
+
         } catch (exception: Exception) {
             notifyError(
                 listener,
                 info.language,
-                exception.message ?: "Unable to schedule Vosk model loading."
+                exception.message
+                    ?: "Unable to schedule Vosk model loading."
             )
         }
     }
@@ -233,7 +270,9 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
         checkNotClosed()
 
         if (!modelDirectory.exists() && !modelDirectory.mkdirs()) {
-            throw IOException("Unable to create Vosk model directory.")
+            throw IOException(
+                "Unable to create Vosk model directory."
+            )
         }
 
         val zipFile = File(
@@ -260,7 +299,9 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
             checkNotClosed()
 
             if (!zipFile.exists() || zipFile.length() <= 0L) {
-                throw IOException("Downloaded model archive is empty.")
+                throw IOException(
+                    "Downloaded model archive is empty."
+                )
             }
 
             extractZipSafely(
@@ -292,22 +333,31 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                 deleteRecursively(destination)
             }
 
-            val installSource = if (
-                extractedModel.absoluteFile == stagingDirectory.absoluteFile
-            ) {
-                stagingDirectory
-            } else {
-                extractedModel
-            }
+            val installSource =
+                if (
+                    extractedModel.absoluteFile ==
+                    stagingDirectory.absoluteFile
+                ) {
+                    stagingDirectory
+                } else {
+                    extractedModel
+                }
 
             if (!installSource.renameTo(destination)) {
-                copyDirectory(installSource, destination)
+                copyDirectory(
+                    installSource,
+                    destination
+                )
+
                 deleteRecursively(stagingDirectory)
             }
 
             if (!isValidModelDirectory(destination)) {
                 deleteRecursively(destination)
-                throw IOException("Vosk model installation verification failed.")
+
+                throw IOException(
+                    "Vosk model installation verification failed."
+                )
             }
 
         } finally {
@@ -332,14 +382,19 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                 checkNotClosed()
 
                 if (currentUrl.protocol != "https") {
-                    throw IOException("Only HTTPS model downloads are allowed.")
+                    throw IOException(
+                        "Only HTTPS model downloads are allowed."
+                    )
                 }
 
-                connection = currentUrl.openConnection() as HttpURLConnection
+                connection =
+                    currentUrl.openConnection() as HttpURLConnection
+
                 connection.instanceFollowRedirects = false
                 connection.connectTimeout = CONNECT_TIMEOUT_MS
                 connection.readTimeout = READ_TIMEOUT_MS
                 connection.requestMethod = "GET"
+
                 connection.setRequestProperty(
                     "User-Agent",
                     "IDRAAK-Quantum-Core"
@@ -356,14 +411,19 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                     responseCode == 307 ||
                     responseCode == 308
                 ) {
-                    val location = connection.getHeaderField("Location")
-                        ?: throw IOException("Download redirect has no destination.")
+                    val location =
+                        connection.getHeaderField("Location")
+                            ?: throw IOException(
+                                "Download redirect has no destination."
+                            )
 
                     connection.disconnect()
                     connection = null
 
                     if (++redirectCount > MAX_REDIRECTS) {
-                        throw IOException("Too many model download redirects.")
+                        throw IOException(
+                            "Too many model download redirects."
+                        )
                     }
 
                     currentUrl = URL(currentUrl, location)
@@ -380,26 +440,37 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
             }
 
             val activeConnection = connection
-                ?: throw IOException("Unable to establish model download connection.")
+                ?: throw IOException(
+                    "Unable to establish model download connection."
+                )
 
-            val contentLength = activeConnection.contentLengthLong
+            val contentLength =
+                activeConnection.contentLengthLong
 
             if (contentLength > MAX_DOWNLOAD_BYTES) {
-                throw IOException("Model archive exceeds the download size limit.")
+                throw IOException(
+                    "Model archive exceeds the download size limit."
+                )
             }
 
             var totalBytes = 0L
             var lastReportedPercent = -1
 
-            BufferedInputStream(activeConnection.inputStream).use { input ->
+            BufferedInputStream(
+                activeConnection.inputStream
+            ).use { input ->
+
                 FileOutputStream(destination).use { fileOutput ->
+
                     BufferedOutputStream(fileOutput).use { output ->
+
                         val buffer = ByteArray(BUFFER_SIZE)
 
                         while (true) {
                             checkNotClosed()
 
                             val count = input.read(buffer)
+
                             if (count == -1) break
 
                             totalBytes += count
@@ -419,6 +490,7 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
 
                                 if (percent != lastReportedPercent) {
                                     lastReportedPercent = percent
+
                                     notifyProgress(
                                         listener,
                                         language,
@@ -434,10 +506,16 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
             }
 
             if (totalBytes <= 0L) {
-                throw IOException("Model download returned no data.")
+                throw IOException(
+                    "Model download returned no data."
+                )
             }
 
-            notifyProgress(listener, language, 100)
+            notifyProgress(
+                listener,
+                language,
+                100
+            )
 
         } finally {
             connection?.disconnect()
@@ -451,7 +529,9 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
         checkNotClosed()
 
         if (!destination.exists() && !destination.mkdirs()) {
-            throw IOException("Unable to create model extraction directory.")
+            throw IOException(
+                "Unable to create model extraction directory."
+            )
         }
 
         val canonicalRoot = destination.canonicalFile
@@ -468,46 +548,68 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                 checkNotClosed()
 
                 val entry = zipInput.nextEntry ?: break
+
                 entryCount++
 
                 if (entryCount > MAX_ZIP_ENTRIES) {
-                    throw IOException("Model archive contains too many files.")
+                    throw IOException(
+                        "Model archive contains too many files."
+                    )
                 }
 
-                val outputFile = File(destination, entry.name).canonicalFile
+                val outputFile =
+                    File(destination, entry.name).canonicalFile
 
                 if (
                     outputFile.path != canonicalRoot.path &&
                     !outputFile.path.startsWith(rootPrefix)
                 ) {
-                    throw IOException("Unsafe path found in model archive.")
+                    throw IOException(
+                        "Unsafe path found in model archive."
+                    )
                 }
 
                 if (entry.isDirectory) {
-                    if (!outputFile.exists() && !outputFile.mkdirs()) {
-                        throw IOException("Unable to create model directory.")
+                    if (
+                        !outputFile.exists() &&
+                        !outputFile.mkdirs()
+                    ) {
+                        throw IOException(
+                            "Unable to create model directory."
+                        )
                     }
+
                 } else {
                     val parent = outputFile.parentFile
-                        ?: throw IOException("Invalid model archive entry.")
+                        ?: throw IOException(
+                            "Invalid model archive entry."
+                        )
 
                     if (!parent.exists() && !parent.mkdirs()) {
-                        throw IOException("Unable to create extraction folder.")
+                        throw IOException(
+                            "Unable to create extraction folder."
+                        )
                     }
 
                     FileOutputStream(outputFile).use { fileOutput ->
+
                         BufferedOutputStream(fileOutput).use { output ->
+
                             val buffer = ByteArray(BUFFER_SIZE)
 
                             while (true) {
                                 checkNotClosed()
 
                                 val count = zipInput.read(buffer)
+
                                 if (count == -1) break
 
                                 totalExtracted += count
 
-                                if (totalExtracted > MAX_EXTRACTED_BYTES) {
+                                if (
+                                    totalExtracted >
+                                    MAX_EXTRACTED_BYTES
+                                ) {
                                     throw IOException(
                                         "Extracted model exceeds the size limit."
                                     )
@@ -530,7 +632,10 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
         stagingDirectory: File,
         expectedDirectoryName: String
     ): File? {
-        val expected = File(stagingDirectory, expectedDirectoryName)
+        val expected = File(
+            stagingDirectory,
+            expectedDirectoryName
+        )
 
         if (isValidModelDirectory(expected)) {
             return expected
@@ -540,7 +645,8 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
             return stagingDirectory
         }
 
-        val children = stagingDirectory.listFiles() ?: return null
+        val children = stagingDirectory.listFiles()
+            ?: return null
 
         for (child in children) {
             if (
@@ -554,11 +660,18 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
         return null
     }
 
-    private fun isValidModelDirectory(directory: File): Boolean {
-        if (!directory.exists() || !directory.isDirectory) return false
+    private fun isValidModelDirectory(
+        directory: File
+    ): Boolean {
+        if (!directory.exists() || !directory.isDirectory) {
+            return false
+        }
 
-        val acousticModel = File(directory, "am/final.mdl")
-        val featureConfig = File(directory, "conf/mfcc.conf")
+        val acousticModel =
+            File(directory, "am/final.mdl")
+
+        val featureConfig =
+            File(directory, "conf/mfcc.conf")
 
         return acousticModel.isFile &&
             acousticModel.length() > 0L &&
@@ -566,32 +679,46 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
             featureConfig.length() > 0L
     }
 
-    private fun copyDirectory(source: File, destination: File) {
+    private fun copyDirectory(
+        source: File,
+        destination: File
+    ) {
         checkNotClosed()
 
         if (!destination.exists() && !destination.mkdirs()) {
-            throw IOException("Unable to create model installation folder.")
+            throw IOException(
+                "Unable to create model installation folder."
+            )
         }
 
         val children = source.listFiles()
-            ?: throw IOException("Unable to read extracted model files.")
+            ?: throw IOException(
+                "Unable to read extracted model files."
+            )
 
         for (child in children) {
             checkNotClosed()
 
-            val target = File(destination, child.name)
+            val target = File(
+                destination,
+                child.name
+            )
 
             if (child.isDirectory) {
                 copyDirectory(child, target)
+
             } else {
                 child.inputStream().use { input ->
+
                     FileOutputStream(target).use { output ->
+
                         val buffer = ByteArray(BUFFER_SIZE)
 
                         while (true) {
                             checkNotClosed()
 
                             val count = input.read(buffer)
+
                             if (count == -1) break
 
                             output.write(buffer, 0, count)
@@ -615,9 +742,16 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
             if (closed.get()) return@post
 
             try {
-                listener.onProgress(language, percent)
+                listener.onProgress(
+                    language,
+                    percent
+                )
             } catch (exception: Exception) {
-                Log.e(TAG, "Progress callback failed", exception)
+                Log.e(
+                    TAG,
+                    "Progress callback failed",
+                    exception
+                )
             }
         }
     }
@@ -641,9 +775,16 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
             if (!stillCurrent) return@post
 
             try {
-                listener.onReady(language, model)
+                listener.onReady(
+                    language,
+                    model
+                )
             } catch (exception: Exception) {
-                Log.e(TAG, "Model ready callback failed", exception)
+                Log.e(
+                    TAG,
+                    "Model ready callback failed",
+                    exception
+                )
             }
         }
     }
@@ -659,16 +800,28 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
             if (closed.get()) return@post
 
             try {
-                listener.onError(language, message)
+                listener.onError(
+                    language,
+                    message
+                )
             } catch (exception: Exception) {
-                Log.e(TAG, "Model error callback failed", exception)
+                Log.e(
+                    TAG,
+                    "Model error callback failed",
+                    exception
+                )
             }
         }
     }
 
     private fun checkNotClosed() {
-        if (closed.get() || Thread.currentThread().isInterrupted) {
-            throw IOException("Vosk model operation was cancelled.")
+        if (
+            closed.get() ||
+            Thread.currentThread().isInterrupted
+        ) {
+            throw IOException(
+                "Vosk model operation was cancelled."
+            )
         }
     }
 
@@ -677,37 +830,85 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
 
         if (file.isDirectory) {
             val children = file.listFiles()
+
             children?.forEach { child ->
                 deleteRecursively(child)
             }
         }
 
         if (!file.delete() && file.exists()) {
-            Log.w(TAG, "Unable to delete temporary file: ${file.absolutePath}")
+            Log.w(
+                TAG,
+                "Unable to delete temporary file: ${file.absolutePath}"
+            )
         }
     }
 
     override fun close() {
-        if (!closed.compareAndSet(false, true)) return
-
-        val oldModel = synchronized(lock) {
-            val previous = activeModel
-            activeModel = null
-            activeLanguage = null
-            previous
+        if (!closed.compareAndSet(false, true)) {
+            return
         }
 
         try {
             executor.shutdownNow()
+
+            val terminated = executor.awaitTermination(
+                3,
+                TimeUnit.SECONDS
+            )
+
+            if (!terminated) {
+                Log.w(
+                    TAG,
+                    "Model executor did not stop in time. " +
+                        "Models will not be closed while loading may still be active."
+                )
+                return
+            }
+
+        } catch (exception: InterruptedException) {
+            Thread.currentThread().interrupt()
+
+            Log.w(
+                TAG,
+                "Interrupted while stopping model executor.",
+                exception
+            )
+            return
+
         } catch (exception: Exception) {
-            Log.w(TAG, "Executor shutdown failed", exception)
+            Log.w(
+                TAG,
+                "Model executor shutdown failed.",
+                exception
+            )
+            return
         }
 
-        if (oldModel != null) {
+        val modelsToClose = synchronized(lock) {
+            activeModel = null
+            activeLanguage = null
+
+            val models = ownedModels.toList()
+            ownedModels.clear()
+            models
+        }
+
+        for (model in modelsToClose) {
             try {
-                oldModel.close()
+                model.close()
             } catch (exception: Exception) {
-                Log.w(TAG, "Vosk model cleanup failed", exception)
+                Log.w(
+                    TAG,
+                    "Vosk model cleanup failed.",
+                    exception
+                )
+            } catch (error: LinkageError) {
+                Log.e(
+                    TAG,
+                    "Vosk native model cleanup failed.",
+                    error
+                )
             }
         }
 
