@@ -1,6 +1,7 @@
 
 package com.idraak.quantum
 
+import android.util.Log
 import java.text.Normalizer
 import java.util.Locale
 
@@ -13,8 +14,8 @@ import java.util.Locale
  * - Detect sleep commands in every state.
  * - Forward recognized commands exactly once.
  *
- * Speech recognition is handled by VoiceForegroundService.
- * Microphone lifecycle is not controlled by this class.
+ * Microphone and Vosk lifecycle are controlled
+ * by VoiceForegroundService and VoiceEngine.
  */
 class WakeWordController(
     private val onWakeWordDetected: () -> Unit,
@@ -30,6 +31,8 @@ class WakeWordController(
     }
 
     companion object {
+
+        private const val TAG = "IDRAAK_WAKE_WORD"
 
         private val WAKE_WORDS = listOf(
             "idraak",
@@ -80,10 +83,6 @@ class WakeWordController(
         private val NORMALIZED_SLEEP_WORDS: List<String> =
             SLEEP_WORDS.map { word -> normalizeText(word) }
 
-        /**
-         * Static normalization function.
-         * Can safely be used during companion initialization.
-         */
         private fun normalizeText(value: String): String {
 
             var result = Normalizer.normalize(
@@ -180,7 +179,7 @@ class WakeWordController(
             }
 
             VoiceState.PROCESSING -> {
-                // Ignore new commands while processing.
+                // Ignore additional commands while processing.
                 // Sleep commands are handled above.
             }
         }
@@ -294,13 +293,29 @@ class WakeWordController(
         return pattern.containsMatchIn(text)
     }
 
+    /**
+     * Centralized state update.
+     * This function was missing in the previous version.
+     */
+    private fun setState(newState: VoiceState) {
+
+        if (currentState == newState) return
+
+        currentState = newState
+
+        safelyInvoke {
+            onStateChanged(newState)
+        }
+    }
+
     private inline fun safelyInvoke(action: () -> Unit) {
 
         try {
             action()
         } catch (exception: Exception) {
-            android.util.Log.e(
-                "IDRAAK_WAKE_WORD",
+
+            Log.e(
+                TAG,
                 "Wake word callback failed",
                 exception
             )
