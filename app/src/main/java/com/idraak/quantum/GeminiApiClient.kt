@@ -2,8 +2,8 @@
 package com.idraak.quantum
 
 import android.content.Context
-import com.chaquo.python.AndroidPlatform
 import com.chaquo.python.Python
+import com.chaquo.python.android.AndroidPlatform
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
@@ -14,13 +14,11 @@ import kotlin.coroutines.suspendCoroutine
  * IDRAAK - Gemini API Client
  *
  * Responsibility:
- * Bridges Kotlin AI processing with the Python
+ * Connects Kotlin AI processing with the Python
  * Gemini implementation in idraak_core.py.
  *
  * Python owns HTTP communication, request creation,
  * response parsing, and Gemini API error details.
- *
- * This class does not contain HTTP request logic.
  */
 internal class GeminiApiClient(
     context: Context
@@ -28,12 +26,6 @@ internal class GeminiApiClient(
 
     private val appContext = context.applicationContext
 
-    /**
-     * Sends a prompt to the Python Gemini implementation.
-     *
-     * The Python request runs on a background thread
-     * so it does not block Android's main UI thread.
-     */
     suspend fun generateResponse(
         prompt: String,
         apiKey: String,
@@ -85,9 +77,7 @@ internal class GeminiApiClient(
                                 }
                             }
 
-                            "needs_api_key",
-                            "api_error",
-                            "error" -> {
+                            "needs_api_key", "api_error", "error" -> {
                                 fail(
                                     IllegalStateException(
                                         message.ifEmpty {
@@ -118,10 +108,6 @@ internal class GeminiApiClient(
         }
     }
 
-    /**
-     * Starts Chaquopy only when it has not already started.
-     * Synchronization prevents simultaneous initialization.
-     */
     private fun getPythonInstance(): Python {
         synchronized(PYTHON_LOCK) {
             if (!Python.isStarted()) {
