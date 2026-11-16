@@ -9,14 +9,17 @@ import android.util.Log
 /**
  * IDRAAK Voice Manager
  *
- * जिम्मेदारी:
- * - VoiceForegroundService शुरू करना
- * - Voice recognition pause करना
- * - Voice recognition resume करना
- * - Voice service बंद करना
+ * Responsibilities:
+ * - Start VoiceForegroundService.
+ * - Pause continuous voice recognition.
+ * - Resume continuous voice recognition.
+ * - Stop the voice service.
  *
- * SpeechRecognizer का निर्माण और वास्तविक नियंत्रण
- * VoiceForegroundService की जिम्मेदारी है।
+ * Vosk model loading, microphone capture and speech recognition
+ * are exclusively managed by VoiceForegroundService.
+ *
+ * This class does not directly control AudioRecord, Vosk,
+ * SpeechRecognizer or TextToSpeech.
  */
 class VoiceManager(context: Context) {
 
@@ -34,70 +37,97 @@ class VoiceManager(context: Context) {
             appContext,
             VoiceForegroundService::class.java
         ).apply {
-            if (action != null) {
+
+            if (!action.isNullOrBlank()) {
                 this.action = action
             }
 
             if (!language.isNullOrBlank()) {
                 putExtra(
                     VoiceForegroundService.EXTRA_LANGUAGE,
-                    language
+                    language.trim()
                 )
             }
         }
     }
 
     /**
-     * पहली बार Voice Foreground Service शुरू करता है।
+     * Starts the voice foreground service.
+     *
+     * The service loads the required Vosk model
+     * and starts continuous audio recognition.
      */
     fun start(language: String) {
-        val intent = serviceIntent(
-            language = language
-        )
 
-        startForegroundServiceSafely(intent)
+        if (language.isBlank()) {
+            Log.e(TAG, "Cannot start voice service: language is empty")
+            return
+        }
+
+        startForegroundServiceSafely(
+            serviceIntent(language = language)
+        )
     }
 
     /**
-     * Recognition pause करता है।
-     * Foreground service बंद नहीं होती।
+     * Pauses microphone recognition.
+     *
+     * The foreground service remains responsible
+     * for managing its lifecycle and resources.
      */
     fun pause() {
-        val intent = serviceIntent(
-            action = VoiceForegroundService.ACTION_PAUSE
-        )
 
-        startServiceSafely(intent)
+        startServiceSafely(
+            serviceIntent(
+                action = VoiceForegroundService.ACTION_PAUSE
+            )
+        )
     }
 
     /**
-     * Recognition दोबारा शुरू करता है।
+     * Resumes continuous voice recognition.
+     *
+     * The selected language is passed to the service.
      */
     fun resume(language: String) {
-        val intent = serviceIntent(
-            action = VoiceForegroundService.ACTION_RESUME,
-            language = language
-        )
 
-        startForegroundServiceSafely(intent)
+        if (language.isBlank()) {
+            Log.e(TAG, "Cannot resume voice service: language is empty")
+            return
+        }
+
+        startForegroundServiceSafely(
+            serviceIntent(
+                action = VoiceForegroundService.ACTION_RESUME,
+                language = language
+            )
+        )
     }
 
     /**
-     * Voice Foreground Service बंद करता है।
+     * Requests the voice foreground service to stop.
+     *
+     * The service itself performs microphone,
+     * Vosk engine and model cleanup.
      */
     fun stop() {
-        val intent = serviceIntent(
-            action = VoiceForegroundService.ACTION_STOP
-        )
 
-        startServiceSafely(intent)
+        startServiceSafely(
+            serviceIntent(
+                action = VoiceForegroundService.ACTION_STOP
+            )
+        )
     }
 
     /**
-     * Android version के अनुसार foreground service शुरू करता है।
+     * Starts a foreground service safely.
+     *
+     * Required for Android Oreo and newer.
      */
     private fun startForegroundServiceSafely(intent: Intent) {
+
         try {
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 appContext.startForegroundService(intent)
             } else {
@@ -109,20 +139,25 @@ class VoiceManager(context: Context) {
                 "Foreground service command sent: ${intent.action ?: "START"}"
             )
 
-        } catch (e: Exception) {
+        } catch (exception: Exception) {
+
             Log.e(
                 TAG,
-                "Could not send foreground service command: ${intent.action ?: "START"}",
-                e
+                "Unable to start foreground service: ${intent.action ?: "START"}",
+                exception
             )
         }
     }
 
     /**
-     * पहले से चल रही service को command भेजता है।
+     * Sends commands to the existing service.
+     *
+     * Used for pause and stop operations.
      */
     private fun startServiceSafely(intent: Intent) {
+
         try {
+
             appContext.startService(intent)
 
             Log.d(
@@ -130,11 +165,12 @@ class VoiceManager(context: Context) {
                 "Service command sent: ${intent.action}"
             )
 
-        } catch (e: Exception) {
+        } catch (exception: Exception) {
+
             Log.e(
                 TAG,
-                "Could not send service command: ${intent.action}",
-                e
+                "Unable to send service command: ${intent.action}",
+                exception
             )
         }
     }
