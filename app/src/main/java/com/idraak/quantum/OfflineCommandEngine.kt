@@ -10,7 +10,17 @@ package com.idraak.quantum
  *
  * Does not communicate with Gemini API
  * or handle speech recognition.
- *
- * Actual implementation will be added later.
  */
-internal class OfflineCommandEngine
+internal class OfflineCommandEngine {
+
+    /**
+     * Processes a command locally without internet.
+     *
+     * An empty response means that the requested
+     * command is not implemented or supported yet.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    suspend fun process(prompt: String): String {
+        return ""
+    }
+}
