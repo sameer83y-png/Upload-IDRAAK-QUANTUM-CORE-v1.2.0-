@@ -5,11 +5,18 @@ package com.idraak.quantum
  * IDRAAK - Gemini Request Builder
  *
  * Responsibility:
- * Builds structured request data for Gemini API.
+ * Reserved for constructing structured Gemini
+ * request data when request construction is
+ * assigned to the Kotlin layer.
+ *
+ * Current architecture:
+ * idraak_core.py currently constructs the Gemini
+ * request body and handles its HTTP communication.
+ *
+ * This class intentionally contains no duplicate
+ * request-building implementation.
  *
  * Does not perform HTTP communication,
- * parse Gemini responses, or execute commands.
- *
- * Actual implementation will be added later.
+ * parse responses, or execute Android commands.
  */
 internal class GeminiRequestBuilder
