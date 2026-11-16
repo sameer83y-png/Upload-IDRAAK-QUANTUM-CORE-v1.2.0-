@@ -1,11 +1,16 @@
+
 package com.idraak.quantum
 
 /**
- * IDRAAK - Gemini API Client
+ * IDRAAK - Offline Command Engine
  *
  * Responsibility:
- * Handles communication with Gemini API.
+ * Handles supported offline commands in Hindi, English,
+ * Urdu, and Arabic.
  *
- * Implementation will be added later.
+ * Does not communicate with Gemini API
+ * or handle speech recognition.
+ *
+ * Actual implementation will be added later.
  */
-internal class GeminiApiClient ab
+internal class OfflineCommandEngine
