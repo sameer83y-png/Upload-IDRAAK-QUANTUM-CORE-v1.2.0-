@@ -1,11 +1,15 @@
+
 package com.idraak.quantum
 
 /**
- * IDRAAK - Gemini API Client
+ * IDRAAK - Gemini Request Builder
  *
  * Responsibility:
- * Handles communication with Gemini API.
+ * Builds structured request data for Gemini API.
  *
- * Implementation will be added later.
+ * Does not perform HTTP communication,
+ * parse Gemini responses, or execute commands.
+ *
+ * Actual implementation will be added later.
  */
-internal class GeminiApiClient
+internal class GeminiRequestBuilder
