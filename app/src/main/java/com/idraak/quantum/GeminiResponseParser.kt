@@ -11,6 +11,11 @@ package com.idraak.quantum
  * Does not send HTTP requests, build API requests,
  * or execute phone commands.
  *
- * Actual implementation will be added later.
+ * Current architecture:
+ * Python idraak_core.py currently parses the
+ * Gemini API response.
+ *
+ * This class remains a dedicated Kotlin component
+ * without duplicating the Python implementation.
  */
 internal class GeminiResponseParser
