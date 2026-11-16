@@ -9,31 +9,37 @@ import android.util.Log
 /**
  * IDRAAK Voice Manager
  *
- * जिम्मेदारी:
- * - Voice service शुरू करना
- * - Listening pause करना
- * - Listening resume करना
- * - Voice service बंद करना
+ * Responsibilities:
+ * - Start VoiceForegroundService
+ * - Pause voice recognition
+ * - Resume voice recognition
+ * - Stop voice recognition service
  *
- * SpeechRecognizer का निर्माण और नियंत्रण
- * VoiceForegroundService की जिम्मेदारी है।
+ * SpeechRecognizer creation and lifecycle management
+ * belong exclusively to VoiceForegroundService.
  */
 class VoiceManager(context: Context) {
 
-    private val appContext = context.applicationContext
+    private val appContext: Context =
+        context.applicationContext
 
     companion object {
         private const val TAG = "IDRAAK_VOICE_MANAGER"
     }
 
+    /**
+     * Creates an explicit intent for VoiceForegroundService.
+     */
     private fun serviceIntent(
         action: String? = null,
         language: String? = null
     ): Intent {
+
         return Intent(
             appContext,
             VoiceForegroundService::class.java
         ).apply {
+
             if (action != null) {
                 this.action = action
             }
@@ -48,9 +54,10 @@ class VoiceManager(context: Context) {
     }
 
     /**
-     * पहली बार Voice Service शुरू करता है।
+     * Starts the voice foreground service.
      */
     fun start(language: String) {
+
         val intent = serviceIntent(
             language = language
         )
@@ -59,10 +66,11 @@ class VoiceManager(context: Context) {
     }
 
     /**
-     * Recognition रोकता है, लेकिन foreground service
-     * को बंद नहीं करता।
+     * Pauses recognition without explicitly stopping
+     * the foreground service.
      */
     fun pause() {
+
         val intent = serviceIntent(
             action = VoiceForegroundService.ACTION_PAUSE
         )
@@ -71,9 +79,10 @@ class VoiceManager(context: Context) {
     }
 
     /**
-     * Recognition दोबारा शुरू करता है।
+     * Resumes recognition with the requested language.
      */
     fun resume(language: String) {
+
         val intent = serviceIntent(
             action = VoiceForegroundService.ACTION_RESUME,
             language = language
@@ -83,9 +92,10 @@ class VoiceManager(context: Context) {
     }
 
     /**
-     * Voice Service पूरी तरह बंद करता है।
+     * Stops the voice service.
      */
     fun stop() {
+
         val intent = serviceIntent(
             action = VoiceForegroundService.ACTION_STOP
         )
@@ -94,32 +104,63 @@ class VoiceManager(context: Context) {
     }
 
     /**
-     * Foreground service को Android version के अनुसार शुरू करता है।
+     * Starts a foreground service according to Android version.
      */
-    private fun startForegroundServiceSafely(intent: Intent) {
+    private fun startForegroundServiceSafely(
+        intent: Intent
+    ) {
+
         try {
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+
                 appContext.startForegroundService(intent)
+
             } else {
+
                 appContext.startService(intent)
             }
 
-            Log.d(TAG, "Foreground service command sent: ${intent.action ?: "START"}")
+            Log.d(
+                TAG,
+                "Foreground service command sent: ${intent.action ?: "START"}"
+            )
 
-        } catch (e: Exception) {
+        } catch (e: SecurityException) {
+
             Log.e(
                 TAG,
-                "Could not send foreground service command: ${intent.action ?: "START"}",
+                "Permission denied while starting voice service",
+                e
+            )
+
+        } catch (e: IllegalStateException) {
+
+            Log.e(
+                TAG,
+                "Voice service cannot be started in the current app state",
+                e
+            )
+
+        } catch (e: Exception) {
+
+            Log.e(
+                TAG,
+                "Could not start voice service",
                 e
             )
         }
     }
 
     /**
-     * पहले से चल रही service को सामान्य command भेजता है।
+     * Sends a command to an already running service.
      */
-    private fun startServiceSafely(intent: Intent) {
+    private fun startServiceSafely(
+        intent: Intent
+    ) {
+
         try {
+
             appContext.startService(intent)
 
             Log.d(
@@ -127,7 +168,24 @@ class VoiceManager(context: Context) {
                 "Service command sent: ${intent.action}"
             )
 
+        } catch (e: SecurityException) {
+
+            Log.e(
+                TAG,
+                "Permission denied while sending service command",
+                e
+            )
+
+        } catch (e: IllegalStateException) {
+
+            Log.e(
+                TAG,
+                "Service command rejected by Android",
+                e
+            )
+
         } catch (e: Exception) {
+
             Log.e(
                 TAG,
                 "Could not send service command: ${intent.action}",
