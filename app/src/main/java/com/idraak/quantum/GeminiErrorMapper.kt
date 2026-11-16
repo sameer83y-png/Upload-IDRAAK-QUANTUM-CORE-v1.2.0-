@@ -8,9 +8,15 @@ package com.idraak.quantum
  * Converts Gemini API errors into understandable
  * IDRAAK error messages.
  *
- * Does not send API requests, parse successful
- * responses, or execute commands.
+ * Current architecture:
+ * Python idraak_core.py currently handles Gemini
+ * HTTP errors and creates readable error messages.
  *
- * Actual implementation will be added later.
+ * This Kotlin component remains separate so that
+ * error mapping can be moved here if the architecture
+ * later assigns that responsibility to Kotlin.
+ *
+ * Does not send API requests, parse successful
+ * responses, or execute Android commands.
  */
 internal class GeminiErrorMapper
