@@ -2,195 +2,524 @@
 package com.idraak.quantum
 
 import android.content.Context
-import android.content.Intent
-import android.os.Build
+import android.os.Bundle
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import java.util.UUID
 
 /**
- * IDRAAK Voice Manager
+ * IDRAAK Voice Engine
  *
  * Responsibilities:
- * - Start VoiceForegroundService
- * - Pause voice recognition
- * - Resume voice recognition
- * - Stop voice recognition service
+ * - TextToSpeech initialization
+ * - Text-to-Speech playback
+ * - Speech callbacks
+ * - Playback state management
  *
- * SpeechRecognizer creation and lifecycle management
- * belong exclusively to VoiceForegroundService.
+ * Language configuration:
+ * TtsLanguageManager
+ *
+ * Recognition service commands:
+ * VoiceManager
+ *
+ * Speech recognition:
+ * VoiceForegroundService
+ *
+ * Wake word:
+ * WakeWordController
  */
-class VoiceManager(context: Context) {
-
-    private val appContext: Context =
-        context.applicationContext
+class VoiceEngine(
+    context: Context,
+    private val voiceManager: VoiceManager,
+    private val listener: Listener? = null
+) : TextToSpeech.OnInitListener {
 
     companion object {
-        private const val TAG = "IDRAAK_VOICE_MANAGER"
+        private const val TAG = "IDRAAK_VoiceEngine"
     }
 
-    /**
-     * Creates an explicit intent for VoiceForegroundService.
-     */
-    private fun serviceIntent(
-        action: String? = null,
-        language: String? = null
-    ): Intent {
+    interface Listener {
+        fun onEngineReady()
+        fun onSpeechStarted()
+        fun onSpeechCompleted()
+        fun onSpeechError(message: String)
+        fun onVoiceStateChanged(state: EngineState)
+    }
 
-        return Intent(
-            appContext,
-            VoiceForegroundService::class.java
-        ).apply {
+    enum class EngineState {
+        INITIALIZING,
+        READY,
+        LISTENING,
+        SPEAKING,
+        PAUSED,
+        SLEEPING,
+        ERROR,
+        DESTROYED
+    }
 
-            if (action != null) {
-                this.action = action
+    private val appContext = context.applicationContext
+
+    private val languageManager =
+        TtsLanguageManager(appContext)
+
+    private var tts: TextToSpeech? = null
+
+    private var engineReady = false
+    private var destroyed = false
+
+    private var listeningRequested = false
+    private var pausedForSpeech = false
+    private var sleeping = false
+
+    private var recognitionLanguage = "hi-IN"
+    private var activeUtteranceId: String? = null
+
+    // Keeps the latest speech request until TTS is ready.
+    private var pendingSpeechText: String? = null
+
+    private var currentState = EngineState.INITIALIZING
+        private set
+
+    init {
+        Log.d(TAG, "Initializing TTS engine")
+        tts = TextToSpeech(appContext, this)
+    }
+
+    // -------------------------------------------------
+    // TTS Initialization
+    // -------------------------------------------------
+
+    override fun onInit(status: Int) {
+        if (destroyed) return
+
+        if (status != TextToSpeech.SUCCESS) {
+            Log.e(TAG, "TTS initialization failed: $status")
+
+            engineReady = false
+            pendingSpeechText = null
+
+            updateState(EngineState.ERROR)
+
+            listener?.onSpeechError(
+                "Text-to-Speech इंजन शुरू नहीं हो पाया।"
+            )
+            return
+        }
+
+        val engine = tts ?: return
+
+        engine.setOnUtteranceProgressListener(
+            object : UtteranceProgressListener() {
+
+                override fun onStart(utteranceId: String?) {
+                    if (destroyed) return
+
+                    if (utteranceId != activeUtteranceId) return
+
+                    Log.d(TAG, "Speech started: $utteranceId")
+
+                    updateState(EngineState.SPEAKING)
+                    listener?.onSpeechStarted()
+                }
+
+                override fun onDone(utteranceId: String?) {
+                    if (destroyed) return
+
+                    if (utteranceId != activeUtteranceId) return
+
+                    Log.d(TAG, "Speech completed: $utteranceId")
+
+                    activeUtteranceId = null
+
+                    listener?.onSpeechCompleted()
+
+                    resumeAfterSpeech()
+                    updateStateAfterSpeech()
+                }
+
+                @Deprecated("Deprecated in Java")
+                override fun onError(utteranceId: String?) {
+                    if (destroyed) return
+
+                    handleSpeechError(
+                        "आवाज़ चलाने में समस्या आई।",
+                        utteranceId
+                    )
+                }
+
+                override fun onError(
+                    utteranceId: String?,
+                    errorCode: Int
+                ) {
+                    if (destroyed) return
+
+                    handleSpeechError(
+                        "Text-to-Speech error: $errorCode",
+                        utteranceId
+                    )
+                }
+
+                override fun onStop(
+                    utteranceId: String?,
+                    interrupted: Boolean
+                ) {
+                    if (destroyed) return
+
+                    Log.d(
+                        TAG,
+                        "Speech stopped: $utteranceId, interrupted=$interrupted"
+                    )
+
+                    if (utteranceId != activeUtteranceId) return
+
+                    activeUtteranceId = null
+
+                    resumeAfterSpeech()
+                    updateStateAfterSpeech()
+                }
             }
+        )
 
-            if (!language.isNullOrBlank()) {
-                putExtra(
-                    VoiceForegroundService.EXTRA_LANGUAGE,
-                    language
-                )
-            }
+        engineReady = true
+
+        val configurationApplied =
+            languageManager.applyTo(engine)
+
+        if (!configurationApplied) {
+            Log.w(
+                TAG,
+                "TTS language or voice configuration unavailable"
+            )
+        }
+
+        updateStateAfterSpeech()
+
+        listener?.onEngineReady()
+
+        Log.d(TAG, "TTS engine initialized")
+
+        // Process the latest request received during initialization.
+        val pendingText = pendingSpeechText
+        pendingSpeechText = null
+
+        if (!pendingText.isNullOrBlank()) {
+            speak(pendingText)
         }
     }
 
-    /**
-     * Starts the voice foreground service.
-     */
-    fun start(language: String) {
+    // -------------------------------------------------
+    // Language Manager Delegation
+    // -------------------------------------------------
 
-        val intent = serviceIntent(
-            language = language
+    fun setLanguage(language: String) {
+        if (destroyed) return
+
+        val applied = languageManager.setLanguage(
+            language,
+            if (engineReady) tts else null
         )
 
-        startForegroundServiceSafely(intent)
+        Log.d(
+            TAG,
+            "Language configuration result: $applied"
+        )
     }
 
-    /**
-     * Pauses recognition without explicitly stopping
-     * the foreground service.
-     */
-    fun pause() {
+    fun setVoiceGender(gender: String) {
+        if (destroyed) return
 
-        val intent = serviceIntent(
-            action = VoiceForegroundService.ACTION_PAUSE
+        val applied = languageManager.setVoiceGender(
+            gender,
+            if (engineReady) tts else null
         )
 
-        startServiceSafely(intent)
-    }
-
-    /**
-     * Resumes recognition with the requested language.
-     */
-    fun resume(language: String) {
-
-        val intent = serviceIntent(
-            action = VoiceForegroundService.ACTION_RESUME,
-            language = language
+        Log.d(
+            TAG,
+            "Voice gender configuration result: $applied"
         )
-
-        startForegroundServiceSafely(intent)
     }
 
-    /**
-     * Stops the voice service.
-     */
-    fun stop() {
+    // -------------------------------------------------
+    // Listening Service Coordination
+    // -------------------------------------------------
 
-        val intent = serviceIntent(
-            action = VoiceForegroundService.ACTION_STOP
-        )
+    fun startListening(language: String = recognitionLanguage) {
+        if (destroyed) return
 
-        startServiceSafely(intent)
+        recognitionLanguage = language
+        listeningRequested = true
+
+        voiceManager.start(recognitionLanguage)
+
+        if (activeUtteranceId != null) {
+            pausedForSpeech = true
+            voiceManager.pause()
+            updateState(EngineState.SPEAKING)
+        } else {
+            pausedForSpeech = false
+            updateStateAfterSpeech()
+        }
+
+        Log.d(TAG, "Listening requested: $recognitionLanguage")
     }
 
-    /**
-     * Starts a foreground service according to Android version.
-     */
-    private fun startForegroundServiceSafely(
-        intent: Intent
-    ) {
+    fun pauseListening() {
+        if (destroyed) return
 
-        try {
+        listeningRequested = false
+        pausedForSpeech = false
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        voiceManager.pause()
 
-                appContext.startForegroundService(intent)
-
+        updateState(
+            if (activeUtteranceId != null) {
+                EngineState.SPEAKING
             } else {
+                EngineState.PAUSED
+            }
+        )
 
-                appContext.startService(intent)
+        Log.d(TAG, "Listening paused")
+    }
+
+    fun resumeListening() {
+        if (destroyed) return
+
+        listeningRequested = true
+
+        if (activeUtteranceId != null) {
+            if (!pausedForSpeech) {
+                pausedForSpeech = true
+                voiceManager.pause()
             }
 
+            updateState(EngineState.SPEAKING)
+        } else {
+            pausedForSpeech = false
+
+            voiceManager.resume(recognitionLanguage)
+
+            updateStateAfterSpeech()
+        }
+
+        Log.d(TAG, "Listening resume requested")
+    }
+
+    fun stopListening() {
+        if (destroyed) return
+
+        listeningRequested = false
+        pausedForSpeech = false
+
+        voiceManager.stop()
+
+        updateStateAfterSpeech()
+
+        Log.d(TAG, "Listening stopped")
+    }
+
+    private fun pauseForSpeech() {
+        if (!listeningRequested || pausedForSpeech) return
+
+        pausedForSpeech = true
+
+        voiceManager.pause()
+
+        Log.d(TAG, "Listening paused for TTS playback")
+    }
+
+    private fun resumeAfterSpeech() {
+        if (!listeningRequested || !pausedForSpeech) return
+
+        pausedForSpeech = false
+
+        voiceManager.resume(recognitionLanguage)
+
+        Log.d(TAG, "Listening resumed after TTS playback")
+    }
+
+    // -------------------------------------------------
+    // Speech Playback
+    // -------------------------------------------------
+
+    fun speak(text: String) {
+        if (destroyed) return
+
+        val cleanText = text.trim()
+
+        if (cleanText.isEmpty()) {
+            Log.w(TAG, "Empty speech request ignored")
+            return
+        }
+
+        if (!engineReady || tts == null) {
+            Log.d(TAG, "TTS not ready. Speech request queued.")
+
+            // Keep the latest request instead of losing it.
+            pendingSpeechText = cleanText
+            return
+        }
+
+        pauseForSpeech()
+
+        val utteranceId = UUID.randomUUID().toString()
+
+        activeUtteranceId = utteranceId
+
+        updateState(EngineState.SPEAKING)
+
+        val result = tts?.speak(
+            cleanText,
+            TextToSpeech.QUEUE_FLUSH,
+            Bundle(),
+            utteranceId
+        )
+
+        if (result == null || result == TextToSpeech.ERROR) {
+            handleSpeechError(
+                "Text-to-Speech ने आवाज़ शुरू नहीं की।",
+                utteranceId
+            )
+        } else {
             Log.d(
                 TAG,
-                "Foreground service command sent: ${intent.action ?: "START"}"
-            )
-
-        } catch (e: SecurityException) {
-
-            Log.e(
-                TAG,
-                "Permission denied while starting voice service",
-                e
-            )
-
-        } catch (e: IllegalStateException) {
-
-            Log.e(
-                TAG,
-                "Voice service cannot be started in the current app state",
-                e
-            )
-
-        } catch (e: Exception) {
-
-            Log.e(
-                TAG,
-                "Could not start voice service",
-                e
+                "Speech request submitted: $utteranceId"
             )
         }
     }
 
-    /**
-     * Sends a command to an already running service.
-     */
-    private fun startServiceSafely(
-        intent: Intent
+    fun stopSpeaking() {
+        if (destroyed) return
+
+        pendingSpeechText = null
+
+        tts?.stop()
+
+        activeUtteranceId = null
+
+        resumeAfterSpeech()
+        updateStateAfterSpeech()
+
+        Log.d(TAG, "Speech playback stopped")
+    }
+
+    private fun handleSpeechError(
+        message: String,
+        utteranceId: String?
     ) {
+        if (destroyed) return
 
-        try {
+        Log.e(
+            TAG,
+            "$message utteranceId=$utteranceId"
+        )
 
-            appContext.startService(intent)
+        if (utteranceId != activeUtteranceId) return
 
-            Log.d(
-                TAG,
-                "Service command sent: ${intent.action}"
-            )
+        activeUtteranceId = null
 
-        } catch (e: SecurityException) {
+        listener?.onSpeechError(message)
 
-            Log.e(
-                TAG,
-                "Permission denied while sending service command",
-                e
-            )
+        resumeAfterSpeech()
+        updateStateAfterSpeech()
+    }
 
-        } catch (e: IllegalStateException) {
+    // -------------------------------------------------
+    // State Management
+    // -------------------------------------------------
 
-            Log.e(
-                TAG,
-                "Service command rejected by Android",
-                e
-            )
+    private fun updateStateAfterSpeech() {
+        if (destroyed) return
 
-        } catch (e: Exception) {
+        val nextState = when {
+            activeUtteranceId != null ->
+                EngineState.SPEAKING
 
-            Log.e(
-                TAG,
-                "Could not send service command: ${intent.action}",
-                e
-            )
+            sleeping ->
+                EngineState.SLEEPING
+
+            listeningRequested && !pausedForSpeech ->
+                EngineState.LISTENING
+
+            listeningRequested && pausedForSpeech ->
+                EngineState.PAUSED
+
+            else ->
+                EngineState.READY
         }
+
+        updateState(nextState)
+    }
+
+    private fun updateState(newState: EngineState) {
+        if (destroyed && newState != EngineState.DESTROYED) return
+
+        if (currentState == newState) return
+
+        currentState = newState
+
+        Log.d(TAG, "State changed: $newState")
+
+        listener?.onVoiceStateChanged(newState)
+    }
+
+    /**
+     * Mirrors the sleep state managed by WakeWordController.
+     * This method does not control wake-word detection.
+     */
+    fun setSleeping(value: Boolean) {
+        if (destroyed) return
+
+        sleeping = value
+
+        updateStateAfterSpeech()
+    }
+
+    fun getCurrentState(): EngineState {
+        return currentState
+    }
+
+    fun isEngineReady(): Boolean {
+        return engineReady
+    }
+
+    fun isSpeaking(): Boolean {
+        return activeUtteranceId != null
+    }
+
+    // -------------------------------------------------
+    // Release
+    // -------------------------------------------------
+
+    fun release() {
+        if (destroyed) return
+
+        Log.d(TAG, "Releasing VoiceEngine")
+
+        destroyed = true
+
+        listeningRequested = false
+        pausedForSpeech = false
+        sleeping = false
+
+        pendingSpeechText = null
+        activeUtteranceId = null
+
+        engineReady = false
+
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
+
+        languageManager.release()
+
+        currentState = EngineState.DESTROYED
+
+        listener?.onVoiceStateChanged(
+            EngineState.DESTROYED
+        )
+
+        Log.d(TAG, "VoiceEngine released")
     }
 }
