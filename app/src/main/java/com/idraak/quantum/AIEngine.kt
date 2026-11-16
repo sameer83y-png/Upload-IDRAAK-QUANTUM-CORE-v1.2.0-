@@ -7,12 +7,14 @@ package com.idraak.quantum
  * Responsibility:
  * Coordinates online and offline AI processing.
  *
- * GeminiApiClient handles online API communication.
- * OfflineCommandEngine handles offline processing.
+ * GeminiApiClient handles the Kotlin-to-Python
+ * bridge for online Gemini processing.
+ *
+ * OfflineCommandEngine handles local processing.
  *
  * This class does not perform HTTP requests,
- * recognize speech, parse phone commands,
- * or execute Android actions.
+ * initialize Python, recognize speech, parse phone
+ * commands, or execute Android actions.
  */
 internal class AIEngine(
     private val geminiApiClient: GeminiApiClient,
@@ -25,6 +27,7 @@ internal class AIEngine(
     }
 
     sealed class Result {
+
         data class Success(
             val response: String,
             val mode: Mode
@@ -58,32 +61,50 @@ internal class AIEngine(
         return if (offlineMode) {
             processOffline(cleanPrompt)
         } else {
-            processOnline(cleanPrompt, apiKey, model)
-        }
-    }
-
-    private suspend fun processOffline(
-        prompt: String
-    ): Result {
-        return try {
-            val response = offlineCommandEngine.process(prompt).trim()
-
-            if (response.isEmpty()) {
-                Result.Failure(
-                    "इस कमांड के लिए ऑफलाइन सहायता उपलब्ध नहीं है।",
-                    Mode.OFFLINE
-                )
-            } else {
-                Result.Success(response, Mode.OFFLINE)
-            }
-        } catch (exception: Exception) {
-            Result.Failure(
-                exception.message ?: "ऑफलाइन प्रोसेसिंग में समस्या आई।",
-                Mode.OFFLINE
+            processOnline(
+                prompt = cleanPrompt,
+                apiKey = apiKey,
+                model = model
             )
         }
     }
 
+    /**
+     * Handles offline AI processing.
+     */
+    private suspend fun processOffline(
+        prompt: String
+    ): Result {
+
+        return try {
+            val response = offlineCommandEngine
+                .process(prompt)
+                .trim()
+
+            if (response.isEmpty()) {
+                Result.Failure(
+                    message = "इस कमांड के लिए ऑफलाइन सहायता उपलब्ध नहीं है।",
+                    mode = Mode.OFFLINE
+                )
+            } else {
+                Result.Success(
+                    response = response,
+                    mode = Mode.OFFLINE
+                )
+            }
+
+        } catch (exception: Exception) {
+            Result.Failure(
+                message = exception.message
+                    ?: "ऑफलाइन प्रोसेसिंग में समस्या आई।",
+                mode = Mode.OFFLINE
+            )
+        }
+    }
+
+    /**
+     * Handles online Gemini processing.
+     */
     private suspend fun processOnline(
         prompt: String,
         apiKey: String,
@@ -92,8 +113,8 @@ internal class AIEngine(
 
         if (apiKey.isBlank()) {
             return Result.Failure(
-                "Gemini API Key उपलब्ध नहीं है। Settings में API Key दर्ज करें।",
-                Mode.ONLINE
+                message = "Gemini API Key उपलब्ध नहीं है। Settings में API Key दर्ज करें।",
+                mode = Mode.ONLINE
             )
         }
 
@@ -106,16 +127,21 @@ internal class AIEngine(
 
             if (response.isEmpty()) {
                 Result.Failure(
-                    "Gemini से खाली जवाब प्राप्त हुआ।",
-                    Mode.ONLINE
+                    message = "Gemini से खाली जवाब प्राप्त हुआ।",
+                    mode = Mode.ONLINE
                 )
             } else {
-                Result.Success(response, Mode.ONLINE)
+                Result.Success(
+                    response = response,
+                    mode = Mode.ONLINE
+                )
             }
+
         } catch (exception: Exception) {
             Result.Failure(
-                exception.message ?: "Gemini से संपर्क नहीं हो सका।",
-                Mode.ONLINE
+                message = exception.message
+                    ?: "Gemini से संपर्क नहीं हो सका।",
+                mode = Mode.ONLINE
             )
         }
     }
