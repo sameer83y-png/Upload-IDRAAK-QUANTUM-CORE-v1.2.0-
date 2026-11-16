@@ -1,59 +1,54 @@
-
 package com.idraak.quantum
 
 import java.text.Normalizer
 import java.util.Locale
 
 /**
- * IDRAAK - Speech Text Normalizer
- *
- * Responsibility:
- * Cleans and normalizes recognized speech text.
- *
- * Supports Hindi, English, Urdu, and Arabic text.
- * Preserves ZWNJ and ZWJ characters required
- * for correct Urdu and Arabic text shaping.
- *
- * Does not recognize speech, interpret commands,
- * or execute actions.
+ * Speech recognition से मिले text को command matching के लिए normalize करता है।
+ * मूल text को अलग से सुरक्षित रखा जा सकता है; यह class कोई command execute नहीं करती।
  */
-internal class SpeechTextNormalizer {
+class SpeechTextNormalizer {
 
-    /**
-     * Removes unnecessary control and format characters
-     * while preserving ZWNJ and ZWJ.
-     */
-    fun clean(text: String): String {
-        return text
-            .replace(
-                Regex("[\\p{Cc}\\p{Cf}&&[^\\u200C\\u200D]]"),
-                " "
-            )
+    fun normalize(text: String): String {
+        if (text.isBlank()) return ""
+
+        return Normalizer.normalize(text, Normalizer.Form.NFKC)
+            .lowercase(Locale.ROOT)
+            .replace('\u200B', ' ')
+            .replace('\uFEFF', ' ')
+            .replace(Regex("[\\u064B-\\u065F\\u0670]"), "")
+            .replace(Regex("[\\u0964\\u0965]"), " ")
+            .replace(Regex("[,،؛;:!?؟।]+"), " ")
+            .replace(Regex("[^\\p{L}\\p{N}\\s._-]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
     }
 
-    /**
-     * Normalizes Unicode text using NFC.
-     */
-    fun normalize(text: String): String {
-        return Normalizer.normalize(
-            clean(text),
-            Normalizer.Form.NFC
+    fun containsWakeWord(text: String): Boolean {
+        val normalized = normalize(text)
+        val wakeWords = listOf(
+            "idraak",
+            "इद्राक",
+            "आईड्राक",
+            "इत्राक",
+            "ایڈراک"
         )
+        return wakeWords.any { normalized.contains(it) }
     }
 
-    /**
-     * Produces comparison-friendly normalized text.
-     */
-    fun normalizeForComparison(text: String): String {
-        return normalize(text).lowercase(Locale.ROOT)
-    }
+    fun removeWakeWord(text: String): String {
+        var result = normalize(text)
+        val wakeWords = listOf(
+            "idraak",
+            "इद्राक",
+            "आईड्राक",
+            "इत्राक",
+            "ایڈراک"
+        )
 
-    /**
-     * Checks whether recognized speech contains usable text.
-     */
-    fun isEmpty(text: String): Boolean {
-        return normalize(text).isEmpty()
+        wakeWords.forEach { word ->
+            result = result.replace(word, " ")
+        }
+        return result.replace(Regex("\\s+"), " ").trim()
     }
 }
