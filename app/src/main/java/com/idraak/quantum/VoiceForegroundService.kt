@@ -56,13 +56,15 @@ class VoiceForegroundService : Service() {
         private const val SAMPLE_RATE = 16000
         private const val AUDIO_READ_SIZE = 4096
         private const val AUDIO_BUFFER_MULTIPLIER = 2
-        private const val WORKER_JOIN_TIMEOUT_MS = 3000L
+
+        private const val WORKER_JOIN_TIMEOUT_MS = 2000L
     }
 
     private lateinit var notificationManager: NotificationManager
     private lateinit var modelManager: VoskModelManager
 
-    private val handler = Handler(Looper.getMainLooper())
+    private val handler =
+        Handler(Looper.getMainLooper())
 
     @Volatile
     private var listening = false
@@ -86,18 +88,35 @@ class VoiceForegroundService : Service() {
     private var modelLoading = false
 
     @Volatile
+    private var serviceDestroyed = false
+
+    @Volatile
     private var activeLanguage = "hi-IN"
 
+    @Volatile
     private var audioRecord: AudioRecord? = null
+
+    @Volatile
     private var audioThread: Thread? = null
+
+    @Volatile
     private var pendingModel: Model? = null
 
     private val preferences by lazy {
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        getSharedPreferences(
+            PREFS_NAME,
+            Context.MODE_PRIVATE
+        )
     }
 
     private val restartRunnable = Runnable {
-        if (!listening || paused || userStopped) {
+
+        if (
+            serviceDestroyed ||
+            !listening ||
+            paused ||
+            userStopped
+        ) {
             return@Runnable
         }
 
@@ -114,6 +133,8 @@ class VoiceForegroundService : Service() {
         super.onCreate()
 
         try {
+            serviceDestroyed = false
+
             notificationManager =
                 getSystemService(Context.NOTIFICATION_SERVICE)
                     as NotificationManager
@@ -121,11 +142,17 @@ class VoiceForegroundService : Service() {
             modelManager = VoskModelManager(this)
 
             activeLanguage = canonicalLanguage(
-                preferences.getString(PREF_LANGUAGE, "hi-IN")
-                    ?: "hi-IN"
+                preferences.getString(
+                    PREF_LANGUAGE,
+                    "hi-IN"
+                ) ?: "hi-IN"
             )
 
-            paused = preferences.getBoolean(PREF_PAUSED, false)
+            paused = preferences.getBoolean(
+                PREF_PAUSED,
+                false
+            )
+
             userStopped = preferences.getBoolean(
                 PREF_USER_STOPPED,
                 false
@@ -136,10 +163,23 @@ class VoiceForegroundService : Service() {
             Log.i(TAG, "Voice service created")
 
         } catch (exception: Exception) {
-            Log.e(TAG, "Service initialization failed", exception)
+
+            Log.e(
+                TAG,
+                "Service initialization failed",
+                exception
+            )
+
             stopSelf()
+
         } catch (error: LinkageError) {
-            Log.e(TAG, "Native initialization failed", error)
+
+            Log.e(
+                TAG,
+                "Native initialization failed",
+                error
+            )
+
             stopSelf()
         }
     }
@@ -158,13 +198,20 @@ class VoiceForegroundService : Service() {
             return START_NOT_STICKY
         }
 
+        if (serviceDestroyed) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+
         try {
             when (intent?.action) {
 
                 ACTION_STOP -> {
+
                     userStopped = true
                     listening = false
                     paused = false
+                    pendingModel = null
 
                     preferences.edit()
                         .putBoolean(PREF_VOICE_ENABLED, false)
@@ -173,9 +220,10 @@ class VoiceForegroundService : Service() {
                         .apply()
 
                     invalidateModelRequest()
-                    pendingModel = null
                     stopAudioCapture()
+
                     sendState(false, true)
+
                     stopForegroundCompat()
                     stopSelf()
 
@@ -183,6 +231,7 @@ class VoiceForegroundService : Service() {
                 }
 
                 ACTION_PAUSE -> {
+
                     paused = true
 
                     preferences.edit()
@@ -202,6 +251,7 @@ class VoiceForegroundService : Service() {
                 }
 
                 ACTION_RESUME -> {
+
                     val requestedLanguage =
                         intent.getStringExtra(EXTRA_LANGUAGE)
                             ?: preferences.getString(
@@ -211,10 +261,12 @@ class VoiceForegroundService : Service() {
                             ?: activeLanguage
 
                     resumeVoice(requestedLanguage)
+
                     return START_STICKY
                 }
 
                 ACTION_START -> {
+
                     val requestedLanguage =
                         intent.getStringExtra(EXTRA_LANGUAGE)
                             ?: preferences.getString(
@@ -224,19 +276,24 @@ class VoiceForegroundService : Service() {
                             ?: activeLanguage
 
                     startVoice(requestedLanguage)
+
                     return START_STICKY
                 }
 
                 null -> {
+
                     val enabled = preferences.getBoolean(
                         PREF_VOICE_ENABLED,
                         false
                     )
 
                     if (!enabled || userStopped) {
+                        listening = false
+
                         stopAudioCapture()
                         stopForegroundCompat()
                         stopSelf()
+
                         return START_NOT_STICKY
                     }
 
@@ -268,6 +325,7 @@ class VoiceForegroundService : Service() {
                 }
 
                 else -> {
+
                     startVoice(
                         intent.getStringExtra(EXTRA_LANGUAGE)
                             ?: activeLanguage
@@ -278,20 +336,32 @@ class VoiceForegroundService : Service() {
             }
 
         } catch (exception: Exception) {
-            Log.e(TAG, "Service command failed", exception)
+
+            Log.e(
+                TAG,
+                "Service command failed",
+                exception
+            )
 
             failService(
-                exception.message ?: "Voice service command failed.",
+                exception.message
+                    ?: "Voice service command failed.",
                 -20
             )
 
             return START_NOT_STICKY
 
         } catch (error: LinkageError) {
-            Log.e(TAG, "Native service error", error)
+
+            Log.e(
+                TAG,
+                "Native service error",
+                error
+            )
 
             failService(
-                error.message ?: "Vosk native service error.",
+                error.message
+                    ?: "Vosk native service error.",
                 -21
             )
 
@@ -300,6 +370,9 @@ class VoiceForegroundService : Service() {
     }
 
     private fun startVoice(language: String) {
+
+        if (serviceDestroyed) return
+
         activeLanguage = canonicalLanguage(language)
 
         listening = true
@@ -327,9 +400,13 @@ class VoiceForegroundService : Service() {
     }
 
     private fun resumeVoice(language: String) {
+
+        if (serviceDestroyed) return
+
         val newLanguage = canonicalLanguage(language)
 
         if (newLanguage != activeLanguage) {
+
             activeLanguage = newLanguage
             pendingModel = null
 
@@ -351,13 +428,19 @@ class VoiceForegroundService : Service() {
         if (!startForegroundSafely()) return
 
         updateNotification("IDRAAK is listening")
+
         requestModel()
     }
 
-    private fun canonicalLanguage(value: String): String {
-        val language = value.trim().lowercase(Locale.ROOT)
+    private fun canonicalLanguage(
+        value: String
+    ): String {
+
+        val language =
+            value.trim().lowercase(Locale.ROOT)
 
         return when {
+
             language == "hi" ||
                 language.startsWith("hi-") ||
                 language.contains("hindi") -> "hi-IN"
@@ -379,7 +462,16 @@ class VoiceForegroundService : Service() {
     }
 
     private fun requestModel() {
-        if (!listening || paused || userStopped) return
+
+        if (
+            serviceDestroyed ||
+            !listening ||
+            paused ||
+            userStopped
+        ) {
+            return
+        }
+
         if (captureRunning || modelLoading) return
 
         if (!hasAudioPermission()) {
@@ -406,63 +498,70 @@ class VoiceForegroundService : Service() {
         val requestId = ++modelRequestGeneration
         val requestedLanguage = activeLanguage
 
-        val listener = object : VoskModelManager.Listener {
+        val listener =
+            object : VoskModelManager.Listener {
 
-            override fun onProgress(
-                language: String,
-                percent: Int
-            ) {
-                if (requestId != modelRequestGeneration) return
-                if (!listening || paused || userStopped) return
-
-                updateNotification(
-                    "Downloading ${languageLabel(language)} model: $percent%"
-                )
-            }
-
-            override fun onReady(
-                language: String,
-                model: Model
-            ) {
-                if (requestId != modelRequestGeneration) return
-                if (!listening || paused || userStopped) return
-
-                if (
-                    canonicalLanguage(language) != requestedLanguage
+                override fun onProgress(
+                    language: String,
+                    percent: Int
                 ) {
-                    return
+
+                    if (requestId != modelRequestGeneration) return
+                    if (!listening || paused || userStopped) return
+
+                    updateNotification(
+                        "Downloading ${languageLabel(language)} model: $percent%"
+                    )
                 }
 
-                modelLoading = false
-                pendingModel = model
+                override fun onReady(
+                    language: String,
+                    model: Model
+                ) {
 
-                startAudioCapture(model)
+                    if (requestId != modelRequestGeneration) return
+                    if (!listening || paused || userStopped) return
+
+                    if (
+                        canonicalLanguage(language) !=
+                        requestedLanguage
+                    ) {
+                        return
+                    }
+
+                    modelLoading = false
+                    pendingModel = model
+
+                    startAudioCapture(model)
+                }
+
+                override fun onError(
+                    language: String,
+                    message: String
+                ) {
+
+                    if (requestId != modelRequestGeneration) return
+
+                    modelLoading = false
+
+                    if (!listening || paused || userStopped) return
+
+                    failService(
+                        "Vosk model error (${languageLabel(language)}): $message",
+                        -3
+                    )
+                }
             }
-
-            override fun onError(
-                language: String,
-                message: String
-            ) {
-                if (requestId != modelRequestGeneration) return
-
-                modelLoading = false
-
-                if (!listening || paused || userStopped) return
-
-                failService(
-                    "Vosk model error (${languageLabel(language)}): $message",
-                    -3
-                )
-            }
-        }
 
         try {
+
             modelManager.ensureModel(
                 requestedLanguage,
                 listener
             )
 
         } catch (exception: Exception) {
+
             if (requestId == modelRequestGeneration) {
                 modelLoading = false
 
@@ -474,6 +573,7 @@ class VoiceForegroundService : Service() {
             }
 
         } catch (error: LinkageError) {
+
             if (requestId == modelRequestGeneration) {
                 modelLoading = false
 
@@ -487,7 +587,15 @@ class VoiceForegroundService : Service() {
     }
 
     private fun startAudioCapture(model: Model) {
-        if (!listening || paused || userStopped) return
+
+        if (
+            serviceDestroyed ||
+            !listening ||
+            paused ||
+            userStopped
+        ) {
+            return
+        }
 
         if (!hasAudioPermission()) {
             failService(
@@ -500,41 +608,62 @@ class VoiceForegroundService : Service() {
         val existingThread = audioThread
 
         if (existingThread != null && existingThread.isAlive) {
+
             pendingModel = model
 
             handler.removeCallbacks(restartRunnable)
-            handler.postDelayed(restartRunnable, 500)
+            handler.postDelayed(
+                restartRunnable,
+                500
+            )
 
             return
         }
 
+        if (captureRunning) {
+            Log.w(
+                TAG,
+                "Capture flag is active but worker is unavailable."
+            )
+            return
+        }
+
         val minimumBuffer = try {
+
             AudioRecord.getMinBufferSize(
                 SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT
             )
+
         } catch (exception: Exception) {
+
             failService(
                 "Unable to query microphone buffer: " +
                     (exception.message ?: "Unknown audio error"),
                 -6
             )
+
             return
+
         } catch (error: LinkageError) {
+
             failService(
                 "Microphone native initialization failed: " +
                     (error.message ?: "Native error"),
                 -7
             )
+
             return
         }
 
         if (minimumBuffer <= 0) {
+
             failService(
                 "Android could not initialize microphone buffer. Code: $minimumBuffer",
                 minimumBuffer
             )
+
             return
         }
 
@@ -544,6 +673,7 @@ class VoiceForegroundService : Service() {
         )
 
         val recorder = try {
+
             AudioRecord(
                 MediaRecorder.AudioSource.MIC,
                 SAMPLE_RATE,
@@ -551,21 +681,30 @@ class VoiceForegroundService : Service() {
                 AudioFormat.ENCODING_PCM_16BIT,
                 bufferSize
             )
+
         } catch (exception: Exception) {
+
             failService(
-                exception.message ?: "Unable to create AudioRecord.",
+                exception.message
+                    ?: "Unable to create AudioRecord.",
                 -8
             )
+
             return
+
         } catch (error: LinkageError) {
+
             failService(
-                error.message ?: "AudioRecord native error.",
+                error.message
+                    ?: "AudioRecord native error.",
                 -9
             )
+
             return
         }
 
         if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+
             try {
                 recorder.release()
             } catch (_: Exception) {
@@ -575,24 +714,28 @@ class VoiceForegroundService : Service() {
                 "Android could not initialize the microphone recorder.",
                 -10
             )
+
             return
         }
 
         val engine = try {
+
             VoskRecognitionEngine(
                 model = model,
                 sampleRate = SAMPLE_RATE.toFloat(),
                 listener = object : VoskRecognitionEngine.Listener {
 
                     override fun onPartialResult(text: String) {
-                        // Partial results are intentionally ignored.
+                        // Partial results intentionally ignored.
                     }
 
                     override fun onFinalResult(text: String) {
+
                         val finalText = text.trim()
 
                         if (finalText.isEmpty()) return
                         if (!listening || paused || userStopped) return
+                        if (serviceDestroyed) return
 
                         sendRecognitionResult(finalText)
                     }
@@ -600,6 +743,7 @@ class VoiceForegroundService : Service() {
                     override fun onRecognitionError(
                         error: Exception
                     ) {
+
                         Log.e(
                             TAG,
                             "Vosk recognition error",
@@ -610,6 +754,7 @@ class VoiceForegroundService : Service() {
             )
 
         } catch (exception: Exception) {
+
             try {
                 recorder.release()
             } catch (_: Exception) {
@@ -620,9 +765,11 @@ class VoiceForegroundService : Service() {
                     ?: "Unable to create Vosk recognizer.",
                 -11
             )
+
             return
 
         } catch (error: LinkageError) {
+
             try {
                 recorder.release()
             } catch (_: Exception) {
@@ -633,12 +780,14 @@ class VoiceForegroundService : Service() {
                     ?: "Vosk native recognizer initialization failed.",
                 -12
             )
+
             return
         }
 
         val generation = ++captureGeneration
 
         try {
+
             recorder.startRecording()
 
             if (
@@ -651,6 +800,7 @@ class VoiceForegroundService : Service() {
             }
 
         } catch (exception: Exception) {
+
             try {
                 engine.close()
             } catch (_: Exception) {
@@ -666,6 +816,7 @@ class VoiceForegroundService : Service() {
                     ?: "Unable to start microphone recording.",
                 -13
             )
+
             return
         }
 
@@ -675,6 +826,7 @@ class VoiceForegroundService : Service() {
         val worker = Thread({
 
             try {
+
                 try {
                     Process.setThreadPriority(
                         Process.THREAD_PRIORITY_AUDIO
@@ -682,15 +834,18 @@ class VoiceForegroundService : Service() {
                 } catch (_: Exception) {
                 }
 
-                val buffer = ByteArray(AUDIO_READ_SIZE)
+                val buffer =
+                    ByteArray(AUDIO_READ_SIZE)
 
                 while (
                     captureRunning &&
                     generation == captureGeneration &&
                     listening &&
                     !paused &&
-                    !userStopped
+                    !userStopped &&
+                    !serviceDestroyed
                 ) {
+
                     val count = recorder.read(
                         buffer,
                         0,
@@ -698,13 +853,23 @@ class VoiceForegroundService : Service() {
                     )
 
                     if (count > 0) {
-                        engine.acceptAudio(buffer, count)
 
-                    } else if (
-                        count == AudioRecord.ERROR_DEAD_OBJECT ||
-                        count == AudioRecord.ERROR_INVALID_OPERATION ||
-                        count == AudioRecord.ERROR_BAD_VALUE
-                    ) {
+                        engine.acceptAudio(
+                            buffer,
+                            count
+                        )
+
+                    } else if (count == 0) {
+
+                        try {
+                            Thread.sleep(5)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            break
+                        }
+
+                    } else {
+
                         if (
                             generation == captureGeneration &&
                             captureRunning
@@ -719,6 +884,7 @@ class VoiceForegroundService : Service() {
                 }
 
             } catch (exception: Exception) {
+
                 Log.e(
                     TAG,
                     "Audio capture thread failed",
@@ -729,14 +895,18 @@ class VoiceForegroundService : Service() {
                     generation == captureGeneration &&
                     listening &&
                     !paused &&
-                    !userStopped
+                    !userStopped &&
+                    !serviceDestroyed
                 ) {
+
                     handler.post {
+
                         if (
                             generation == captureGeneration &&
                             listening &&
                             !paused &&
-                            !userStopped
+                            !userStopped &&
+                            !serviceDestroyed
                         ) {
                             failService(
                                 exception.message
@@ -748,6 +918,7 @@ class VoiceForegroundService : Service() {
                 }
 
             } catch (error: LinkageError) {
+
                 Log.e(
                     TAG,
                     "Vosk native recognition failed",
@@ -755,7 +926,11 @@ class VoiceForegroundService : Service() {
                 )
 
                 handler.post {
-                    if (generation == captureGeneration) {
+
+                    if (
+                        generation == captureGeneration &&
+                        !serviceDestroyed
+                    ) {
                         failService(
                             error.message
                                 ?: "Vosk native recognition failed.",
@@ -765,10 +940,7 @@ class VoiceForegroundService : Service() {
                 }
 
             } finally {
-                /*
-                 * The recognizer is closed before the model manager.
-                 * The manager itself remains alive until service destroy.
-                 */
+
                 try {
                     engine.finish()
                 } catch (exception: Exception) {
@@ -824,19 +996,44 @@ class VoiceForegroundService : Service() {
                     audioThread = null
                 }
 
-                handler.post {
-                    if (
-                        generation == captureGeneration &&
-                        listening &&
-                        !paused &&
-                        !userStopped &&
-                        pendingModel != null
-                    ) {
-                        handler.removeCallbacks(restartRunnable)
-                        handler.postDelayed(
-                            restartRunnable,
-                            250
-                        )
+                /*
+                 * यदि Service destroy हो चुकी है,
+                 * तो engine बंद होने के बाद manager बंद करें।
+                 */
+                if (serviceDestroyed) {
+
+                    if (::modelManager.isInitialized) {
+                        try {
+                            modelManager.close()
+                        } catch (exception: Exception) {
+                            Log.e(
+                                TAG,
+                                "Deferred model cleanup failed",
+                                exception
+                            )
+                        }
+                    }
+
+                } else {
+
+                    handler.post {
+
+                        if (
+                            generation == captureGeneration &&
+                            listening &&
+                            !paused &&
+                            !userStopped &&
+                            pendingModel != null
+                        ) {
+                            handler.removeCallbacks(
+                                restartRunnable
+                            )
+
+                            handler.postDelayed(
+                                restartRunnable,
+                                250
+                            )
+                        }
                     }
                 }
             }
@@ -846,9 +1043,11 @@ class VoiceForegroundService : Service() {
         audioThread = worker
 
         try {
+
             worker.start()
 
         } catch (exception: Exception) {
+
             captureRunning = false
             audioThread = null
             audioRecord = null
@@ -873,6 +1072,7 @@ class VoiceForegroundService : Service() {
                     ?: "Unable to start audio worker thread.",
                 -16
             )
+
             return
         }
 
@@ -884,6 +1084,7 @@ class VoiceForegroundService : Service() {
     }
 
     private fun stopAudioCapture() {
+
         captureRunning = false
         captureGeneration++
 
@@ -895,14 +1096,18 @@ class VoiceForegroundService : Service() {
         audioRecord = null
 
         if (recorder != null) {
+
             try {
+
                 if (
                     recorder.recordingState ==
                     AudioRecord.RECORDSTATE_RECORDING
                 ) {
                     recorder.stop()
                 }
+
             } catch (exception: Exception) {
+
                 Log.d(
                     TAG,
                     "AudioRecord stop requested",
@@ -915,26 +1120,34 @@ class VoiceForegroundService : Service() {
             worker != null &&
             worker !== Thread.currentThread()
         ) {
+
             try {
                 worker.join(WORKER_JOIN_TIMEOUT_MS)
+
             } catch (exception: InterruptedException) {
+
                 Thread.currentThread().interrupt()
             }
 
             if (worker.isAlive) {
+
                 Log.w(
                     TAG,
                     "Audio worker has not finished cleanup yet."
                 )
+
             } else if (audioThread === worker) {
+
                 audioThread = null
             }
         }
     }
 
     private fun invalidateModelRequest() {
+
         modelRequestGeneration++
         modelLoading = false
+
         handler.removeCallbacks(restartRunnable)
     }
 
@@ -942,6 +1155,7 @@ class VoiceForegroundService : Service() {
         message: String,
         errorCode: Int
     ) {
+
         if (userStopped && !listening) return
 
         Log.e(TAG, message)
@@ -960,7 +1174,11 @@ class VoiceForegroundService : Service() {
         invalidateModelRequest()
         stopAudioCapture()
 
-        sendError(errorCode, message)
+        sendError(
+            errorCode,
+            message
+        )
+
         sendState(false, true)
 
         stopForegroundCompat()
@@ -968,13 +1186,15 @@ class VoiceForegroundService : Service() {
     }
 
     private fun hasAudioPermission(): Boolean {
+
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-            checkSelfPermission(
-                Manifest.permission.RECORD_AUDIO
-            ) == PackageManager.PERMISSION_GRANTED
+                checkSelfPermission(
+                    Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun sendRecognitionResult(text: String) {
+
         val intent = Intent(ACTION_RESULT)
             .setPackage(packageName)
             .putExtra(EXTRA_TEXT, text)
@@ -987,6 +1207,7 @@ class VoiceForegroundService : Service() {
         running: Boolean,
         stoppedByUser: Boolean
     ) {
+
         val intent = Intent(ACTION_STATE)
             .setPackage(packageName)
             .putExtra(EXTRA_RUNNING, running)
@@ -1000,6 +1221,7 @@ class VoiceForegroundService : Service() {
         code: Int,
         message: String
     ) {
+
         val intent = Intent(ACTION_ERROR)
             .setPackage(packageName)
             .putExtra(EXTRA_ERROR_CODE, code)
@@ -1009,7 +1231,10 @@ class VoiceForegroundService : Service() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return
+        }
 
         val channel = NotificationChannel(
             CHANNEL_ID,
@@ -1026,6 +1251,7 @@ class VoiceForegroundService : Service() {
     private fun buildNotification(
         message: String
     ): Notification {
+
         val stopIntent = Intent(
             this,
             VoiceForegroundService::class.java
@@ -1033,11 +1259,11 @@ class VoiceForegroundService : Service() {
 
         val pendingFlags =
             PendingIntent.FLAG_UPDATE_CURRENT or
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    PendingIntent.FLAG_IMMUTABLE
-                } else {
-                    0
-                }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        PendingIntent.FLAG_IMMUTABLE
+                    } else {
+                        0
+                    }
 
         val stopPendingIntent = PendingIntent.getService(
             this,
@@ -1048,7 +1274,10 @@ class VoiceForegroundService : Service() {
 
         val builder =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                Notification.Builder(this, CHANNEL_ID)
+                Notification.Builder(
+                    this,
+                    CHANNEL_ID
+                )
             } else {
                 Notification.Builder(this)
             }
@@ -1056,7 +1285,9 @@ class VoiceForegroundService : Service() {
         builder
             .setContentTitle("IDRAAK Quantum Core")
             .setContentText(message)
-            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setSmallIcon(
+                android.R.drawable.ic_btn_speak_now
+            )
             .setOngoing(true)
             .setCategory(Notification.CATEGORY_SERVICE)
             .addAction(
@@ -1071,26 +1302,32 @@ class VoiceForegroundService : Service() {
     }
 
     private fun startForegroundSafely(): Boolean {
+
         if (!hasAudioPermission()) {
+
             failService(
                 "Microphone permission is not granted.",
                 PackageManager.PERMISSION_DENIED
             )
+
             return false
         }
 
         return try {
-            val notification = buildNotification(
-                "IDRAAK is starting"
-            )
+
+            val notification =
+                buildNotification("IDRAAK is starting")
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+
                 startForeground(
                     NOTIFICATION_ID,
                     notification,
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
                 )
+
             } else {
+
                 startForeground(
                     NOTIFICATION_ID,
                     notification
@@ -1100,6 +1337,7 @@ class VoiceForegroundService : Service() {
             true
 
         } catch (exception: Exception) {
+
             Log.e(
                 TAG,
                 "Unable to start foreground service",
@@ -1113,9 +1351,11 @@ class VoiceForegroundService : Service() {
             )
 
             stopSelf()
+
             false
 
         } catch (error: LinkageError) {
+
             Log.e(
                 TAG,
                 "Foreground service native error",
@@ -1124,21 +1364,29 @@ class VoiceForegroundService : Service() {
 
             sendError(
                 -18,
-                error.message ?: "Foreground service native error."
+                error.message
+                    ?: "Foreground service native error."
             )
 
             stopSelf()
+
             false
         }
     }
 
-    private fun updateNotification(message: String) {
+    private fun updateNotification(
+        message: String
+    ) {
+
         try {
+
             notificationManager.notify(
                 NOTIFICATION_ID,
                 buildNotification(message)
             )
+
         } catch (exception: Exception) {
+
             Log.w(
                 TAG,
                 "Notification update failed",
@@ -1148,14 +1396,21 @@ class VoiceForegroundService : Service() {
     }
 
     private fun stopForegroundCompat() {
+
         try {
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+
                 stopForeground(STOP_FOREGROUND_REMOVE)
+
             } else {
+
                 @Suppress("DEPRECATION")
                 stopForeground(true)
             }
+
         } catch (exception: Exception) {
+
             Log.w(
                 TAG,
                 "Unable to remove foreground notification",
@@ -1164,8 +1419,12 @@ class VoiceForegroundService : Service() {
         }
     }
 
-    private fun languageLabel(language: String): String {
+    private fun languageLabel(
+        language: String
+    ): String {
+
         return when {
+
             language.startsWith(
                 "hi",
                 ignoreCase = true
@@ -1181,32 +1440,38 @@ class VoiceForegroundService : Service() {
     }
 
     override fun onDestroy() {
+
+        /*
+         * Actual userStopped value को सुरक्षित रखते हैं।
+         * System destroy होने पर इसे user stop नहीं मानेंगे।
+         */
         listening = false
         paused = false
-        userStopped = true
+        serviceDestroyed = true
 
         invalidateModelRequest()
         pendingModel = null
 
-        /*
-         * Stop and join the audio worker before closing models.
-         * If the worker is still alive, do not close models that
-         * its recognizer may still be using.
-         */
         stopAudioCapture()
 
         val worker = audioThread
 
         if (worker != null && worker.isAlive) {
-            Log.e(
+
+            Log.w(
                 TAG,
-                "Audio worker did not stop. Model manager cleanup deferred."
+                "Audio worker अभी चल रहा है; model cleanup worker के समाप्त होने पर होगा।"
             )
+
         } else {
+
             if (::modelManager.isInitialized) {
+
                 try {
                     modelManager.close()
+
                 } catch (exception: Exception) {
+
                     Log.e(
                         TAG,
                         "Vosk model manager cleanup failed",
@@ -1216,7 +1481,11 @@ class VoiceForegroundService : Service() {
             }
         }
 
-        sendState(false, true)
+        sendState(
+            false,
+            userStopped
+        )
+
         handler.removeCallbacksAndMessages(null)
 
         super.onDestroy()
