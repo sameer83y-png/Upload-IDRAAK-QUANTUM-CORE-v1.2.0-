@@ -201,8 +201,8 @@ class MainActivity : Activity() {
     }
 
     /**
-     * Settings से चुनी गई TTS भाषा और आवाज़ का Gender
-     * VoiceEngine तक पहुँचाता है।
+     * Settings से चुनी गई TTS भाषा, आवाज़ का Gender
+     * और Speech Rate VoiceEngine तक पहुँचाता है।
      */
     private fun applyVoicePreferences() {
 
@@ -226,12 +226,20 @@ class MainActivity : Activity() {
             }
 
             voiceEngine.setLanguage(ttsLanguage)
-            voiceEngine.setVoiceGender(settingsManager.voiceGender)
+
+            voiceEngine.setVoiceGender(
+                settingsManager.voiceGender
+            )
+
+            voiceEngine.setSpeechRate(
+                settingsManager.speechRate
+            )
 
             Log.i(
                 TAG,
                 "Voice preferences applied: language=$ttsLanguage, " +
-                    "gender=${settingsManager.voiceGender}"
+                    "gender=${settingsManager.voiceGender}, " +
+                    "speechRate=${settingsManager.speechRate}"
             )
 
         } catch (exception: Exception) {
