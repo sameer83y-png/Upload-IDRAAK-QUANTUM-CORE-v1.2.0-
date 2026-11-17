@@ -1,3 +1,4 @@
+
 package com.idraak.quantum
 
 import android.content.Context
@@ -13,6 +14,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 
@@ -24,6 +26,7 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
         private const val MAX_DOWNLOAD_BYTES = 150L * 1024L * 1024L
         private const val MAX_EXTRACTED_BYTES = 600L * 1024L * 1024L
         private const val MAX_ZIP_ENTRIES = 100_000
+
         private const val CONNECT_TIMEOUT = 30_000
         private const val READ_TIMEOUT = 60_000
 
@@ -49,6 +52,7 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
     )
 
     private val appContext = context.applicationContext
+
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val executor: ExecutorService =
@@ -56,32 +60,48 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
 
     private val lock = Any()
 
+    private val listenerLock = Any()
+
     private val modelDirectory =
         File(appContext.filesDir, "vosk_models")
 
     private val loadedModels = mutableMapOf<String, Model>()
 
     /*
-     * पुराने model को तुरंत close नहीं करते।
-     * Recognition engine जब तक इस्तेमाल कर सकता है,
-     * तब तक model जीवित रहना चाहिए।
+     * पुराने models को तब तक सुरक्षित रखते हैं,
+     * जब तक Recognition Engine उनका उपयोग कर सकता है।
      */
     private val ownedModels = mutableListOf<Model>()
+
+    private val currentListeners =
+        mutableMapOf<String, Listener>()
 
     @Volatile
     private var closed = false
 
     init {
-        if (!modelDirectory.exists()) {
-            modelDirectory.mkdirs()
+        if (!modelDirectory.exists() && !modelDirectory.mkdirs()) {
+            Log.e(TAG, "Vosk model directory नहीं बनाई जा सकी।")
         }
     }
 
     fun ensureModel(language: String, listener: Listener) {
+
         if (closed) {
-            notifyError(language, "Vosk Model Manager बंद है।")
+            postDirectError(
+                language,
+                listener,
+                "Vosk Model Manager बंद है।"
+            )
             return
         }
+
+        /*
+         * जरूरी सुधार:
+         * Listener को register किए बिना notifyReady या notifyError
+         * काम नहीं कर सकते थे।
+         */
+        registerListener(language, listener)
 
         val config = getModelConfig(language)
 
@@ -95,6 +115,7 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
 
         try {
             executor.execute {
+
                 if (closed) return@execute
 
                 try {
@@ -109,9 +130,11 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
 
                     notifyProgress(language, 5)
 
-                    val modelFolder = File(modelDirectory, config.id)
+                    val modelFolder =
+                        File(modelDirectory, config.id)
 
                     if (!isValidModelFolder(modelFolder)) {
+
                         if (modelFolder.exists()) {
                             modelFolder.deleteRecursively()
                         }
@@ -133,25 +156,42 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
 
                     val model = Model(modelFolder.absolutePath)
 
+                    var modelRejected = false
+
                     synchronized(lock) {
                         if (closed) {
-                            try {
-                                model.close()
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Model close error", e)
-                            }
-                            return@execute
+                            modelRejected = true
+                        } else {
+                            loadedModels[config.id] = model
+                            ownedModels.add(model)
+                        }
+                    }
+
+                    if (modelRejected) {
+                        try {
+                            model.close()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Model close error", e)
                         }
 
-                        loadedModels[config.id] = model
-                        ownedModels.add(model)
+                        return@execute
                     }
 
                     notifyProgress(language, 100)
                     notifyReady(language, model)
 
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    Log.w(TAG, "Model loading interrupted", e)
+
+                    notifyError(
+                        language,
+                        "Vosk model loading रोक दी गई।"
+                    )
+
                 } catch (e: LinkageError) {
                     Log.e(TAG, "Vosk native library error", e)
+
                     notifyError(
                         language,
                         "Vosk native library load नहीं हो सकी: ${e.message}"
@@ -159,14 +199,25 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
 
                 } catch (e: Exception) {
                     Log.e(TAG, "Model loading failed", e)
+
                     notifyError(
                         language,
                         e.message ?: "Vosk model load नहीं हो सका।"
                     )
                 }
             }
+
+        } catch (e: RejectedExecutionException) {
+            Log.e(TAG, "Model executor rejected task", e)
+
+            notifyError(
+                language,
+                "Model loading शुरू नहीं हो सकी।"
+            )
+
         } catch (e: Exception) {
             Log.e(TAG, "Unable to schedule model loading", e)
+
             notifyError(
                 language,
                 e.message ?: "Model loading शुरू नहीं हो सकी।"
@@ -176,6 +227,7 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
 
     private fun getModelConfig(language: String): ModelConfig? {
         return when (language.trim().lowercase()) {
+
             "hi", "hi-in", "hindi" -> {
                 ModelConfig(MODEL_HINDI, HINDI_URL)
             }
@@ -189,12 +241,16 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
     }
 
     private fun isValidModelFolder(folder: File): Boolean {
+
         if (!folder.exists() || !folder.isDirectory) {
             return false
         }
 
-        val modelConfig = File(folder, "conf/model.conf")
-        val acousticModel = File(folder, "am/final.mdl")
+        val modelConfig =
+            File(folder, "conf/model.conf")
+
+        val acousticModel =
+            File(folder, "am/final.mdl")
 
         return modelConfig.isFile &&
                 acousticModel.isFile &&
@@ -207,17 +263,23 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
         destination: File,
         onProgress: (Int) -> Unit
     ) {
-        if (!modelDirectory.exists() && !modelDirectory.mkdirs()) {
+
+        if (!modelDirectory.exists() &&
+            !modelDirectory.mkdirs()
+        ) {
             throw IllegalStateException(
                 "Vosk model directory नहीं बन सकी।"
             )
         }
 
-        val zipFile = File(modelDirectory, "${config.id}.zip")
+        val zipFile =
+            File(modelDirectory, "${config.id}.zip")
+
         val extractDirectory =
             File(modelDirectory, "${config.id}_extract")
 
         try {
+
             if (extractDirectory.exists()) {
                 extractDirectory.deleteRecursively()
             }
@@ -228,32 +290,52 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                 )
             }
 
-            downloadFile(config.downloadUrl, zipFile, onProgress)
+            downloadFile(
+                config.downloadUrl,
+                zipFile,
+                onProgress
+            )
 
-            if (closed) return
+            if (closed) {
+                throw InterruptedException(
+                    "Model installation बंद किया गया।"
+                )
+            }
 
             onProgress(75)
 
-            extractZipSafely(zipFile, extractDirectory)
+            extractZipSafely(
+                zipFile,
+                extractDirectory
+            )
 
-            if (closed) return
+            if (closed) {
+                throw InterruptedException(
+                    "Model installation बंद किया गया।"
+                )
+            }
 
             onProgress(90)
 
-            val extractedModel = findModelDirectory(extractDirectory)
-                ?: throw IllegalStateException(
-                    "ZIP में Vosk model की सही directory नहीं मिली।"
-                )
+            val extractedModel =
+                findModelDirectory(extractDirectory)
+                    ?: throw IllegalStateException(
+                        "ZIP में Vosk model की सही directory नहीं मिली।"
+                    )
 
             if (destination.exists()) {
                 destination.deleteRecursively()
             }
 
             if (!extractedModel.renameTo(destination)) {
-                copyDirectory(extractedModel, destination)
+                copyDirectory(
+                    extractedModel,
+                    destination
+                )
             }
 
             if (!isValidModelFolder(destination)) {
+
                 destination.deleteRecursively()
 
                 throw IllegalStateException(
@@ -264,6 +346,7 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
             onProgress(94)
 
         } finally {
+
             if (zipFile.exists()) {
                 zipFile.delete()
             }
@@ -279,9 +362,11 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
         outputFile: File,
         onProgress: (Int) -> Unit
     ) {
+
         var connection: HttpURLConnection? = null
 
         try {
+
             val url = URL(downloadUrl)
 
             if (url.protocol != "https") {
@@ -301,7 +386,12 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
 
             connection.connectTimeout = CONNECT_TIMEOUT
             connection.readTimeout = READ_TIMEOUT
-            connection.instanceFollowRedirects = true
+
+            /*
+             * Redirect को बंद रखते हैं ताकि download
+             * किसी दूसरे host पर न चला जाए।
+             */
+            connection.instanceFollowRedirects = false
             connection.requestMethod = "GET"
 
             connection.connect()
@@ -314,7 +404,8 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                 )
             }
 
-            val contentLength = connection.contentLengthLong
+            val contentLength =
+                connection.contentLengthLong
 
             if (contentLength > MAX_DOWNLOAD_BYTES) {
                 throw IllegalStateException(
@@ -324,14 +415,21 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
 
             var downloaded = 0L
 
-            BufferedInputStream(connection.inputStream).use { input ->
+            BufferedInputStream(
+                connection.inputStream
+            ).use { input ->
+
                 FileOutputStream(outputFile).use { fileOutput ->
+
                     BufferedOutputStream(fileOutput).use { output ->
 
                         val buffer = ByteArray(16 * 1024)
 
                         while (true) {
-                            if (closed) {
+
+                            if (closed ||
+                                Thread.currentThread().isInterrupted
+                            ) {
                                 throw InterruptedException(
                                     "Model download बंद किया गया।"
                                 )
@@ -349,9 +447,14 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                                 )
                             }
 
-                            output.write(buffer, 0, count)
+                            output.write(
+                                buffer,
+                                0,
+                                count
+                            )
 
                             if (contentLength > 0) {
+
                                 val percent =
                                     ((downloaded * 65) / contentLength)
                                         .toInt()
@@ -366,7 +469,9 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                 }
             }
 
-            if (!outputFile.exists() || outputFile.length() == 0L) {
+            if (!outputFile.exists() ||
+                outputFile.length() == 0L
+            ) {
                 throw IllegalStateException(
                     "Downloaded ZIP file खाली है।"
                 )
@@ -381,6 +486,7 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
         zipFile: File,
         destination: File
     ) {
+
         val canonicalDestination =
             destination.canonicalFile
 
@@ -392,13 +498,17 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
         ).use { zipInput ->
 
             while (true) {
-                if (closed) {
+
+                if (closed ||
+                    Thread.currentThread().isInterrupted
+                ) {
                     throw InterruptedException(
                         "ZIP extraction बंद किया गया।"
                     )
                 }
 
-                val entry = zipInput.nextEntry ?: break
+                val entry =
+                    zipInput.nextEntry ?: break
 
                 entryCount++
 
@@ -413,20 +523,23 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                     entry.name
                 )
 
-                val canonicalOutput = outputFile.canonicalFile
+                val canonicalOutput =
+                    outputFile.canonicalFile
 
-                if (!canonicalOutput.path.startsWith(
+                val safePath =
+                    canonicalOutput.path.startsWith(
                         canonicalDestination.path +
                                 File.separator
-                    ) &&
-                    canonicalOutput != canonicalDestination
-                ) {
+                    ) || canonicalOutput == canonicalDestination
+
+                if (!safePath) {
                     throw SecurityException(
                         "ZIP में unsafe file path मिला।"
                     )
                 }
 
                 if (entry.isDirectory) {
+
                     if (!canonicalOutput.exists() &&
                         !canonicalOutput.mkdirs()
                     ) {
@@ -434,8 +547,11 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                             "ZIP directory नहीं बनाई जा सकी।"
                         )
                     }
+
                 } else {
-                    val parent = canonicalOutput.parentFile
+
+                    val parent =
+                        canonicalOutput.parentFile
 
                     if (parent != null &&
                         !parent.exists() &&
@@ -446,17 +562,24 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                         )
                     }
 
-                    FileOutputStream(canonicalOutput).use { output ->
+                    FileOutputStream(
+                        canonicalOutput
+                    ).use { output ->
+
                         val buffer = ByteArray(16 * 1024)
 
                         while (true) {
-                            if (closed) {
+
+                            if (closed ||
+                                Thread.currentThread().isInterrupted
+                            ) {
                                 throw InterruptedException(
                                     "ZIP extraction बंद किया गया।"
                                 )
                             }
 
-                            val count = zipInput.read(buffer)
+                            val count =
+                                zipInput.read(buffer)
 
                             if (count == -1) break
 
@@ -468,7 +591,11 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                                 )
                             }
 
-                            output.write(buffer, 0, count)
+                            output.write(
+                                buffer,
+                                0,
+                                count
+                            )
                         }
 
                         output.flush()
@@ -481,19 +608,24 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
     }
 
     private fun findModelDirectory(root: File): File? {
+
         if (isValidModelFolder(root)) {
             return root
         }
 
-        val children = root.listFiles() ?: return null
+        val children =
+            root.listFiles() ?: return null
 
         for (child in children) {
+
             if (child.isDirectory) {
+
                 if (isValidModelFolder(child)) {
                     return child
                 }
 
-                val nested = findModelDirectory(child)
+                val nested =
+                    findModelDirectory(child)
 
                 if (nested != null) {
                     return nested
@@ -508,31 +640,55 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
         source: File,
         destination: File
     ) {
-        if (!source.exists() || !source.isDirectory) {
+
+        if (!source.exists() ||
+            !source.isDirectory
+        ) {
             throw IllegalArgumentException(
                 "Invalid source model directory."
             )
         }
 
-        if (!destination.exists() && !destination.mkdirs()) {
+        if (!destination.exists() &&
+            !destination.mkdirs()
+        ) {
             throw IllegalStateException(
                 "Destination model directory नहीं बन सकी।"
             )
         }
 
-        val children = source.listFiles()
-            ?: throw IllegalStateException(
-                "Source model directory पढ़ी नहीं जा सकी।"
-            )
+        val children =
+            source.listFiles()
+                ?: throw IllegalStateException(
+                    "Source model directory पढ़ी नहीं जा सकी।"
+                )
 
         for (child in children) {
-            val target = File(destination, child.name)
+
+            if (closed ||
+                Thread.currentThread().isInterrupted
+            ) {
+                throw InterruptedException(
+                    "Model copy बंद किया गया।"
+                )
+            }
+
+            val target =
+                File(destination, child.name)
 
             if (child.isDirectory) {
-                copyDirectory(child, target)
+
+                copyDirectory(
+                    child,
+                    target
+                )
+
             } else {
+
                 child.inputStream().use { input ->
+
                     FileOutputStream(target).use { output ->
+
                         input.copyTo(output)
                         output.flush()
                     }
@@ -541,19 +697,44 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
         }
     }
 
+    /*
+     * Listener registration और access अब एक ही lock से सुरक्षित हैं।
+     */
+    private fun registerListener(
+        language: String,
+        listener: Listener
+    ) {
+        synchronized(listenerLock) {
+            if (!closed) {
+                currentListeners[language] = listener
+            }
+        }
+    }
+
     private fun notifyProgress(
         language: String,
         percent: Int
     ) {
+
         if (closed) return
 
         mainHandler.post {
-            if (!closed) {
-                // Progress listener को Service लागू करता है।
-                currentListeners[language]?.onProgress(
-                    language,
-                    percent.coerceIn(0, 100)
-                )
+
+            if (closed) return@post
+
+            val listener = synchronized(listenerLock) {
+                currentListeners[language]
+            }
+
+            if (listener != null) {
+                try {
+                    listener.onProgress(
+                        language,
+                        percent.coerceIn(0, 100)
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Progress listener error", e)
+                }
             }
         }
     }
@@ -562,14 +743,26 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
         language: String,
         model: Model
     ) {
+
         if (closed) return
 
         mainHandler.post {
-            if (!closed) {
-                currentListeners.remove(language)?.onReady(
-                    language,
-                    model
-                )
+
+            if (closed) return@post
+
+            val listener = synchronized(listenerLock) {
+                currentListeners.remove(language)
+            }
+
+            if (listener != null) {
+                try {
+                    listener.onReady(
+                        language,
+                        model
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Ready listener error", e)
+                }
             }
         }
     }
@@ -578,34 +771,58 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
         language: String,
         message: String
     ) {
+
         if (closed) return
 
         mainHandler.post {
-            if (!closed) {
-                currentListeners.remove(language)?.onError(
-                    language,
-                    message
-                )
+
+            if (closed) return@post
+
+            val listener = synchronized(listenerLock) {
+                currentListeners.remove(language)
+            }
+
+            if (listener != null) {
+                try {
+                    listener.onError(
+                        language,
+                        message
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error listener callback failed", e)
+                }
             }
         }
     }
 
-    private val currentListeners =
-        mutableMapOf<String, Listener>()
-
-    private fun registerListener(
+    private fun postDirectError(
         language: String,
-        listener: Listener
+        listener: Listener,
+        message: String
     ) {
-        synchronized(currentListeners) {
-            currentListeners[language] = listener
+
+        mainHandler.post {
+            try {
+                listener.onError(
+                    language,
+                    message
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Direct error callback failed", e)
+            }
         }
     }
 
     override fun close() {
-        if (closed) return
 
-        closed = true
+        synchronized(lock) {
+            if (closed) return
+            closed = true
+        }
+
+        synchronized(listenerLock) {
+            currentListeners.clear()
+        }
 
         executor.shutdownNow()
 
@@ -616,23 +833,36 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
                 3,
                 TimeUnit.SECONDS
             )
+
         } catch (e: InterruptedException) {
+
             Thread.currentThread().interrupt()
-            Log.w(TAG, "Interrupted while closing model manager")
+
+            Log.w(
+                TAG,
+                "Interrupted while closing model manager",
+                e
+            )
         }
 
         if (!terminated) {
+
             Log.w(
                 TAG,
                 "Model worker अभी चल रहा है; models को close नहीं किया गया।"
             )
+
+            mainHandler.removeCallbacksAndMessages(null)
             return
         }
 
         synchronized(lock) {
+
             for (model in ownedModels) {
+
                 try {
                     model.close()
+
                 } catch (e: Exception) {
                     Log.e(TAG, "Error closing Vosk model", e)
                 }
@@ -640,10 +870,6 @@ internal class VoskModelManager(context: Context) : AutoCloseable {
 
             ownedModels.clear()
             loadedModels.clear()
-        }
-
-        synchronized(currentListeners) {
-            currentListeners.clear()
         }
 
         mainHandler.removeCallbacksAndMessages(null)
