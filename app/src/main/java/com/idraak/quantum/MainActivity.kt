@@ -67,7 +67,7 @@ class MainActivity : Activity() {
                      * Service का running होना यह नहीं बताता
                      * कि IDRAAK ACTIVE है या SLEEPING।
                      *
-                     * Service TTS के दौरान भी pause हो सकती है,
+                     * TTS के दौरान service pause भी हो सकती है,
                      * इसलिए false मिलने पर UI को forcefully
                      * inactive नहीं करेंगे।
                      */
@@ -195,11 +195,83 @@ class MainActivity : Activity() {
             }
         )
 
+        applyWakeWordSetting()
+
+        showHome()
+    }
+
+    /**
+     * Settings से चुनी गई TTS भाषा और आवाज़ का Gender
+     * VoiceEngine तक पहुँचाता है।
+     */
+    private fun applyVoicePreferences() {
+
+        if (
+            !::settingsManager.isInitialized ||
+            !::voiceEngine.isInitialized
+        ) {
+            return
+        }
+
+        try {
+            val selectedLanguage = settingsManager.voiceLanguage
+
+            val ttsLanguage = when (selectedLanguage) {
+                "auto", "hi-IN" -> "hi-IN"
+                "en-US" -> "en-US"
+                "en-IN" -> "en-IN"
+                "ur-PK" -> "ur-PK"
+                "ar-SA" -> "ar-SA"
+                else -> "hi-IN"
+            }
+
+            voiceEngine.setLanguage(ttsLanguage)
+            voiceEngine.setVoiceGender(settingsManager.voiceGender)
+
+            Log.i(
+                TAG,
+                "Voice preferences applied: language=$ttsLanguage, " +
+                    "gender=${settingsManager.voiceGender}"
+            )
+
+        } catch (exception: Exception) {
+            Log.e(TAG, "Could not apply voice preferences", exception)
+        }
+    }
+
+    /**
+     * Wake word preference को VoiceSessionController में लागू करता है।
+     */
+    private fun applyWakeWordSetting() {
+
+        if (
+            !::settingsManager.isInitialized ||
+            !::voiceSessionController.isInitialized
+        ) {
+            return
+        }
+
         voiceSessionController.setWakeWordEnabled(
             settingsManager.wakeWordEnabled
         )
+    }
 
-        showHome()
+    /**
+     * Vosk के लिए उपलब्ध recognition language चुनता है।
+     *
+     * वर्तमान recognition engine में Hindi और English
+     * मॉडल उपलब्ध हैं। Urdu और Arabic TTS languages हैं;
+     * इनके Vosk models अलग से जोड़ने होंगे।
+     */
+    private fun getRecognitionLanguage(): String {
+
+        return when (settingsManager.voiceLanguage) {
+            "en-US", "en-IN" -> "en-IN"
+            "hi-IN", "auto" -> "hi-IN"
+            "ur-PK" -> "ur-PK"
+            "ar-SA" -> "ar-SA"
+            else -> "hi-IN"
+        }
     }
 
     private fun registerVoiceReceiver() {
@@ -295,15 +367,10 @@ class MainActivity : Activity() {
 
         try {
 
-            val language =
-                settingsManager.voiceLanguage
-                    .takeIf {
-                        it.isNotBlank() && it != "auto"
-                    } ?: "hi-IN"
+            applyVoicePreferences()
+            applyWakeWordSetting()
 
-            voiceSessionController.setWakeWordEnabled(
-                settingsManager.wakeWordEnabled
-            )
+            val language = getRecognitionLanguage()
 
             voiceEngine.startListening(language)
 
@@ -314,6 +381,11 @@ class MainActivity : Activity() {
                     WakeWordController.VoiceState.SLEEPING
 
             homeView.setVoiceStatus(awake)
+
+            Log.i(
+                TAG,
+                "Voice system started with recognition language: $language"
+            )
 
         } catch (exception: Exception) {
 
@@ -334,7 +406,18 @@ class MainActivity : Activity() {
     private fun showHome() {
 
         settingsVisible = false
-        setContentView(homeView)
+
+        if (::voiceEngine.isInitialized) {
+            applyVoicePreferences()
+        }
+
+        if (::voiceSessionController.isInitialized) {
+            applyWakeWordSetting()
+        }
+
+        if (::homeView.isInitialized) {
+            setContentView(homeView)
+        }
     }
 
     private fun showSettings() {
