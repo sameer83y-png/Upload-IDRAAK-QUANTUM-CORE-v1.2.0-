@@ -18,6 +18,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.Process
+import android.os.SystemClock
 import android.util.Log
 import org.vosk.Model
 import java.util.Locale
@@ -58,6 +59,7 @@ class VoiceForegroundService : Service() {
         private const val AUDIO_BUFFER_MULTIPLIER = 2
 
         private const val WORKER_JOIN_TIMEOUT_MS = 2000L
+        private const val PARTIAL_NOTIFICATION_INTERVAL_MS = 1000L
     }
 
     private lateinit var notificationManager: NotificationManager
@@ -102,6 +104,9 @@ class VoiceForegroundService : Service() {
 
     @Volatile
     private var pendingModel: Model? = null
+
+    @Volatile
+    private var lastPartialNotificationAt = 0L
 
     private val preferences by lazy {
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -195,12 +200,8 @@ class VoiceForegroundService : Service() {
     ): Int {
 
         /*
-         * CRITICAL FIX:
          * startForegroundService() के बाद सबसे पहले
          * foreground notification शुरू करनी जरूरी है।
-         *
-         * Vosk initialization और permission checks
-         * इसके बाद किए जाएंगे।
          */
         if (!startForegroundSafely()) {
             stopSelf(startId)
@@ -386,6 +387,7 @@ class VoiceForegroundService : Service() {
         paused = false
         userStopped = false
         pendingModel = null
+        lastPartialNotificationAt = 0L
 
         preferences.edit()
             .putBoolean(PREF_VOICE_ENABLED, true)
@@ -420,6 +422,7 @@ class VoiceForegroundService : Service() {
         listening = true
         paused = false
         userStopped = false
+        lastPartialNotificationAt = 0L
 
         preferences.edit()
             .putBoolean(PREF_VOICE_ENABLED, true)
@@ -693,7 +696,33 @@ class VoiceForegroundService : Service() {
                 listener = object : VoskRecognitionEngine.Listener {
 
                     override fun onPartialResult(text: String) {
-                        // Partial results intentionally ignored.
+                        val partialText = text.trim()
+
+                        if (partialText.isEmpty()) return
+                        if (!listening || paused || userStopped) return
+                        if (serviceDestroyed) return
+
+                        val now = SystemClock.elapsedRealtime()
+
+                        if (
+                            now - lastPartialNotificationAt >=
+                            PARTIAL_NOTIFICATION_INTERVAL_MS
+                        ) {
+                            lastPartialNotificationAt = now
+
+                            handler.post {
+                                if (
+                                    listening &&
+                                    !paused &&
+                                    !userStopped &&
+                                    !serviceDestroyed
+                                ) {
+                                    updateNotification(
+                                        "Hearing: $partialText"
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     override fun onFinalResult(text: String) {
@@ -702,6 +731,19 @@ class VoiceForegroundService : Service() {
                         if (finalText.isEmpty()) return
                         if (!listening || paused || userStopped) return
                         if (serviceDestroyed) return
+
+                        handler.post {
+                            if (
+                                listening &&
+                                !paused &&
+                                !userStopped &&
+                                !serviceDestroyed
+                            ) {
+                                updateNotification(
+                                    "Heard: $finalText"
+                                )
+                            }
+                        }
 
                         sendRecognitionResult(finalText)
                     }
@@ -770,6 +812,7 @@ class VoiceForegroundService : Service() {
 
         audioRecord = recorder
         captureRunning = true
+        lastPartialNotificationAt = 0L
 
         val worker = Thread({
             try {
@@ -1144,8 +1187,7 @@ class VoiceForegroundService : Service() {
 
     /*
      * Foreground notification is started immediately.
-     * Microphone permission is deliberately checked later,
-     * before AudioRecord is created.
+     * Microphone permission is checked before AudioRecord is created.
      */
     private fun startForegroundSafely(): Boolean {
         return try {
