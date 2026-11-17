@@ -16,9 +16,6 @@ import android.util.Log
  *
  * Vosk model loading, microphone capture and speech recognition
  * are exclusively managed by VoiceForegroundService.
- *
- * This class does not directly control AudioRecord, Vosk,
- * SpeechRecognizer or TextToSpeech.
  */
 class VoiceManager(context: Context) {
 
@@ -52,9 +49,6 @@ class VoiceManager(context: Context) {
 
     /**
      * Starts the voice foreground service.
-     *
-     * The service loads the required Vosk model
-     * and starts continuous audio recognition.
      */
     fun start(language: String) {
 
@@ -64,15 +58,15 @@ class VoiceManager(context: Context) {
         }
 
         startForegroundServiceSafely(
-            serviceIntent(language = language)
+            serviceIntent(
+                action = VoiceForegroundService.ACTION_START,
+                language = language
+            )
         )
     }
 
     /**
      * Pauses microphone recognition.
-     *
-     * The foreground service remains responsible
-     * for managing its lifecycle and resources.
      */
     fun pause() {
 
@@ -85,8 +79,6 @@ class VoiceManager(context: Context) {
 
     /**
      * Resumes continuous voice recognition.
-     *
-     * The selected language is passed to the service.
      */
     fun resume(language: String) {
 
@@ -104,10 +96,7 @@ class VoiceManager(context: Context) {
     }
 
     /**
-     * Requests the voice foreground service to stop.
-     *
-     * The service itself performs microphone,
-     * Vosk engine and model cleanup.
+     * Stops the voice service.
      */
     fun stop() {
 
@@ -118,11 +107,6 @@ class VoiceManager(context: Context) {
         )
     }
 
-    /**
-     * Starts a foreground service safely.
-     *
-     * Required for Android Oreo and newer.
-     */
     private fun startForegroundServiceSafely(intent: Intent) {
 
         try {
@@ -135,24 +119,19 @@ class VoiceManager(context: Context) {
 
             Log.d(
                 TAG,
-                "Foreground service command sent: ${intent.action ?: "START"}"
+                "Foreground service command sent: ${intent.action}"
             )
 
         } catch (exception: Exception) {
 
             Log.e(
                 TAG,
-                "Unable to start foreground service: ${intent.action ?: "START"}",
+                "Unable to start foreground service: ${intent.action}",
                 exception
             )
         }
     }
 
-    /**
-     * Sends commands to the existing service.
-     *
-     * Used for pause and stop operations.
-     */
     private fun startServiceSafely(intent: Intent) {
 
         try {
