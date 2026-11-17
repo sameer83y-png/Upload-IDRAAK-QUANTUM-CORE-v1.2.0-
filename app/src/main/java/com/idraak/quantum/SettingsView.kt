@@ -5,6 +5,8 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.text.InputType
 import android.view.Gravity
+import android.view.View
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -15,6 +17,7 @@ import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -25,8 +28,8 @@ import kotlin.math.roundToInt
  * - Configure Gemini, voice language, gender and speech rate.
  * - Configure conversation history and permanent memory preferences.
  *
- * Actual conversation history and permanent memory data are handled
- * by their dedicated managers, not by this view.
+ * Conversation history and permanent memory data are handled
+ * by their dedicated managers.
  */
 internal class SettingsView(
     context: Context,
@@ -79,7 +82,10 @@ internal class SettingsView(
         configureScreen()
         buildScreen()
         loadSettings()
+
         initializing = false
+
+        configureSelectionListeners()
     }
 
     private fun configureScreen() {
@@ -107,17 +113,19 @@ internal class SettingsView(
         addSection("GEMINI AI")
 
         addLabel("Gemini API Key")
+
         apiKeyInput.hint = "Enter your Gemini API key"
         apiKeyInput.inputType =
             InputType.TYPE_CLASS_TEXT or
                 InputType.TYPE_TEXT_VARIATION_PASSWORD
-        apiKeyInput.singleLine = true
+        apiKeyInput.setSingleLine(true)
         styleInput(apiKeyInput)
         content.addView(apiKeyInput, matchWidth())
 
         addLabel("Gemini Model")
+
         modelInput.hint = SettingsManager.DEFAULT_MODEL
-        modelInput.singleLine = true
+        modelInput.setSingleLine(true)
         modelInput.inputType = InputType.TYPE_CLASS_TEXT
         styleInput(modelInput)
         content.addView(modelInput, matchWidth())
@@ -131,26 +139,20 @@ internal class SettingsView(
         addSection("VOICE SETTINGS")
 
         addLabel("Voice Language")
-        configureSpinner(
-            languageSpinner,
-            languageLabels
-        )
+        configureSpinner(languageSpinner, languageLabels)
         content.addView(languageSpinner, matchWidth())
 
         addLabel("Voice Gender")
-        configureSpinner(
-            genderSpinner,
-            genderValues
-        )
+        configureSpinner(genderSpinner, genderValues)
         content.addView(genderSpinner, matchWidth())
 
         addLabel("Speech Rate")
+
         speechRateLabel.textSize = 14f
         speechRateLabel.setTextColor(Color.WHITE)
         content.addView(speechRateLabel, matchWidth())
 
         speechRateSeekBar.max = 150
-        speechRateSeekBar.progress = 50
 
         speechRateSeekBar.setOnSeekBarChangeListener(
             object : SeekBar.OnSeekBarChangeListener {
@@ -160,10 +162,12 @@ internal class SettingsView(
                     progress: Int,
                     fromUser: Boolean
                 ) {
-                    val rate = 0.5f + (progress / 100f)
+                    val rate = 0.5f + progress / 100f
 
                     speechRateLabel.text =
-                        "Speech speed: ${"%.2f".format(rate)}x"
+                        "Speech speed: ${
+                            String.format(Locale.US, "%.2f", rate)
+                        }x"
 
                     if (fromUser && !initializing) {
                         settingsManager.speechRate = rate
@@ -175,7 +179,7 @@ internal class SettingsView(
                 }
 
                 override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                    // Value is saved during progress changes.
+                    // The value is saved during progress changes.
                 }
             }
         )
@@ -250,25 +254,67 @@ internal class SettingsView(
         genderSpinner.setSelection(genderIndex)
 
         val rate = settingsManager.speechRate
-        val progress = ((rate - 0.5f) * 100f)
-            .roundToInt()
-            .coerceIn(0, 150)
 
-        speechRateSeekBar.progress = progress
+        speechRateSeekBar.progress =
+            ((rate - 0.5f) * 100f)
+                .roundToInt()
+                .coerceIn(0, 150)
 
         speechRateLabel.text =
-            "Speech speed: ${"%.2f".format(rate)}x"
+            "Speech speed: ${
+                String.format(Locale.US, "%.2f", rate)
+            }x"
+    }
+
+    private fun configureSelectionListeners() {
+        languageSpinner.onItemSelectedListener =
+            object : AdapterView.OnItemSelectedListener {
+
+                override fun onItemSelected(
+                    parent: AdapterView<*>?,
+                    view: View?,
+                    position: Int,
+                    id: Long
+                ) {
+                    if (!initializing && position in languageValues.indices) {
+                        settingsManager.voiceLanguage =
+                            languageValues[position]
+                    }
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) {
+                    // Keep the previous saved language.
+                }
+            }
+
+        genderSpinner.onItemSelectedListener =
+            object : AdapterView.OnItemSelectedListener {
+
+                override fun onItemSelected(
+                    parent: AdapterView<*>?,
+                    view: View?,
+                    position: Int,
+                    id: Long
+                ) {
+                    if (!initializing && position in genderValues.indices) {
+                        settingsManager.voiceGender =
+                            genderValues[position]
+                    }
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) {
+                    // Keep the previous saved gender.
+                }
+            }
     }
 
     private fun saveAiSettings() {
         try {
-            settingsManager.apiKey = apiKeyInput.text
-                .toString()
-                .trim()
+            settingsManager.apiKey =
+                apiKeyInput.text.toString().trim()
 
-            settingsManager.geminiModel = modelInput.text
-                .toString()
-                .trim()
+            settingsManager.geminiModel =
+                modelInput.text.toString().trim()
 
             Toast.makeText(
                 context,
@@ -279,7 +325,9 @@ internal class SettingsView(
         } catch (exception: Exception) {
             Toast.makeText(
                 context,
-                "Could not save API key: ${exception.message ?: "Unknown error"}",
+                "Could not save API key: ${
+                    exception.message ?: "Unknown error"
+                }",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -300,7 +348,6 @@ internal class SettingsView(
         )
 
         spinner.adapter = adapter
-
         spinner.setBackgroundColor(Color.rgb(25, 34, 58))
     }
 
@@ -318,10 +365,13 @@ internal class SettingsView(
         addDescription(description)
 
         switch.setOnCheckedChangeListener { _, checked ->
-            if (initializing) return@setOnCheckedChangeListener
+            if (initializing) {
+                return@setOnCheckedChangeListener
+            }
 
             when (switch) {
-                offlineSwitch -> settingsManager.offlineMode = checked
+                offlineSwitch ->
+                    settingsManager.offlineMode = checked
 
                 wakeWordSwitch ->
                     settingsManager.wakeWordEnabled = checked
@@ -407,6 +457,8 @@ internal class SettingsView(
     }
 
     private fun dp(value: Int): Int {
-        return (value * resources.displayMetrics.density).roundToInt()
+        return (
+            value * resources.displayMetrics.density
+        ).roundToInt()
     }
 }
