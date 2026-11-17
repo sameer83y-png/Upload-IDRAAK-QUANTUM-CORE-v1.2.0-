@@ -1,4 +1,3 @@
-
 package com.idraak.quantum
 
 import android.content.Context
