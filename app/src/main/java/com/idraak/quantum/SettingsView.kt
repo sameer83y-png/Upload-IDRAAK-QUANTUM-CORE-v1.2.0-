@@ -15,12 +15,18 @@ import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import kotlin.math.roundToInt
 
 /**
- * IDRAAK settings screen.
+ * IDRAAK Settings Screen
  *
- * यह केवल settings UI और SettingsManager के बीच काम करता है।
- * Voice recognition और Gemini requests यहाँ execute नहीं होते।
+ * Responsibilities:
+ * - Display and update application settings.
+ * - Configure Gemini, voice language, gender and speech rate.
+ * - Configure conversation history and permanent memory preferences.
+ *
+ * Actual conversation history and permanent memory data are handled
+ * by their dedicated managers, not by this view.
  */
 internal class SettingsView(
     context: Context,
@@ -30,28 +36,60 @@ internal class SettingsView(
 
     private val content = LinearLayout(context)
 
-    private lateinit var apiKeyInput: EditText
-    private lateinit var modelInput: EditText
-    private lateinit var offlineSwitch: Switch
-    private lateinit var wakeWordSwitch: Switch
-    private lateinit var languageSpinner: Spinner
-    private lateinit var speechRateSeekBar: SeekBar
-    private lateinit var speechRateValue: TextView
+    private val apiKeyInput = EditText(context)
+    private val modelInput = EditText(context)
 
-    private val languages = listOf(
+    private val languageSpinner = Spinner(context)
+    private val genderSpinner = Spinner(context)
+
+    private val speechRateLabel = TextView(context)
+    private val speechRateSeekBar = SeekBar(context)
+
+    private val offlineSwitch = Switch(context)
+    private val wakeWordSwitch = Switch(context)
+    private val historySwitch = Switch(context)
+    private val memorySwitch = Switch(context)
+
+    private var initializing = true
+
+    private val languageValues = listOf(
         "auto",
         "hi-IN",
         "en-US",
+        "en-IN",
         "ur-PK",
         "ar-SA"
     )
 
+    private val languageLabels = listOf(
+        "Automatic",
+        "Hindi",
+        "English (US)",
+        "English (India)",
+        "Urdu",
+        "Arabic"
+    )
+
+    private val genderValues = listOf(
+        "Male",
+        "Female"
+    )
+
     init {
-        setFillViewport(true)
-        setBackgroundColor(Color.rgb(5, 10, 28))
+        configureScreen()
+        buildScreen()
+        loadSettings()
+        initializing = false
+    }
+
+    private fun configureScreen() {
+        setBackgroundColor(Color.rgb(8, 12, 28))
+        isFillViewport = true
+        clipToPadding = false
 
         content.orientation = LinearLayout.VERTICAL
         content.setPadding(dp(20), dp(24), dp(20), dp(28))
+        content.setBackgroundColor(Color.rgb(8, 12, 28))
 
         addView(
             content,
@@ -60,91 +98,129 @@ internal class SettingsView(
                 LayoutParams.WRAP_CONTENT
             )
         )
-
-        buildSettings()
-        loadSettings()
     }
 
-    private fun buildSettings() {
-        addTitle("IDRAAK Settings")
-        addDescription("अपने voice assistant की preferences बदलें।")
+    private fun buildScreen() {
+        addTitle("IDRAAK SETTINGS")
+        addDescription("Configure your assistant")
 
-        addSectionTitle("Gemini AI")
+        addSection("GEMINI AI")
 
-        apiKeyInput = createEditText(
-            hint = "Gemini API key",
-            inputType = InputType.TYPE_CLASS_TEXT or
+        addLabel("Gemini API Key")
+        apiKeyInput.hint = "Enter your Gemini API key"
+        apiKeyInput.inputType =
+            InputType.TYPE_CLASS_TEXT or
                 InputType.TYPE_TEXT_VARIATION_PASSWORD
-        )
+        apiKeyInput.singleLine = true
+        styleInput(apiKeyInput)
         content.addView(apiKeyInput, matchWidth())
 
-        modelInput = createEditText(
-            hint = "Gemini model",
-            inputType = InputType.TYPE_CLASS_TEXT
-        )
+        addLabel("Gemini Model")
+        modelInput.hint = SettingsManager.DEFAULT_MODEL
+        modelInput.singleLine = true
+        modelInput.inputType = InputType.TYPE_CLASS_TEXT
+        styleInput(modelInput)
         content.addView(modelInput, matchWidth())
 
-        offlineSwitch = createSwitch("Offline mode")
-        content.addView(offlineSwitch, matchWidth())
+        val saveAiButton = createButton("SAVE AI SETTINGS")
+        saveAiButton.setOnClickListener {
+            saveAiSettings()
+        }
+        content.addView(saveAiButton, matchWidth())
 
-        addSectionTitle("Voice")
+        addSection("VOICE SETTINGS")
 
-        wakeWordSwitch = createSwitch("Wake word IDRAAK enabled")
-        content.addView(wakeWordSwitch, matchWidth())
-
-        addLabel("Recognition / voice language")
-
-        languageSpinner = Spinner(context)
-        languageSpinner.adapter = ArrayAdapter(
-            context,
-            android.R.layout.simple_spinner_dropdown_item,
-            languages
+        addLabel("Voice Language")
+        configureSpinner(
+            languageSpinner,
+            languageLabels
         )
         content.addView(languageSpinner, matchWidth())
 
-        addLabel("Speech rate")
+        addLabel("Voice Gender")
+        configureSpinner(
+            genderSpinner,
+            genderValues
+        )
+        content.addView(genderSpinner, matchWidth())
 
-        speechRateValue = TextView(context).apply {
-            setTextColor(Color.WHITE)
-            textSize = 14f
-        }
-        content.addView(speechRateValue, matchWidth())
+        addLabel("Speech Rate")
+        speechRateLabel.textSize = 14f
+        speechRateLabel.setTextColor(Color.WHITE)
+        content.addView(speechRateLabel, matchWidth())
 
-        speechRateSeekBar = SeekBar(context).apply {
-            max = 150
-            progress = 50
-            setOnSeekBarChangeListener(
-                object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(
-                        seekBar: SeekBar?,
-                        progress: Int,
-                        fromUser: Boolean
-                    ) {
-                        val rate = 0.5f + progress / 100f
-                        speechRateValue.text =
-                            String.format("%.1fx", rate)
+        speechRateSeekBar.max = 150
+        speechRateSeekBar.progress = 50
+
+        speechRateSeekBar.setOnSeekBarChangeListener(
+            object : SeekBar.OnSeekBarChangeListener {
+
+                override fun onProgressChanged(
+                    seekBar: SeekBar?,
+                    progress: Int,
+                    fromUser: Boolean
+                ) {
+                    val rate = 0.5f + (progress / 100f)
+
+                    speechRateLabel.text =
+                        "Speech speed: ${"%.2f".format(rate)}x"
+
+                    if (fromUser && !initializing) {
+                        settingsManager.speechRate = rate
                     }
-
-                    override fun onStartTrackingTouch(
-                        seekBar: SeekBar?
-                    ) = Unit
-
-                    override fun onStopTrackingTouch(
-                        seekBar: SeekBar?
-                    ) = Unit
                 }
-            )
-        }
+
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                    // No action required.
+                }
+
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                    // Value is saved during progress changes.
+                }
+            }
+        )
+
         content.addView(speechRateSeekBar, matchWidth())
 
-        val saveButton = createButton("Save Settings") {
-            saveSettings()
-        }
-        content.addView(saveButton, matchWidth())
+        addSection("ASSISTANT BEHAVIOUR")
 
-        val closeButton = createButton("Close") {
+        configureSwitch(
+            offlineSwitch,
+            "Offline Mode",
+            "Use offline commands without calling Gemini."
+        )
+
+        configureSwitch(
+            wakeWordSwitch,
+            "Wake Word",
+            "Allow IDRAAK to respond to its wake word."
+        )
+
+        addSection("DATA & MEMORY")
+
+        configureSwitch(
+            historySwitch,
+            "Conversation History",
+            "Allow ordinary conversation history to be retained."
+        )
+
+        configureSwitch(
+            memorySwitch,
+            "Permanent Memory",
+            "Allow explicitly saved memories to be retained."
+        )
+
+        addDescription(
+            "Conversation History and Permanent Memory are separate. " +
+                "Clearing ordinary conversation history must not delete " +
+                "explicitly saved memories."
+        )
+
+        val closeButton = createButton("CLOSE SETTINGS")
+        closeButton.setOnClickListener {
             onClose()
         }
+
         content.addView(closeButton, matchWidth())
     }
 
@@ -155,134 +231,182 @@ internal class SettingsView(
         offlineSwitch.isChecked = settingsManager.offlineMode
         wakeWordSwitch.isChecked = settingsManager.wakeWordEnabled
 
-        val languageIndex = languages.indexOf(
+        historySwitch.isChecked =
+            settingsManager.conversationHistoryEnabled
+
+        memorySwitch.isChecked =
+            settingsManager.permanentMemoryEnabled
+
+        val languageIndex = languageValues.indexOf(
             settingsManager.voiceLanguage
         ).coerceAtLeast(0)
 
         languageSpinner.setSelection(languageIndex)
 
-        val progress = (
-            (settingsManager.speechRate - 0.5f) * 100f
-            ).toInt().coerceIn(0, 150)
+        val genderIndex = genderValues.indexOf(
+            settingsManager.voiceGender
+        ).coerceAtLeast(0)
+
+        genderSpinner.setSelection(genderIndex)
+
+        val rate = settingsManager.speechRate
+        val progress = ((rate - 0.5f) * 100f)
+            .roundToInt()
+            .coerceIn(0, 150)
 
         speechRateSeekBar.progress = progress
-        speechRateValue.text =
-            String.format("%.1fx", settingsManager.speechRate)
+
+        speechRateLabel.text =
+            "Speech speed: ${"%.2f".format(rate)}x"
     }
 
-    private fun saveSettings() {
-        settingsManager.apiKey = apiKeyInput.text
-            .toString()
-            .trim()
+    private fun saveAiSettings() {
+        try {
+            settingsManager.apiKey = apiKeyInput.text
+                .toString()
+                .trim()
 
-        settingsManager.geminiModel = modelInput.text
-            .toString()
-            .trim()
+            settingsManager.geminiModel = modelInput.text
+                .toString()
+                .trim()
 
-        settingsManager.offlineMode = offlineSwitch.isChecked
-        settingsManager.wakeWordEnabled = wakeWordSwitch.isChecked
+            Toast.makeText(
+                context,
+                "AI settings saved",
+                Toast.LENGTH_SHORT
+            ).show()
 
-        settingsManager.voiceLanguage =
-            languageSpinner.selectedItem?.toString() ?: "auto"
+        } catch (exception: Exception) {
+            Toast.makeText(
+                context,
+                "Could not save API key: ${exception.message ?: "Unknown error"}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
 
-        settingsManager.speechRate =
-            0.5f + speechRateSeekBar.progress / 100f
-
-        Toast.makeText(
+    private fun configureSpinner(
+        spinner: Spinner,
+        items: List<String>
+    ) {
+        val adapter = ArrayAdapter(
             context,
-            "Settings saved",
-            Toast.LENGTH_SHORT
-        ).show()
+            android.R.layout.simple_spinner_item,
+            items
+        )
+
+        adapter.setDropDownViewResource(
+            android.R.layout.simple_spinner_dropdown_item
+        )
+
+        spinner.adapter = adapter
+
+        spinner.setBackgroundColor(Color.rgb(25, 34, 58))
     }
 
-    private fun addTitle(value: String) {
-        val view = TextView(context).apply {
-            text = value
-            textSize = 25f
-            setTextColor(Color.rgb(0, 225, 255))
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        content.addView(view, matchWidth())
-    }
+    private fun configureSwitch(
+        switch: Switch,
+        title: String,
+        description: String
+    ) {
+        switch.text = title
+        switch.textSize = 16f
+        switch.setTextColor(Color.WHITE)
+        switch.setPadding(dp(4), dp(10), dp(4), dp(10))
 
-    private fun addDescription(value: String) {
-        val view = TextView(context).apply {
-            text = value
-            textSize = 14f
-            setTextColor(Color.LTGRAY)
-            setPadding(0, dp(8), 0, dp(18))
-        }
-        content.addView(view, matchWidth())
-    }
+        content.addView(switch, matchWidth())
+        addDescription(description)
 
-    private fun addSectionTitle(value: String) {
-        val view = TextView(context).apply {
-            text = value
-            textSize = 18f
-            setTextColor(Color.rgb(0, 225, 255))
-            typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, dp(22), 0, dp(10))
-        }
-        content.addView(view, matchWidth())
-    }
+        switch.setOnCheckedChangeListener { _, checked ->
+            if (initializing) return@setOnCheckedChangeListener
 
-    private fun addLabel(value: String) {
-        val view = TextView(context).apply {
-            text = value
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            setPadding(0, dp(14), 0, dp(6))
-        }
-        content.addView(view, matchWidth())
-    }
+            when (switch) {
+                offlineSwitch -> settingsManager.offlineMode = checked
 
-    private fun createEditText(
-        hint: String,
-        inputType: Int
-    ): EditText {
-        return EditText(context).apply {
-            this.hint = hint
-            this.inputType = inputType
-            textSize = 15f
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
-            setSingleLine(true)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-        }
-    }
+                wakeWordSwitch ->
+                    settingsManager.wakeWordEnabled = checked
 
-    private fun createSwitch(label: String): Switch {
-        return Switch(context).apply {
-            text = label
-            textSize = 15f
-            setTextColor(Color.WHITE)
-            setPadding(0, dp(10), 0, dp(10))
-        }
-    }
+                historySwitch ->
+                    settingsManager.conversationHistoryEnabled = checked
 
-    private fun createButton(
-        label: String,
-        action: () -> Unit
-    ): Button {
-        return Button(context).apply {
-            text = label
-            isAllCaps = false
-            setOnClickListener {
-                action()
+                memorySwitch ->
+                    settingsManager.permanentMemoryEnabled = checked
             }
         }
     }
 
+    private fun addTitle(value: String) {
+        val view = TextView(context)
+        view.text = value
+        view.textSize = 25f
+        view.setTextColor(Color.rgb(80, 190, 255))
+        view.typeface = Typeface.DEFAULT_BOLD
+        view.gravity = Gravity.CENTER
+        view.setPadding(0, dp(8), 0, dp(8))
+
+        content.addView(view, matchWidth())
+    }
+
+    private fun addDescription(value: String) {
+        val view = TextView(context)
+        view.text = value
+        view.textSize = 13f
+        view.setTextColor(Color.LTGRAY)
+        view.setPadding(0, dp(5), 0, dp(10))
+
+        content.addView(view, matchWidth())
+    }
+
+    private fun addSection(value: String) {
+        val view = TextView(context)
+        view.text = value
+        view.textSize = 15f
+        view.typeface = Typeface.DEFAULT_BOLD
+        view.setTextColor(Color.rgb(80, 190, 255))
+        view.setPadding(0, dp(22), 0, dp(10))
+
+        content.addView(view, matchWidth())
+    }
+
+    private fun addLabel(value: String) {
+        val view = TextView(context)
+        view.text = value
+        view.textSize = 14f
+        view.setTextColor(Color.WHITE)
+        view.setPadding(0, dp(10), 0, dp(5))
+
+        content.addView(view, matchWidth())
+    }
+
+    private fun styleInput(input: EditText) {
+        input.setTextColor(Color.WHITE)
+        input.setHintTextColor(Color.GRAY)
+        input.textSize = 14f
+        input.setPadding(dp(12), dp(10), dp(12), dp(10))
+        input.setBackgroundColor(Color.rgb(25, 34, 58))
+    }
+
+    private fun createButton(label: String): Button {
+        val button = Button(context)
+        button.text = label
+        button.textSize = 14f
+        button.setTextColor(Color.WHITE)
+        button.setBackgroundColor(Color.rgb(35, 95, 160))
+        button.isAllCaps = false
+
+        return button
+    }
+
     private fun matchWidth(): LinearLayout.LayoutParams {
         return LinearLayout.LayoutParams(
-            LayoutParams.MATCH_PARENT,
-            LayoutParams.WRAP_CONTENT
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
             bottomMargin = dp(8)
         }
     }
 
-    private fun dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density).roundToInt()
+    }
 }
