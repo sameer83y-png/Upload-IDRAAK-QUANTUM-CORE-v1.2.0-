@@ -37,13 +37,16 @@ internal class VoskRecognitionEngine(
     private var closed = false
 
     init {
-        require(sampleRate > 0f) {
+        require(sampleRate.isFinite() && sampleRate > 0f) {
             "Invalid audio sample rate"
         }
 
         recognizer = Recognizer(model, sampleRate)
     }
 
+    /**
+     * Process PCM 16-bit mono audio.
+     */
     @Synchronized
     fun acceptAudio(
         audioData: ByteArray,
@@ -52,6 +55,16 @@ internal class VoskRecognitionEngine(
         if (closed) return
 
         if (length <= 0 || length > audioData.size) {
+            return
+        }
+
+        // PCM 16-bit audio must contain complete samples.
+        if (length % 2 != 0) {
+            notifyError(
+                IllegalArgumentException(
+                    "Invalid PCM audio length: $length"
+                )
+            )
             return
         }
 
@@ -65,23 +78,26 @@ internal class VoskRecognitionEngine(
                 val result = recognizer.result
 
                 extractText(result, "text")?.let {
-                    listener.onFinalResult(it)
+                    notifyFinalResult(it)
                 }
             } else {
                 val partial = recognizer.partialResult
 
                 extractText(partial, "partial")?.let {
-                    listener.onPartialResult(it)
+                    notifyPartialResult(it)
                 }
             }
 
         } catch (exception: Exception) {
-            listener.onRecognitionError(exception)
+            notifyError(exception)
         }
     }
 
     /**
-     * Flush remaining audio before stopping.
+     * Flush remaining audio before final shutdown.
+     *
+     * Do not call this for ordinary pause operations
+     * if unfinished speech should be discarded.
      */
     @Synchronized
     fun finish() {
@@ -91,17 +107,16 @@ internal class VoskRecognitionEngine(
             val result = recognizer.finalResult
 
             extractText(result, "text")?.let {
-                listener.onFinalResult(it)
+                notifyFinalResult(it)
             }
 
         } catch (exception: Exception) {
-            listener.onRecognitionError(exception)
+            notifyError(exception)
         }
     }
 
     /**
-     * Reset recognition state without
-     * recreating the model.
+     * Reset recognition state without recreating the model.
      */
     @Synchronized
     fun reset() {
@@ -110,7 +125,7 @@ internal class VoskRecognitionEngine(
         try {
             recognizer.reset()
         } catch (exception: Exception) {
-            listener.onRecognitionError(exception)
+            notifyError(exception)
         }
     }
 
@@ -128,8 +143,33 @@ internal class VoskRecognitionEngine(
 
             text.ifEmpty { null }
 
-        } catch (_: Exception) {
+        } catch (exception: Exception) {
+            notifyError(exception)
             null
+        }
+    }
+
+    private fun notifyPartialResult(text: String) {
+        try {
+            listener.onPartialResult(text)
+        } catch (exception: Exception) {
+            notifyError(exception)
+        }
+    }
+
+    private fun notifyFinalResult(text: String) {
+        try {
+            listener.onFinalResult(text)
+        } catch (exception: Exception) {
+            notifyError(exception)
+        }
+    }
+
+    private fun notifyError(exception: Exception) {
+        try {
+            listener.onRecognitionError(exception)
+        } catch (_: Exception) {
+            // Listener errors must not crash audio processing.
         }
     }
 
@@ -145,7 +185,7 @@ internal class VoskRecognitionEngine(
         try {
             recognizer.close()
         } catch (exception: Exception) {
-            listener.onRecognitionError(exception)
+            notifyError(exception)
         }
     }
 }
