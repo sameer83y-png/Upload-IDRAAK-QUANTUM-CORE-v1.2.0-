@@ -3,7 +3,10 @@ package com.idraak.quantum
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 
 /**
  * IDRAAK Voice Manager
@@ -20,9 +23,20 @@ import android.util.Log
 class VoiceManager(context: Context) {
 
     private val appContext = context.applicationContext
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     companion object {
         private const val TAG = "IDRAAK_VOICE_MANAGER"
+    }
+
+    private fun showMessage(message: String) {
+        mainHandler.post {
+            Toast.makeText(
+                appContext,
+                message,
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun serviceIntent(
@@ -33,7 +47,6 @@ class VoiceManager(context: Context) {
             appContext,
             VoiceForegroundService::class.java
         ).apply {
-
             if (!action.isNullOrBlank()) {
                 this.action = action
             }
@@ -54,6 +67,7 @@ class VoiceManager(context: Context) {
 
         if (language.isBlank()) {
             Log.e(TAG, "Cannot start voice service: language is empty")
+            showMessage("IDRAAK ERROR: Voice language is empty")
             return
         }
 
@@ -61,7 +75,8 @@ class VoiceManager(context: Context) {
             serviceIntent(
                 action = VoiceForegroundService.ACTION_START,
                 language = language
-            )
+            ),
+            true
         )
     }
 
@@ -69,7 +84,6 @@ class VoiceManager(context: Context) {
      * Pauses microphone recognition.
      */
     fun pause() {
-
         startServiceSafely(
             serviceIntent(
                 action = VoiceForegroundService.ACTION_PAUSE
@@ -84,6 +98,7 @@ class VoiceManager(context: Context) {
 
         if (language.isBlank()) {
             Log.e(TAG, "Cannot resume voice service: language is empty")
+            showMessage("IDRAAK ERROR: Voice language is empty")
             return
         }
 
@@ -91,7 +106,8 @@ class VoiceManager(context: Context) {
             serviceIntent(
                 action = VoiceForegroundService.ACTION_RESUME,
                 language = language
-            )
+            ),
+            true
         )
     }
 
@@ -99,7 +115,6 @@ class VoiceManager(context: Context) {
      * Stops the voice service.
      */
     fun stop() {
-
         startServiceSafely(
             serviceIntent(
                 action = VoiceForegroundService.ACTION_STOP
@@ -107,7 +122,10 @@ class VoiceManager(context: Context) {
         )
     }
 
-    private fun startForegroundServiceSafely(intent: Intent) {
+    private fun startForegroundServiceSafely(
+        intent: Intent,
+        showDiagnostic: Boolean = false
+    ) {
 
         try {
 
@@ -122,12 +140,23 @@ class VoiceManager(context: Context) {
                 "Foreground service command sent: ${intent.action}"
             )
 
+            if (showDiagnostic) {
+                showMessage(
+                    "IDRAAK: Voice service start request sent"
+                )
+            }
+
         } catch (exception: Exception) {
 
             Log.e(
                 TAG,
                 "Unable to start foreground service: ${intent.action}",
                 exception
+            )
+
+            showMessage(
+                "IDRAAK START ERROR: " +
+                    (exception.message ?: exception.javaClass.simpleName)
             )
         }
     }
@@ -149,6 +178,11 @@ class VoiceManager(context: Context) {
                 TAG,
                 "Unable to send service command: ${intent.action}",
                 exception
+            )
+
+            showMessage(
+                "IDRAAK SERVICE ERROR: " +
+                    (exception.message ?: exception.javaClass.simpleName)
             )
         }
     }
