@@ -11,10 +11,8 @@ import java.util.Locale
  * - Detect IDRAAK wake words.
  * - Manage SLEEPING, ACTIVE and PROCESSING states.
  * - Detect sleep commands in every state.
- * - Forward recognized commands exactly once.
- *
- * Microphone and Vosk lifecycle are controlled
- * by VoiceForegroundService and VoiceEngine.
+ * - Forward recognized commands.
+ * - Keep microphone lifecycle independent.
  */
 class WakeWordController(
     private val onWakeWordDetected: () -> Unit,
@@ -47,10 +45,14 @@ class WakeWordController(
         private val SLEEP_WORDS = listOf(
             "सो जाओ",
             "सो जा",
+            "सो जाइए",
             "स्लीप मोड",
+            "स्लीप",
             "sleep",
             "go to sleep",
             "sleep mode",
+            "खामोश हो जाओ",
+            "खामोश",
             "خواب",
             "سو جاؤ",
             "سو جا",
@@ -76,12 +78,6 @@ class WakeWordController(
         private val INVISIBLE_CHARACTERS =
             Regex("[\\u200C\\u200D\\uFEFF]")
 
-        private val NORMALIZED_WAKE_WORDS: List<String> =
-            WAKE_WORDS.map { word -> normalizeText(word) }
-
-        private val NORMALIZED_SLEEP_WORDS: List<String> =
-            SLEEP_WORDS.map { word -> normalizeText(word) }
-
         private fun normalizeText(value: String): String {
 
             var result = Normalizer.normalize(
@@ -105,6 +101,12 @@ class WakeWordController(
 
             return result
         }
+
+        private val NORMALIZED_WAKE_WORDS =
+            WAKE_WORDS.map(::normalizeText).distinct()
+
+        private val NORMALIZED_SLEEP_WORDS =
+            SLEEP_WORDS.map(::normalizeText).distinct()
     }
 
     @Volatile
@@ -123,6 +125,9 @@ class WakeWordController(
 
     fun isEnabled(): Boolean = enabled
 
+    /**
+     * Processes each recognized Vosk result.
+     */
     @Synchronized
     fun processRecognizedText(recognizedText: String) {
 
@@ -132,7 +137,7 @@ class WakeWordController(
 
         if (text.isBlank()) return
 
-        // Sleep command has priority in every state.
+        // Sleep commands have priority in every state.
         if (containsAnyPhrase(text, NORMALIZED_SLEEP_WORDS)) {
             sleep()
             return
@@ -146,16 +151,17 @@ class WakeWordController(
                     return
                 }
 
-                val remainingCommand = removeWakeWords(text)
+                val remainingCommand =
+                    removeWakeWords(text)
 
                 setState(VoiceState.ACTIVE)
 
-                safelyInvoke {
+                safelyInvoke("wake word callback") {
                     onWakeWordDetected()
                 }
 
                 if (remainingCommand.isNotBlank()) {
-                    safelyInvoke {
+                    safelyInvoke("command callback") {
                         onCommandDetected(remainingCommand)
                     }
                 }
@@ -171,7 +177,7 @@ class WakeWordController(
                     }
 
                 if (command.isNotBlank()) {
-                    safelyInvoke {
+                    safelyInvoke("command callback") {
                         onCommandDetected(command)
                     }
                 }
@@ -179,11 +185,14 @@ class WakeWordController(
 
             VoiceState.PROCESSING -> {
                 // Ignore additional commands while processing.
-                // Sleep commands are handled above.
+                // Sleep commands are already handled above.
             }
         }
     }
 
+    /**
+     * Marks command processing as started.
+     */
     @Synchronized
     fun startProcessing() {
 
@@ -194,6 +203,9 @@ class WakeWordController(
         }
     }
 
+    /**
+     * Returns to ACTIVE after command processing.
+     */
     @Synchronized
     fun finishProcessing() {
 
@@ -204,6 +216,9 @@ class WakeWordController(
         }
     }
 
+    /**
+     * Puts IDRAAK to sleep without stopping microphone.
+     */
     @Synchronized
     fun sleep() {
 
@@ -211,11 +226,14 @@ class WakeWordController(
 
         setState(VoiceState.SLEEPING)
 
-        safelyInvoke {
+        safelyInvoke("sleep callback") {
             onSleepDetected()
         }
     }
 
+    /**
+     * Enables or disables wake-word processing.
+     */
     @Synchronized
     fun setEnabled(value: Boolean) {
 
@@ -231,13 +249,16 @@ class WakeWordController(
             setState(VoiceState.SLEEPING)
 
             if (wasNotSleeping) {
-                safelyInvoke {
+                safelyInvoke("sleep callback") {
                     onSleepDetected()
                 }
             }
         }
     }
 
+    /**
+     * Manually activates IDRAAK.
+     */
     @Synchronized
     fun activate() {
 
@@ -246,6 +267,9 @@ class WakeWordController(
         setState(VoiceState.ACTIVE)
     }
 
+    /**
+     * Removes all recognized wake-word occurrences.
+     */
     private fun removeWakeWords(text: String): String {
 
         var result = text
@@ -294,7 +318,6 @@ class WakeWordController(
 
     /**
      * Centralized state update.
-     * This function was missing in the previous version.
      */
     private fun setState(newState: VoiceState) {
 
@@ -302,12 +325,18 @@ class WakeWordController(
 
         currentState = newState
 
-        safelyInvoke {
+        safelyInvoke("state callback") {
             onStateChanged(newState)
         }
     }
 
-    private inline fun safelyInvoke(action: () -> Unit) {
+    /**
+     * Prevents callback exceptions from crashing controller.
+     */
+    private inline fun safelyInvoke(
+        operation: String,
+        action: () -> Unit
+    ) {
 
         try {
             action()
@@ -315,7 +344,7 @@ class WakeWordController(
 
             Log.e(
                 TAG,
-                "Wake word callback failed",
+                "$operation failed",
                 exception
             )
         }
