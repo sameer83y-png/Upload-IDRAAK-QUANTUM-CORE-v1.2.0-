@@ -63,14 +63,6 @@ class MainActivity : Activity() {
                         false
                     )
 
-                    /*
-                     * Service का running होना यह नहीं बताता
-                     * कि IDRAAK ACTIVE है या SLEEPING।
-                     *
-                     * TTS के दौरान service pause भी हो सकती है,
-                     * इसलिए false मिलने पर UI को forcefully
-                     * inactive नहीं करेंगे।
-                     */
                     if (
                         running &&
                         ::homeView.isInitialized &&
@@ -106,7 +98,6 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // सबसे पहले Crash Logger इंस्टॉल करें।
         try {
             CrashLogger.install(applicationContext)
             Log.i(TAG, "Crash Logger initialized")
@@ -145,7 +136,6 @@ class MainActivity : Activity() {
             },
             onVoiceClick = {
                 // Voice control is handled by dedicated components.
-                // No visible microphone button is required.
             }
         )
 
@@ -200,10 +190,6 @@ class MainActivity : Activity() {
         showHome()
     }
 
-    /**
-     * Settings से चुनी गई TTS भाषा, आवाज़ का Gender
-     * और Speech Rate VoiceEngine तक पहुँचाता है।
-     */
     private fun applyVoicePreferences() {
 
         if (
@@ -247,9 +233,6 @@ class MainActivity : Activity() {
         }
     }
 
-    /**
-     * Wake word preference को VoiceSessionController में लागू करता है।
-     */
     private fun applyWakeWordSetting() {
 
         if (
@@ -264,13 +247,6 @@ class MainActivity : Activity() {
         )
     }
 
-    /**
-     * Vosk के लिए उपलब्ध recognition language चुनता है।
-     *
-     * वर्तमान recognition engine में Hindi और English
-     * मॉडल उपलब्ध हैं। Urdu और Arabic TTS languages हैं;
-     * इनके Vosk models अलग से जोड़ने होंगे।
-     */
     private fun getRecognitionLanguage(): String {
 
         return when (settingsManager.voiceLanguage) {
@@ -309,10 +285,6 @@ class MainActivity : Activity() {
         receiverRegistered = true
     }
 
-    /**
-     * पहले microphone permission माँगता है।
-     * Notification permission अलग request में माँगी जाती है।
-     */
     private fun requestVoicePermissions() {
 
         val audioGranted =
@@ -329,6 +301,62 @@ class MainActivity : Activity() {
             arrayOf(Manifest.permission.RECORD_AUDIO),
             REQUEST_AUDIO_PERMISSION
         )
+    }
+
+    /**
+     * Microphone permission result handler.
+     */
+    @Suppress("DEPRECATION")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(
+            requestCode,
+            permissions,
+            grantResults
+        )
+
+        when (requestCode) {
+
+            REQUEST_AUDIO_PERMISSION -> {
+
+                val granted =
+                    grantResults.isNotEmpty() &&
+                    grantResults[0] == PackageManager.PERMISSION_GRANTED
+
+                if (granted) {
+
+                    Log.i(TAG, "Microphone permission granted")
+
+                    requestNotificationPermissionIfNeeded()
+                    startVoiceSystem()
+
+                } else {
+
+                    voiceStarted = false
+
+                    if (::homeView.isInitialized) {
+                        homeView.setVoiceStatus(false)
+                    }
+
+                    Log.e(TAG, "Microphone permission denied")
+                }
+            }
+
+            REQUEST_NOTIFICATION_PERMISSION -> {
+
+                if (
+                    grantResults.isNotEmpty() &&
+                    grantResults[0] == PackageManager.PERMISSION_GRANTED
+                ) {
+                    Log.i(TAG, "Notification permission granted")
+                } else {
+                    Log.w(TAG, "Notification permission denied")
+                }
+            }
+        }
     }
 
     private fun requestNotificationPermissionIfNeeded() {
@@ -348,9 +376,6 @@ class MainActivity : Activity() {
         }
     }
 
-    /**
-     * Persistent Vosk voice service शुरू करता है।
-     */
     private fun startVoiceSystem() {
 
         if (voiceStarted) return
@@ -537,11 +562,6 @@ class MainActivity : Activity() {
             }
         }
 
-        /*
-         * TTS और Activity-side resources release होते हैं।
-         * Persistent foreground voice service को
-         * Activity destruction के कारण बंद नहीं किया जाता।
-         */
         if (::voiceEngine.isInitialized) {
             try {
                 voiceEngine.release()
