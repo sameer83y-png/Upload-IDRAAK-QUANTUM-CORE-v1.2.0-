@@ -106,12 +106,20 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        configureWindow()
+        // सबसे पहले Crash Logger इंस्टॉल करें।
+        try {
+            CrashLogger.install(applicationContext)
+            Log.i(TAG, "Crash Logger initialized")
+        } catch (exception: Exception) {
+            Log.e(TAG, "Crash Logger initialization failed", exception)
+        }
 
         try {
+            configureWindow()
             initializeIDRAAK()
             registerVoiceReceiver()
             requestVoicePermissions()
+
         } catch (exception: Exception) {
             Log.e(TAG, "Startup failed", exception)
             showStartupError(exception)
@@ -260,62 +268,6 @@ class MainActivity : Activity() {
         }
     }
 
-    @Deprecated("Deprecated in Android API 23")
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-
-        super.onRequestPermissionsResult(
-            requestCode,
-            permissions,
-            grantResults
-        )
-
-        when (requestCode) {
-
-            REQUEST_AUDIO_PERMISSION -> {
-
-                val audioGranted =
-                    checkSelfPermission(
-                        Manifest.permission.RECORD_AUDIO
-                    ) == PackageManager.PERMISSION_GRANTED
-
-                if (audioGranted) {
-
-                    requestNotificationPermissionIfNeeded()
-                    startVoiceSystem()
-
-                } else {
-
-                    voiceStarted = false
-
-                    if (::homeView.isInitialized) {
-                        homeView.setVoiceStatus(false)
-                    }
-
-                    Log.e(
-                        TAG,
-                        "Microphone permission was denied"
-                    )
-                }
-            }
-
-            REQUEST_NOTIFICATION_PERMISSION -> {
-                // Notification permission का परिणाम
-                // microphone permission को प्रभावित नहीं करता।
-                if (
-                    checkSelfPermission(
-                        Manifest.permission.RECORD_AUDIO
-                    ) == PackageManager.PERMISSION_GRANTED
-                ) {
-                    startVoiceSystem()
-                }
-            }
-        }
-    }
-
     /**
      * Persistent Vosk voice service शुरू करता है।
      */
@@ -353,11 +305,6 @@ class MainActivity : Activity() {
                 settingsManager.wakeWordEnabled
             )
 
-            /*
-             * VoiceEngine service को शुरू करता है।
-             * Recognized text receiver के माध्यम से
-             * VoiceSessionController तक पहुँचता है।
-             */
             voiceEngine.startListening(language)
 
             voiceStarted = true
@@ -371,7 +318,10 @@ class MainActivity : Activity() {
         } catch (exception: Exception) {
 
             voiceStarted = false
-            homeView.setVoiceStatus(false)
+
+            if (::homeView.isInitialized) {
+                homeView.setVoiceStatus(false)
+            }
 
             Log.e(
                 TAG,
@@ -485,17 +435,32 @@ class MainActivity : Activity() {
         }
 
         if (::voiceSessionController.isInitialized) {
-            voiceSessionController.release()
+            try {
+                voiceSessionController.release()
+            } catch (exception: Exception) {
+                Log.e(
+                    TAG,
+                    "Voice session cleanup failed",
+                    exception
+                )
+            }
         }
 
         /*
          * TTS और Activity-side resources release होते हैं।
-         * यहाँ VoiceManager.stop() नहीं बुलाया जाता,
-         * ताकि persistent foreground voice service
-         * Activity destruction के कारण बंद न हो।
+         * Persistent foreground voice service को
+         * Activity destruction के कारण बंद नहीं किया जाता।
          */
         if (::voiceEngine.isInitialized) {
-            voiceEngine.release()
+            try {
+                voiceEngine.release()
+            } catch (exception: Exception) {
+                Log.e(
+                    TAG,
+                    "Voice engine cleanup failed",
+                    exception
+                )
+            }
         }
 
         super.onDestroy()
