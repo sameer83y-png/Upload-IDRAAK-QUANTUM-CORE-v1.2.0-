@@ -13,7 +13,7 @@ import java.util.UUID
  * Responsibilities:
  * - TextToSpeech initialization and playback.
  * - Speech callbacks and playback state.
- * - TTS language and gender configuration.
+ * - TTS language, gender and speech-rate configuration.
  * - Coordinate recognition pause/resume through VoiceManager.
  *
  * Vosk recognition and microphone management belong to
@@ -29,6 +29,10 @@ class VoiceEngine(
 
     companion object {
         private const val TAG = "IDRAAK_VoiceEngine"
+
+        private const val DEFAULT_SPEECH_RATE = 1.0f
+        private const val MIN_SPEECH_RATE = 0.5f
+        private const val MAX_SPEECH_RATE = 2.0f
     }
 
     interface Listener {
@@ -69,6 +73,8 @@ class VoiceEngine(
     private var activeUtteranceId: String? = null
 
     private var pendingSpeechText: String? = null
+
+    private var speechRate = DEFAULT_SPEECH_RATE
 
     private var currentState = EngineState.INITIALIZING
         private set
@@ -183,6 +189,8 @@ class VoiceEngine(
             )
         }
 
+        applySpeechRate()
+
         updateStateAfterSpeech()
 
         listener?.onEngineReady()
@@ -227,6 +235,58 @@ class VoiceEngine(
             TAG,
             "Voice gender configuration result: $applied"
         )
+    }
+
+    /**
+     * Sets the TTS speech rate.
+     *
+     * Supported range: 0.5x to 2.0x.
+     * 1.0x is the normal speech rate.
+     */
+    fun setSpeechRate(rate: Float) {
+        if (destroyed) return
+
+        if (!rate.isFinite()) {
+            Log.w(TAG, "Invalid speech rate ignored: $rate")
+            return
+        }
+
+        speechRate = rate.coerceIn(
+            MIN_SPEECH_RATE,
+            MAX_SPEECH_RATE
+        )
+
+        if (engineReady) {
+            applySpeechRate()
+        }
+
+        Log.d(
+            TAG,
+            "Speech rate selected: ${speechRate}x"
+        )
+    }
+
+    /**
+     * Applies the stored speech rate to the TTS engine.
+     */
+    private fun applySpeechRate() {
+        if (destroyed || !engineReady) return
+
+        val engine = tts ?: return
+
+        val result = engine.setSpeechRate(speechRate)
+
+        if (result == TextToSpeech.ERROR) {
+            Log.e(
+                TAG,
+                "Failed to apply speech rate: ${speechRate}x"
+            )
+        } else {
+            Log.d(
+                TAG,
+                "Speech rate applied: ${speechRate}x"
+            )
+        }
     }
 
     // -------------------------------------------------
