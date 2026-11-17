@@ -44,12 +44,6 @@ internal class VoskRecognitionEngine(
         recognizer = Recognizer(model, sampleRate)
     }
 
-    /**
-     * Send PCM 16-bit mono audio to Vosk.
-     *
-     * Audio must be sampled at the same
-     * rate used to create this recognizer.
-     */
     @Synchronized
     fun acceptAudio(
         audioData: ByteArray,
@@ -69,12 +63,14 @@ internal class VoskRecognitionEngine(
 
             if (completed) {
                 val result = recognizer.result
-                extractText(result)?.let {
+
+                extractText(result, "text")?.let {
                     listener.onFinalResult(it)
                 }
             } else {
                 val partial = recognizer.partialResult
-                extractText(partial)?.let {
+
+                extractText(partial, "partial")?.let {
                     listener.onPartialResult(it)
                 }
             }
@@ -94,7 +90,7 @@ internal class VoskRecognitionEngine(
         try {
             val result = recognizer.finalResult
 
-            extractText(result)?.let {
+            extractText(result, "text")?.let {
                 listener.onFinalResult(it)
             }
 
@@ -118,12 +114,15 @@ internal class VoskRecognitionEngine(
         }
     }
 
-    private fun extractText(json: String): String? {
+    private fun extractText(
+        json: String,
+        key: String
+    ): String? {
         return try {
             val objectResult = JSONObject(json)
 
             val text = objectResult.optString(
-                "text",
+                key,
                 ""
             ).trim()
 
