@@ -1,8 +1,8 @@
 package com.idraak.quantum
 
+import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
-import org.json.JSONObject
 import java.io.Closeable
 
 /**
@@ -24,6 +24,7 @@ internal class VoskRecognitionEngine(
 ) : Closeable {
 
     interface Listener {
+
         fun onPartialResult(text: String)
 
         fun onFinalResult(text: String)
@@ -75,12 +76,15 @@ internal class VoskRecognitionEngine(
             )
 
             if (completed) {
+
                 val result = recognizer.result
 
                 extractText(result, "text")?.let {
                     notifyFinalResult(it)
                 }
+
             } else {
+
                 val partial = recognizer.partialResult
 
                 extractText(partial, "partial")?.let {
@@ -89,15 +93,13 @@ internal class VoskRecognitionEngine(
             }
 
         } catch (exception: Exception) {
+
             notifyError(exception)
         }
     }
 
     /**
      * Flush remaining audio before final shutdown.
-     *
-     * Do not call this for ordinary pause operations
-     * if unfinished speech should be discarded.
      */
     @Synchronized
     fun finish() {
@@ -111,6 +113,7 @@ internal class VoskRecognitionEngine(
             }
 
         } catch (exception: Exception) {
+
             notifyError(exception)
         }
     }
@@ -125,6 +128,7 @@ internal class VoskRecognitionEngine(
         try {
             recognizer.reset()
         } catch (exception: Exception) {
+
             notifyError(exception)
         }
     }
@@ -133,6 +137,7 @@ internal class VoskRecognitionEngine(
         json: String,
         key: String
     ): String? {
+
         return try {
             val objectResult = JSONObject(json)
 
@@ -144,6 +149,7 @@ internal class VoskRecognitionEngine(
             text.ifEmpty { null }
 
         } catch (exception: Exception) {
+
             notifyError(exception)
             null
         }
@@ -185,6 +191,7 @@ internal class VoskRecognitionEngine(
         try {
             recognizer.close()
         } catch (exception: Exception) {
+
             notifyError(exception)
         }
     }
