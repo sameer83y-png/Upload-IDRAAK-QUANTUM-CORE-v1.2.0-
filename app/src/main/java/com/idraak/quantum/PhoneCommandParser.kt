@@ -36,101 +36,158 @@ data class PhoneCommand(
     val value: Int? = null
 )
 
-/**
- * Spoken text को structured phone command में बदलता है।
- * यह class कोई Android action execute नहीं करती।
- */
 class PhoneCommandParser(
     private val normalizer: SpeechTextNormalizer =
         SpeechTextNormalizer()
 ) {
 
     fun parse(spokenText: String): PhoneCommand? {
-        val text = normalizer.normalize(spokenText)
+        var text = normalizer.normalize(spokenText)
         if (text.isBlank()) return null
 
-        if (containsAny(text, "idraak settings", "आईड्राक सेटिंग", "अपनी सेटिंग")) {
+        text = removePolitePrefix(text)
+
+        if (matchesCommand(text,
+                "idraak settings", "आईड्राक सेटिंग",
+                "इद्राक सेटिंग", "अपनी सेटिंग")) {
             return PhoneCommand(PhoneCommandType.OPEN_IDRAAK_SETTINGS)
         }
 
-        if (containsAny(text, "फोन की सेटिंग", "मोबाइल सेटिंग", "phone settings", "system settings")) {
+        if (matchesCommand(text,
+                "फोन की सेटिंग", "मोबाइल सेटिंग",
+                "phone settings", "system settings",
+                "open settings", "सेटिंग खोलो")) {
             return PhoneCommand(PhoneCommandType.OPEN_PHONE_SETTINGS)
         }
 
-        if (containsAny(text, "वॉल्यूम बढ़ाओ", "आवाज बढ़ाओ", "volume up", "increase volume", "آواز بڑھاؤ")) {
+        if (matchesCommand(text,
+                "वॉल्यूम बढ़ाओ", "आवाज बढ़ाओ", "आवाज़ बढ़ाओ",
+                "volume up", "increase volume",
+                "turn up volume", "raise volume",
+                "آواز بڑھاؤ")) {
             return PhoneCommand(PhoneCommandType.VOLUME_UP)
         }
 
-        if (containsAny(text, "वॉल्यूम कम करो", "आवाज कम करो", "volume down", "decrease volume", "آواز کم کرو")) {
+        if (matchesCommand(text,
+                "वॉल्यूम कम करो", "आवाज कम करो", "आवाज़ कम करो",
+                "volume down", "decrease volume",
+                "turn down volume", "lower volume",
+                "آواز کم کرو")) {
             return PhoneCommand(PhoneCommandType.VOLUME_DOWN)
         }
 
-        if (containsAny(text, "आवाज बंद करो", "म्यूट करो", "mute volume", "mute media", "آواز بند کرو")) {
+        if (matchesCommand(text,
+                "आवाज बंद करो", "आवाज़ बंद करो",
+                "म्यूट करो", "वॉल्यूम म्यूट",
+                "mute volume", "mute media",
+                "mute the volume", "آواز بند کرو")) {
             return PhoneCommand(PhoneCommandType.VOLUME_MUTE)
         }
 
         parseVolumeSet(text)?.let { return it }
 
-        if (containsAny(text, "silent mode", "फोन साइलेंट", "साइलेंट कर दो")) {
+        if (matchesCommand(text,
+                "silent mode", "फोन साइलेंट",
+                "फोन को साइलेंट करो", "साइलेंट कर दो",
+                "make phone silent", "set silent mode")) {
             return PhoneCommand(PhoneCommandType.RINGER_SILENT)
         }
 
-        if (containsAny(text, "vibrate mode", "वाइब्रेशन मोड", "वाइब्रेट कर दो")) {
+        if (matchesCommand(text,
+                "vibrate mode", "वाइब्रेशन मोड",
+                "वाइब्रेट कर दो", "फोन वाइब्रेट करो",
+                "set vibrate mode")) {
             return PhoneCommand(PhoneCommandType.RINGER_VIBRATE)
         }
 
-        if (containsAny(text, "normal mode", "रिंग मोड", "सामान्य मोड")) {
+        if (matchesCommand(text,
+                "normal mode", "रिंग मोड",
+                "सामान्य मोड", "नॉर्मल मोड",
+                "ring mode", "turn on ringtone")) {
             return PhoneCommand(PhoneCommandType.RINGER_NORMAL)
         }
 
         parseBrightness(text)?.let { return it }
 
-        if (containsAny(text, "टॉर्च चालू", "फ्लैशलाइट चालू", "flashlight on", "torch on")) {
+        if (matchesCommand(text,
+                "टॉर्च चालू", "टॉर्च ऑन",
+                "फ्लैशलाइट चालू", "flashlight on",
+                "torch on", "turn on flashlight",
+                "turn on torch")) {
             return PhoneCommand(PhoneCommandType.FLASHLIGHT_ON)
         }
 
-        if (containsAny(text, "टॉर्च बंद", "फ्लैशलाइट बंद", "flashlight off", "torch off")) {
+        if (matchesCommand(text,
+                "टॉर्च बंद", "टॉर्च ऑफ",
+                "फ्लैशलाइट बंद", "flashlight off",
+                "torch off", "turn off flashlight",
+                "turn off torch")) {
             return PhoneCommand(PhoneCommandType.FLASHLIGHT_OFF)
         }
 
-        if (containsAny(text, "कैमरा खोलो", "ओपन कैमरा", "open camera", "start camera")) {
+        if (matchesCommand(text,
+                "कैमरा खोलो", "ओपन कैमरा",
+                "कैमरा चालू करो", "open camera",
+                "start camera", "launch camera")) {
             return PhoneCommand(PhoneCommandType.CAMERA_OPEN)
         }
 
-        if (containsAny(text, "स्क्रीन पढ़ो", "स्क्रीन पर क्या है", "read screen", "what is on screen")) {
+        if (matchesCommand(text,
+                "स्क्रीन पढ़ो", "स्क्रीन पर क्या है",
+                "स्क्रीन पढ़कर बताओ", "read screen",
+                "what is on screen", "read the screen")) {
             return PhoneCommand(PhoneCommandType.SCREEN_READ)
         }
 
-        if (containsAny(text, "वापस जाओ", "गो बैक", "go back", "back")) {
+        // Back केवल स्पष्ट Back Command पर चलेगा।
+        // सामान्य बातचीत में "back" शब्द मिलने से Action नहीं चलेगा।
+        if (matchesCommand(text,
+                "वापस जाओ", "पीछे जाओ", "गो बैक",
+                "go back", "back", "navigate back")) {
             return PhoneCommand(PhoneCommandType.SCREEN_BACK)
         }
 
-        if (containsAny(text, "होम स्क्रीन", "होम पर जाओ", "go home", "home screen")) {
+        if (matchesCommand(text,
+                "होम स्क्रीन", "होम पर जाओ",
+                "होम खोलो", "go home",
+                "home screen", "open home screen")) {
             return PhoneCommand(PhoneCommandType.SCREEN_HOME)
         }
 
-        if (containsAny(text, "recent apps", "हाल के ऐप", "ओपन रिसेंट")) {
+        if (matchesCommand(text,
+                "recent apps", "हाल के ऐप",
+                "ओपन रिसेंट", "रिसेंट ऐप खोलो",
+                "show recent apps")) {
             return PhoneCommand(PhoneCommandType.SCREEN_RECENTS)
         }
 
-        if (containsAny(text, "notification panel", "नोटिफिकेशन खोलो", "open notifications")) {
+        if (matchesCommand(text,
+                "notification panel", "नोटिफिकेशन खोलो",
+                "नोटिफिकेशन दिखाओ", "open notifications",
+                "show notifications")) {
             return PhoneCommand(PhoneCommandType.SCREEN_NOTIFICATIONS)
         }
 
-        if (containsAny(text, "quick settings", "क्विक सेटिंग खोलो")) {
+        if (matchesCommand(text,
+                "quick settings", "क्विक सेटिंग खोलो",
+                "क्विक सेटिंग्स खोलो",
+                "open quick settings")) {
             return PhoneCommand(PhoneCommandType.SCREEN_QUICK_SETTINGS)
         }
 
-        if (containsAny(text, "नीचे स्क्रॉल", "scroll down", "स्क्रॉल डाउन")) {
+        if (matchesCommand(text,
+                "नीचे स्क्रॉल", "नीचे स्क्रोल",
+                "scroll down", "स्क्रॉल डाउन")) {
             return PhoneCommand(PhoneCommandType.SCREEN_SCROLL_DOWN)
         }
 
-        if (containsAny(text, "ऊपर स्क्रॉल", "scroll up", "स्क्रॉल अप")) {
+        if (matchesCommand(text,
+                "ऊपर स्क्रॉल", "ऊपर स्क्रोल",
+                "scroll up", "स्क्रॉल अप")) {
             return PhoneCommand(PhoneCommandType.SCREEN_SCROLL_UP)
         }
 
         parseClickText(text)?.let { return it }
-
         parseAppSettings(text)?.let { return it }
         parseUninstall(text)?.let { return it }
         parseOpenApp(text)?.let { return it }
@@ -139,11 +196,19 @@ class PhoneCommandParser(
     }
 
     private fun parseVolumeSet(text: String): PhoneCommand? {
-        val match = Regex(
-            "(?:volume|वॉल्यूम|आवाज)\\s*(?:set|सेट|करो|कर दो)?\\s*(\\d{1,3})"
-        ).find(text) ?: return null
+        val regex = Regex(
+            "^(?:set )?(?:the )?(?:media )?" +
+                "(?:volume|वॉल्यूम|आवाज|आवाज़)" +
+                "(?: (?:set|सेट))?" +
+                "(?: (?:to|at|पर|को))? " +
+                "(\\d{1,3})" +
+                "(?: ?(?:percent|प्रतिशत|परसेंट))?$"
+        )
 
-        val value = match.groupValues[1].toIntOrNull() ?: return null
+        val value = regex.find(text)
+            ?.groupValues?.getOrNull(1)
+            ?.toIntOrNull() ?: return null
+
         return PhoneCommand(
             PhoneCommandType.VOLUME_SET,
             value = value.coerceIn(0, 100)
@@ -151,11 +216,19 @@ class PhoneCommandParser(
     }
 
     private fun parseBrightness(text: String): PhoneCommand? {
-        val match = Regex(
-            "(?:brightness|ब्राइटनेस|रोशनी)\\s*(?:set|सेट|करो|कर दो)?\\s*(\\d{1,3})"
-        ).find(text) ?: return null
+        val regex = Regex(
+            "^(?:set )?(?:the )?" +
+                "(?:brightness|ब्राइटनेस|रोशनी)" +
+                "(?: (?:set|सेट))?" +
+                "(?: (?:to|at|पर|को))? " +
+                "(\\d{1,3})" +
+                "(?: ?(?:percent|प्रतिशत|परसेंट))?$"
+        )
 
-        val value = match.groupValues[1].toIntOrNull() ?: return null
+        val value = regex.find(text)
+            ?.groupValues?.getOrNull(1)
+            ?.toIntOrNull() ?: return null
+
         return PhoneCommand(
             PhoneCommandType.BRIGHTNESS_SET,
             value = value.coerceIn(0, 100)
@@ -163,21 +236,23 @@ class PhoneCommandParser(
     }
 
     private fun parseClickText(text: String): PhoneCommand? {
-        val patterns = listOf(
+        val prefixes = listOf(
             "क्लिक करो ",
             "दबाओ ",
             "click text ",
+            "click on ",
             "click "
         )
 
-        val prefix = patterns.firstOrNull { text.startsWith(it) }
-            ?: return null
+        val prefix = prefixes.firstOrNull {
+            text.startsWith(it)
+        } ?: return null
 
         val target = text.removePrefix(prefix).trim()
         if (target.isBlank()) return null
 
         return PhoneCommand(
-            type = PhoneCommandType.SCREEN_CLICK_TEXT,
+            PhoneCommandType.SCREEN_CLICK_TEXT,
             target = target
         )
     }
@@ -185,12 +260,15 @@ class PhoneCommandParser(
     private fun parseAppSettings(text: String): PhoneCommand? {
         val prefixes = listOf(
             "open app settings ",
+            "open settings for ",
             "ऐप सेटिंग खोलो ",
-            "ऐप की सेटिंग खोलो "
+            "ऐप की सेटिंग खोलो ",
+            "ऐप सेटिंग्स खोलो "
         )
 
-        val prefix = prefixes.firstOrNull { text.startsWith(it) }
-            ?: return null
+        val prefix = prefixes.firstOrNull {
+            text.startsWith(it)
+        } ?: return null
 
         val target = text.removePrefix(prefix).trim()
         if (target.isBlank()) return null
@@ -203,14 +281,17 @@ class PhoneCommandParser(
 
     private fun parseUninstall(text: String): PhoneCommand? {
         val prefixes = listOf(
+            "uninstall app ",
             "uninstall ",
             "remove app ",
             "ऐप अनइंस्टॉल करो ",
+            "ऐप को अनइंस्टॉल करो ",
             "ऐप हटाओ "
         )
 
-        val prefix = prefixes.firstOrNull { text.startsWith(it) }
-            ?: return null
+        val prefix = prefixes.firstOrNull {
+            text.startsWith(it)
+        } ?: return null
 
         val target = text.removePrefix(prefix).trim()
         if (target.isBlank()) return null
@@ -223,6 +304,7 @@ class PhoneCommandParser(
 
     private fun parseOpenApp(text: String): PhoneCommand? {
         val prefixes = listOf(
+            "open app ",
             "open ",
             "launch ",
             "start ",
@@ -232,8 +314,9 @@ class PhoneCommandParser(
             "चालू करो "
         )
 
-        val prefix = prefixes.firstOrNull { text.startsWith(it) }
-            ?: return null
+        val prefix = prefixes.firstOrNull {
+            text.startsWith(it)
+        } ?: return null
 
         var target = text.removePrefix(prefix).trim()
 
@@ -244,14 +327,12 @@ class PhoneCommandParser(
 
         if (target.isBlank()) return null
 
-        if (
-            target in listOf(
+        if (target in listOf(
                 "settings",
                 "सेटिंग",
                 "सेटिंग्स",
                 "फोन सेटिंग"
-            )
-        ) {
+            )) {
             return PhoneCommand(PhoneCommandType.OPEN_PHONE_SETTINGS)
         }
 
@@ -261,12 +342,30 @@ class PhoneCommandParser(
         )
     }
 
-    private fun containsAny(
+    private fun matchesCommand(
         text: String,
         vararg phrases: String
     ): Boolean {
         return phrases.any { phrase ->
-            text.contains(phrase.lowercase(Locale.ROOT))
+            text == phrase ||
+                text.startsWith("$phrase ")
         }
+    }
+
+    private fun removePolitePrefix(text: String): String {
+        val prefixes = listOf(
+            "please ",
+            "kindly ",
+            "कृपया ",
+            "जरा ",
+            "ज़रा ",
+            "प्लीज "
+        )
+
+        return prefixes.firstOrNull {
+            text.startsWith(it)
+        }?.let {
+            text.removePrefix(it).trim()
+        } ?: text
     }
 }
