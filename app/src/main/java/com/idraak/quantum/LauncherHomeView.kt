@@ -20,11 +20,10 @@ import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.min
 
-@Suppress("UNUSED_PARAMETER")
 class LauncherHomeView(
     context: Context,
     private val onSettingsClick: () -> Unit,
-    onVoiceClick: () -> Unit
+    private val onVoiceClick: () -> Unit
 ) : LinearLayout(context) {
 
     private val cyan = Color.rgb(0, 225, 255)
@@ -48,12 +47,19 @@ class LauncherHomeView(
     private var coreStartX = 0f
     private var coreStartY = 0f
     private var coreMoved = false
+    private var coreLongPressTriggered = false
 
     private var appLoadExecutor: ExecutorService? = null
     private var reloadRequestId = 0
 
     private val longPressRunnable = Runnable {
-        if (coreView.isPressed && !coreMoved) {
+
+        if (
+            ::coreView.isInitialized &&
+            coreView.isPressed &&
+            !coreMoved
+        ) {
+            coreLongPressTriggered = true
             onSettingsClick()
         }
     }
@@ -83,6 +89,7 @@ class LauncherHomeView(
     }
 
     private fun buildHome() {
+
         homePanel = LinearLayout(context).apply {
             orientation = VERTICAL
             gravity = Gravity.CENTER
@@ -130,38 +137,83 @@ class LauncherHomeView(
         coreView = LiveOrbView(context)
 
         coreView.setOnTouchListener { view, event ->
+
             when (event.actionMasked) {
+
                 MotionEvent.ACTION_DOWN -> {
+
                     coreStartX = event.x
                     coreStartY = event.y
+
                     coreMoved = false
+                    coreLongPressTriggered = false
 
                     view.isPressed = true
 
                     handler.removeCallbacks(longPressRunnable)
-                    handler.postDelayed(longPressRunnable, 2000L)
+
+                    handler.postDelayed(
+                        longPressRunnable,
+                        2000L
+                    )
 
                     true
                 }
 
                 MotionEvent.ACTION_MOVE -> {
+
                     val moveX = abs(event.x - coreStartX)
                     val moveY = abs(event.y - coreStartY)
 
-                    if (moveX > touchSlop || moveY > touchSlop) {
+                    if (
+                        moveX > touchSlop ||
+                        moveY > touchSlop
+                    ) {
+
                         coreMoved = true
+
                         view.isPressed = false
-                        handler.removeCallbacks(longPressRunnable)
+
+                        handler.removeCallbacks(
+                            longPressRunnable
+                        )
                     }
 
                     true
                 }
 
-                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_UP -> {
+
+                    handler.removeCallbacks(longPressRunnable)
+
+                    view.isPressed = false
+
+                    // Short tap activates or sleeps IDRAAK.
+                    // Long press only opens Settings.
+                    if (
+                        !coreMoved &&
+                        !coreLongPressTriggered
+                    ) {
+
+                        performClick()
+                    }
+
+                    coreMoved = false
+                    coreLongPressTriggered = false
+
+                    true
+                }
+
                 MotionEvent.ACTION_CANCEL,
                 MotionEvent.ACTION_POINTER_DOWN -> {
-                    view.isPressed = false
+
                     handler.removeCallbacks(longPressRunnable)
+
+                    view.isPressed = false
+
+                    coreMoved = true
+                    coreLongPressTriggered = false
+
                     true
                 }
 
@@ -203,7 +255,7 @@ class LauncherHomeView(
         )
 
         val instruction = TextView(context).apply {
-            text = "SAY IDRAAK TO ACTIVATE"
+            text = "TAP OR SAY IDRAAK TO ACTIVATE"
             textSize = 10f
             setTextColor(Color.rgb(130, 160, 205))
             gravity = Gravity.CENTER
@@ -246,7 +298,12 @@ class LauncherHomeView(
         )
     }
 
+    // -------------------------------------------------
+    // APP DRAWER
+    // -------------------------------------------------
+
     private fun buildDrawer() {
+
         drawerPanel = LinearLayout(context).apply {
             orientation = VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -316,7 +373,9 @@ class LauncherHomeView(
             context,
             emptyList()
         ) { app ->
-            val launched = launcherEngine.launchApp(app.packageName)
+
+            val launched =
+                launcherEngine.launchApp(app.packageName)
 
             if (!launched) {
                 Toast.makeText(
@@ -375,7 +434,12 @@ class LauncherHomeView(
         )
     }
 
+    // -------------------------------------------------
+    // HOME AND DRAWER CONTROL
+    // -------------------------------------------------
+
     private fun showHome() {
+
         handler.removeCallbacks(longPressRunnable)
 
         homePanel.visibility = VISIBLE
@@ -387,6 +451,7 @@ class LauncherHomeView(
     }
 
     private fun showDrawer() {
+
         handler.removeCallbacks(longPressRunnable)
 
         homePanel.visibility = GONE
@@ -410,7 +475,12 @@ class LauncherHomeView(
         return drawerPanel.visibility == VISIBLE
     }
 
+    // -------------------------------------------------
+    // APP LOADING
+    // -------------------------------------------------
+
     fun reloadApps() {
+
         if (!::appAdapter.isInitialized) return
         if (!isAttachedToWindow) return
 
@@ -422,7 +492,9 @@ class LauncherHomeView(
             }
 
         try {
+
             executor.execute {
+
                 val loadedApps = try {
                     launcherEngine.getInstalledApps()
                 } catch (_: Exception) {
@@ -430,6 +502,7 @@ class LauncherHomeView(
                 }
 
                 handler.post {
+
                     if (
                         !isAttachedToWindow ||
                         requestId != reloadRequestId ||
@@ -441,19 +514,29 @@ class LauncherHomeView(
                     appAdapter.updateApps(loadedApps)
                 }
             }
+
         } catch (_: Exception) {
+
             appAdapter.updateApps(emptyList())
         }
     }
 
+    // -------------------------------------------------
+    // SWIPE GESTURES
+    // -------------------------------------------------
+
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+
         when (event.actionMasked) {
+
             MotionEvent.ACTION_DOWN -> {
+
                 startX = event.x
                 startY = event.y
             }
 
             MotionEvent.ACTION_UP -> {
+
                 val deltaX = event.x - startX
                 val deltaY = event.y - startY
 
@@ -462,8 +545,13 @@ class LauncherHomeView(
                     abs(deltaY) > abs(deltaX) * 1.25f
 
                 if (verticalSwipe) {
-                    if (deltaY < 0 && !isAppDrawerOpen()) {
+
+                    if (
+                        deltaY < 0 &&
+                        !isAppDrawerOpen()
+                    ) {
                         showDrawer()
+
                     } else if (
                         deltaY > 0 &&
                         isAppDrawerOpen() &&
@@ -483,6 +571,7 @@ class LauncherHomeView(
     }
 
     private fun startedInsideAppGrid(): Boolean {
+
         if (!::appGrid.isInitialized) return false
 
         val gridRect = Rect()
@@ -499,26 +588,52 @@ class LauncherHomeView(
         )
     }
 
+    // -------------------------------------------------
+    // STATUS
+    // -------------------------------------------------
+
     fun setAvatarGender(gender: String) {
         // Human avatar intentionally removed.
     }
 
     fun setLiveStatus(status: String) {
+
         if (::statusText.isInitialized) {
             statusText.text = status
         }
     }
 
     fun setVoiceStatus(active: Boolean) {
+
         if (::coreView.isInitialized) {
+
             coreView.setListening(active)
+        }
+
+        if (::statusText.isInitialized) {
+
+            statusText.text = if (active) {
+                "● IDRAAK ACTIVE"
+            } else {
+                "● IDRAAK STANDBY"
+            }
+
+            statusText.setTextColor(
+                if (active) cyan else Color.rgb(130, 160, 205)
+            )
         }
     }
 
+    // -------------------------------------------------
+    // LIFECYCLE
+    // -------------------------------------------------
+
     override fun onAttachedToWindow() {
+
         super.onAttachedToWindow()
 
         if (::coreView.isInitialized) {
+
             if (homePanel.visibility == VISIBLE) {
                 coreView.startAnimation()
             } else {
@@ -530,6 +645,7 @@ class LauncherHomeView(
     }
 
     override fun onDetachedFromWindow() {
+
         handler.removeCallbacks(longPressRunnable)
 
         reloadRequestId++
