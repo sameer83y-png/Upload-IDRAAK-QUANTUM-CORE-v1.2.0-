@@ -27,7 +27,6 @@ class MainActivity : Activity() {
     private var voiceStarted = false
     private var receiverRegistered = false
 
-    // Manual activation permission के बाद पूरी करने के लिए।
     private var pendingManualActivation = false
 
     companion object {
@@ -56,6 +55,20 @@ class MainActivity : Activity() {
                         voiceSessionController.onRecognizedText(
                             recognizedText
                         )
+                    }
+                }
+
+                // Vosk ने माइक्रोफोन पूरी तरह छोड़ दिया है।
+                // अब Google Speech Recognition शुरू किया जा सकता है।
+                VoiceForegroundService.ACTION_PAUSED -> {
+
+                    if (::voiceSessionController.isInitialized) {
+                        Log.i(
+                            TAG,
+                            "Vosk microphone released. Starting Google Speech Recognition."
+                        )
+
+                        voiceSessionController.onVoskPaused()
                     }
                 }
 
@@ -247,8 +260,6 @@ class MainActivity : Activity() {
 
                 WakeWordController.VoiceState.SLEEPING -> {
 
-                    // Manual activation को Wake Word setting से
-                    // स्वतंत्र रूप से काम करने दें।
                     voiceSessionController.setWakeWordEnabled(true)
 
                     voiceSessionController.activate()
@@ -265,7 +276,6 @@ class MainActivity : Activity() {
 
                     voiceSessionController.sleep()
 
-                    // Sleep के बाद user की original setting restore करें।
                     applyWakeWordSetting()
 
                     if (::homeView.isInitialized) {
@@ -364,6 +374,7 @@ class MainActivity : Activity() {
 
         val filter = IntentFilter().apply {
             addAction(VoiceForegroundService.ACTION_RESULT)
+            addAction(VoiceForegroundService.ACTION_PAUSED)
             addAction(VoiceForegroundService.ACTION_STATE)
             addAction(VoiceForegroundService.ACTION_ERROR)
         }
