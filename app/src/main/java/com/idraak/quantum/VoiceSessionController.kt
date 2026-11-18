@@ -1,6 +1,7 @@
 package com.idraak.quantum
 
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -13,15 +14,15 @@ import kotlin.coroutines.startCoroutine
 /**
  * IDRAAK Voice Session Controller
  *
- * Responsibilities:
- * - Recognized speech को WakeWordController तक पहुँचाना।
- * - Wake word के बाद command को VoiceCommandRouter तक भेजना।
- * - Command processing lifecycle संभालना।
- * - Sleep के बाद पुरानी command के जवाब रोकना।
- * - Voice state changes को main thread पर भेजना।
+ * Vosk:
+ * - Wake word detection.
+ * - Releases microphone after wake word.
  *
- * Microphone और Vosk service का नियंत्रण
- * VoiceEngine / VoiceForegroundService की जिम्मेदारी है।
+ * Google Speech Recognizer:
+ * - Captures Hindi/Hinglish command after Vosk releases microphone.
+ *
+ * VoiceCommandRouter:
+ * - Processes recognized commands using the existing command engine.
  */
 internal class VoiceSessionController(
     context: Context,
@@ -34,6 +35,9 @@ internal class VoiceSessionController(
 
         private const val ERROR_RESPONSE =
             "Command process नहीं हो सकी।"
+
+        private const val SPEECH_ERROR_RESPONSE =
+            "माफ कीजिए, मैं आपकी आवाज़ समझ नहीं पाया। कृपया दोबारा बोलिए।"
     }
 
     private val appContext = context.applicationContext
@@ -55,13 +59,66 @@ internal class VoiceSessionController(
     @Volatile
     private var sessionGeneration = 0L
 
+    @Volatile
+    private var waitingForGoogleSpeech = false
+
     private val commandInProgress =
         AtomicBoolean(false)
 
+    private val googleRecognizer =
+        GoogleSpeechRecognizer(
+            context = appContext,
+            listener = object : GoogleSpeechRecognizer.Listener {
+
+                override fun onReady() {
+                    Log.i(TAG, "Google Speech Recognition ready")
+                }
+
+                override fun onPartialResult(text: String) {
+                    Log.d(TAG, "Google partial: $text")
+                }
+
+                override fun onFinalResult(text: String) {
+                    if (released || text.isBlank()) return
+
+                    Log.i(TAG, "Google final command: $text")
+
+                    waitingForGoogleSpeech = false
+
+                    // Google result में wake word दोबारा
+                    // खोजने की जरूरत नहीं है।
+                    handleCommand(text)
+                }
+
+                override fun onError(
+                    errorCode: Int,
+                    message: String
+                ) {
+                    if (released) return
+
+                    Log.e(
+                        TAG,
+                        "Google speech error: $errorCode - $message"
+                    )
+
+                    waitingForGoogleSpeech = false
+
+                    mainHandler.post {
+                        if (released) return@post
+
+                        safelyDeliverResponse(
+                            SPEECH_ERROR_RESPONSE
+                        )
+                    }
+                }
+            }
+        )
+
     private val wakeWordController =
         WakeWordController(
+
             onWakeWordDetected = {
-                Log.d(TAG, "Wake word detected")
+                handleWakeWordDetected()
             },
 
             onCommandDetected = { command ->
@@ -82,20 +139,115 @@ internal class VoiceSessionController(
         )
 
     /**
-     * Vosk से प्राप्त recognized text यहाँ आता है।
+     * Vosk recognized text.
      */
     fun onRecognizedText(text: String) {
         if (released || text.isBlank()) return
 
+        if (waitingForGoogleSpeech) return
+
         try {
             wakeWordController.processRecognizedText(text)
         } catch (exception: Exception) {
-            Log.e(TAG, "Recognized text processing failed", exception)
+            Log.e(
+                TAG,
+                "Recognized text processing failed",
+                exception
+            )
         }
     }
 
     /**
-     * Assistant को ACTIVE state में लाता है।
+     * Wake word detected by Vosk.
+     *
+     * Pause Vosk first.
+     * Google recognition starts only after ACTION_PAUSED.
+     */
+    private fun handleWakeWordDetected() {
+        if (released || waitingForGoogleSpeech) return
+
+        if (!googleRecognizer.isAvailable()) {
+            Log.e(TAG, "Google speech recognition is unavailable")
+
+            mainHandler.post {
+                if (!released) {
+                    safelyDeliverResponse(
+                        "Google Speech Recognition इस फोन में उपलब्ध नहीं है।"
+                    )
+                }
+            }
+            return
+        }
+
+        waitingForGoogleSpeech = true
+
+        Log.i(
+            TAG,
+            "Wake word detected. Requesting Vosk microphone release."
+        )
+
+        try {
+            val pauseIntent = Intent(
+                appContext,
+                VoiceForegroundService::class.java
+            ).apply {
+                action = VoiceForegroundService.ACTION_PAUSE
+            }
+
+            appContext.startService(pauseIntent)
+
+        } catch (exception: Exception) {
+            waitingForGoogleSpeech = false
+
+            Log.e(
+                TAG,
+                "Unable to pause Vosk service",
+                exception
+            )
+
+            mainHandler.post {
+                if (!released) {
+                    safelyDeliverResponse(
+                        "माइक्रोफोन को Google Voice के लिए तैयार नहीं कर पाया।"
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * MainActivity calls this after receiving ACTION_PAUSED.
+     *
+     * This confirms Vosk has released AudioRecord.
+     */
+    fun onVoskPaused() {
+        if (released || !waitingForGoogleSpeech) return
+
+        Log.i(
+            TAG,
+            "Vosk microphone release confirmed. Starting Google Speech."
+        )
+
+        try {
+            googleRecognizer.startListening("hi-IN")
+
+        } catch (exception: Exception) {
+            waitingForGoogleSpeech = false
+
+            Log.e(
+                TAG,
+                "Google recognizer start failed",
+                exception
+            )
+
+            safelyDeliverResponse(
+                SPEECH_ERROR_RESPONSE
+            )
+        }
+    }
+
+    /**
+     * Manual activation.
      */
     fun activate() {
         if (released) return
@@ -104,18 +256,25 @@ internal class VoiceSessionController(
     }
 
     /**
-     * केवल wake-word state को SLEEPING करता है।
-     * Microphone या Vosk service बंद नहीं होती।
+     * Sleep session.
      */
     @Synchronized
     fun sleep() {
         if (released) return
 
+        waitingForGoogleSpeech = false
+
+        try {
+            googleRecognizer.stopListening()
+        } catch (exception: Exception) {
+            Log.w(TAG, "Google recognizer stop failed", exception)
+        }
+
         wakeWordController.sleep()
     }
 
     /**
-     * Wake word recognition enable/disable करता है।
+     * Enable or disable Vosk wake word mode.
      */
     fun setWakeWordEnabled(enabled: Boolean) {
         if (released) return
@@ -132,31 +291,47 @@ internal class VoiceSessionController(
     }
 
     /**
-     * Sleep होने पर वर्तमान session को अमान्य करता है।
-     *
-     * इससे पुरानी command का जवाब नई session में
-     * deliver नहीं होगा।
+     * Invalidate previous command session.
      */
     private fun invalidateCurrentSession() {
+
         synchronized(sessionLock) {
             sessionGeneration++
             commandInProgress.set(false)
+
+            waitingForGoogleSpeech = false
 
             Log.d(
                 TAG,
                 "Session invalidated. Generation=$sessionGeneration"
             )
         }
+
+        try {
+            googleRecognizer.stopListening()
+        } catch (exception: Exception) {
+            Log.w(
+                TAG,
+                "Unable to stop Google recognition",
+                exception
+            )
+        }
     }
 
     /**
-     * Wake word के बाद प्राप्त command को process करता है।
+     * Route recognized command.
+     *
+     * Both Google results and existing Vosk active-mode
+     * commands use this method.
      */
     private fun handleCommand(command: String) {
         if (released || command.isBlank()) return
 
         if (!commandInProgress.compareAndSet(false, true)) {
-            Log.d(TAG, "Command ignored: another command is processing")
+            Log.d(
+                TAG,
+                "Command ignored: another command is processing"
+            )
             return
         }
 
@@ -171,14 +346,20 @@ internal class VoiceSessionController(
                     generation = commandGeneration
                 )
             }
+
         } catch (exception: Exception) {
-            Log.e(TAG, "Unable to submit voice command", exception)
+            Log.e(
+                TAG,
+                "Unable to submit voice command",
+                exception
+            )
+
             finishWithError(commandGeneration)
         }
     }
 
     /**
-     * Router का suspend function चलाता है।
+     * Execute existing VoiceCommandRouter.
      */
     private fun executeRoute(
         command: String,
@@ -236,7 +417,7 @@ internal class VoiceSessionController(
     }
 
     /**
-     * Main thread पर command completion संभालता है।
+     * Complete command on main thread.
      */
     private fun completeCommand(
         response: String,
@@ -247,9 +428,11 @@ internal class VoiceSessionController(
 
             if (released) return
 
-            // पुरानी session का जवाब पूरी तरह अनदेखा करें।
             if (generation != sessionGeneration) {
-                Log.d(TAG, "Ignoring response from an old session")
+                Log.d(
+                    TAG,
+                    "Ignoring response from an old session"
+                )
                 return
             }
 
@@ -264,8 +447,10 @@ internal class VoiceSessionController(
 
             } finally {
 
-                // केवल उसी session का processing flag clear करें।
-                if (generation == sessionGeneration && !released) {
+                if (
+                    generation == sessionGeneration &&
+                    !released
+                ) {
                     commandInProgress.set(false)
                     wakeWordController.finishProcessing()
                 }
@@ -274,25 +459,23 @@ internal class VoiceSessionController(
     }
 
     /**
-     * Command submission या execution में error आने पर।
+     * Error completion.
      */
     private fun finishWithError(generation: Long) {
+
         mainHandler.post {
 
             synchronized(sessionLock) {
 
                 if (released) return@synchronized
 
-                // पुरानी session की error भी नई session को
-                // प्रभावित नहीं करनी चाहिए।
                 if (generation != sessionGeneration) {
-                    Log.d(TAG, "Ignoring error from an old session")
                     return@synchronized
                 }
 
                 try {
                     val isAwake =
-                        wakeWordController.getState() !=
+                        wakeWordController.getVoiceState() !=
                             WakeWordController.VoiceState.SLEEPING
 
                     if (isAwake) {
@@ -301,7 +484,10 @@ internal class VoiceSessionController(
 
                 } finally {
 
-                    if (generation == sessionGeneration && !released) {
+                    if (
+                        generation == sessionGeneration &&
+                        !released
+                    ) {
                         commandInProgress.set(false)
                         wakeWordController.finishProcessing()
                     }
@@ -310,43 +496,56 @@ internal class VoiceSessionController(
         }
     }
 
-    /**
-     * Response callback को सुरक्षित रूप से invoke करता है।
-     */
     private fun safelyDeliverResponse(response: String) {
         try {
             onResponse(response)
         } catch (exception: Exception) {
-            Log.e(TAG, "Response callback failed", exception)
+            Log.e(
+                TAG,
+                "Response callback failed",
+                exception
+            )
         }
     }
 
-    /**
-     * Voice state callback को सुरक्षित रूप से invoke करता है।
-     */
     private fun safelyNotifyState(
         state: WakeWordController.VoiceState
     ) {
         try {
             onStateChanged(state)
         } catch (exception: Exception) {
-            Log.e(TAG, "Voice state callback failed", exception)
+            Log.e(
+                TAG,
+                "Voice state callback failed",
+                exception
+            )
         }
     }
 
     /**
-     * Controller resources release करता है।
-     *
-     * यह method microphone service को stop नहीं करता।
+     * Release controller resources.
      */
     @Synchronized
     fun release() {
+
         synchronized(sessionLock) {
             if (released) return
 
             released = true
             sessionGeneration++
+
+            waitingForGoogleSpeech = false
             commandInProgress.set(false)
+        }
+
+        try {
+            googleRecognizer.destroy()
+        } catch (exception: Exception) {
+            Log.e(
+                TAG,
+                "Google recognizer cleanup failed",
+                exception
+            )
         }
 
         worker.shutdownNow()
@@ -354,7 +553,11 @@ internal class VoiceSessionController(
         try {
             commandRouter.clearConversation()
         } catch (exception: Exception) {
-            Log.e(TAG, "Conversation cleanup failed", exception)
+            Log.e(
+                TAG,
+                "Conversation cleanup failed",
+                exception
+            )
         }
 
         mainHandler.removeCallbacksAndMessages(null)
