@@ -51,8 +51,27 @@ internal class WakeWordController(
 
     private var wakeWordEnabled = true
 
+    // Compatibility methods for VoiceSessionController
+
     @Synchronized
-    fun getVoiceState(): VoiceState = state
+    fun setEnabled(enabled: Boolean) {
+        setWakeWordEnabled(enabled)
+    }
+
+    @Synchronized
+    fun getState(): VoiceState {
+        return state
+    }
+
+    @Synchronized
+    fun isProcessing(): Boolean {
+        return state == VoiceState.PROCESSING
+    }
+
+    @Synchronized
+    fun getVoiceState(): VoiceState {
+        return state
+    }
 
     @Synchronized
     fun setWakeWordEnabled(enabled: Boolean) {
@@ -87,6 +106,7 @@ internal class WakeWordController(
 
     @Synchronized
     fun startProcessing() {
+
         if (state == VoiceState.ACTIVE) {
             changeState(VoiceState.PROCESSING)
         }
@@ -94,6 +114,7 @@ internal class WakeWordController(
 
     @Synchronized
     fun finishProcessing() {
+
         if (state == VoiceState.PROCESSING) {
             changeState(VoiceState.ACTIVE)
         }
@@ -127,7 +148,7 @@ internal class WakeWordController(
                 val command = removeMatchedWord(
                     text,
                     wakeMatch
-                ).trim()
+                )
 
                 if (command.isNotBlank()) {
                     onCommandDetected(command)
@@ -144,8 +165,14 @@ internal class WakeWordController(
                 val wakeMatch = findWakeWord(text)
 
                 val command = if (wakeMatch != null) {
+
                     onWakeWordDetected()
-                    removeMatchedWord(text, wakeMatch).trim()
+
+                    removeMatchedWord(
+                        text,
+                        wakeMatch
+                    )
+
                 } else {
                     text
                 }
@@ -169,6 +196,7 @@ internal class WakeWordController(
         if (state == newState) return
 
         state = newState
+
         onStateChanged(newState)
     }
 
@@ -182,9 +210,18 @@ internal class WakeWordController(
         text = text
             .replace("़", "")
             .replace("ـ", "")
-            .replace(Regex("[\\u064B-\\u065F\\u0670]"), "")
-            .replace(Regex("[^\\p{L}\\p{N}\\s]"), " ")
-            .replace(Regex("\\s+"), " ")
+            .replace(
+                Regex("[\\u064B-\\u065F\\u0670]"),
+                ""
+            )
+            .replace(
+                Regex("[^\\p{L}\\p{N}\\s]"),
+                " "
+            )
+            .replace(
+                Regex("\\s+"),
+                " "
+            )
             .trim()
 
         return text
@@ -206,21 +243,20 @@ internal class WakeWordController(
                     return word
                 }
 
-                val distance = levenshteinDistance(
-                    word,
-                    normalizedAlias
-                )
-
                 val minimumLength = minOf(
                     word.length,
                     normalizedAlias.length
                 )
 
-                // छोटे शब्दों को Wake Word नहीं मानना।
-                if (
-                    minimumLength >= 4 &&
-                    distance <= MAX_EDIT_DISTANCE
-                ) {
+                // बहुत छोटे शब्दों को Wake Word न मानें।
+                if (minimumLength < 4) continue
+
+                val distance = levenshteinDistance(
+                    word,
+                    normalizedAlias
+                )
+
+                if (distance <= MAX_EDIT_DISTANCE) {
                     return word
                 }
             }
@@ -234,7 +270,9 @@ internal class WakeWordController(
         matchedWord: String
     ): String {
 
-        val words = text.split(Regex("\\s+")).toMutableList()
+        val words = text
+            .split(Regex("\\s+"))
+            .toMutableList()
 
         val index = words.indexOf(matchedWord)
 
@@ -264,8 +302,14 @@ internal class WakeWordController(
     ): Int {
 
         if (first == second) return 0
-        if (first.isEmpty()) return second.length
-        if (second.isEmpty()) return first.length
+
+        if (first.isEmpty()) {
+            return second.length
+        }
+
+        if (second.isEmpty()) {
+            return first.length
+        }
 
         var previous = IntArray(second.length + 1) {
             it
@@ -281,7 +325,11 @@ internal class WakeWordController(
 
                 val cost = if (
                     first[i] == second[j]
-                ) 0 else 1
+                ) {
+                    0
+                } else {
+                    1
+                }
 
                 current[j + 1] = minOf(
                     current[j] + 1,
@@ -290,9 +338,9 @@ internal class WakeWordController(
                 )
             }
 
-            val temp = previous
+            val temporary = previous
             previous = current
-            current = temp
+            current = temporary
         }
 
         return previous[second.length]
