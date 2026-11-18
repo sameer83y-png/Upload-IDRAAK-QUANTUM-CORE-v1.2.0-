@@ -36,7 +36,7 @@ class ConversationContextManager(
         if (cleanContent.isEmpty()) return
 
         synchronized(lock) {
-            messages.addLast(
+            messages.add(
                 ConversationMessage(
                     role = role,
                     content = cleanContent
