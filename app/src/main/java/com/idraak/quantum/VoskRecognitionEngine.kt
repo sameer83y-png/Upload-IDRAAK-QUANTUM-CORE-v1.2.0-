@@ -1,125 +1,191 @@
 package com.idraak.quantum
 
-import android.content.Context
-import kotlinx.coroutines.CancellationException
+import org.vosk.Model
+import org.vosk.Recognizer
+import org.json.JSONObject
+import java.io.Closeable
 
 /**
- * Recognized speech को सही subsystem तक route करता है।
+ * IDRAAK Vosk Recognition Engine
  *
- * प्राथमिकता:
- * 1. Local phone command
- * 2. Available offline conversational response
- * 3. Online Gemini AI
+ * Responsibilities:
+ * - Process continuous PCM audio.
+ * - Produce partial recognition results.
+ * - Produce final recognition results.
+ * - Keep the recognizer ready for the next utterance.
  *
- * Offline Mode में Gemini API कभी call नहीं होती।
- *
- * यह class SpeechRecognizer या Accessibility Service
- * को सीधे नियंत्रित नहीं करती।
+ * Microphone ownership belongs exclusively to
+ * VoiceForegroundService.
  */
-internal class VoiceCommandRouter(context: Context) {
+internal class VoskRecognitionEngine(
+    model: Model,
+    private val sampleRate: Float = 16000.0f,
+    private val listener: Listener
+) : Closeable {
 
-    private val appContext = context.applicationContext
+    interface Listener {
+        fun onPartialResult(text: String)
 
-    private val settingsManager = SettingsManager(appContext)
-    private val normalizer = SpeechTextNormalizer()
-    private val phoneCommandParser = PhoneCommandParser(normalizer)
-    private val offlineCommandEngine = OfflineCommandEngine(normalizer)
-    private val aiEngine = AIEngine(appContext)
+        fun onFinalResult(text: String)
 
-    private val commandExecutionManager = CommandExecutionManager(
-        softwareController = SoftwareController(appContext),
-        systemController = SystemController(appContext),
-        screenController = ScreenController(),
-        hardwareController = HardwareController(appContext)
-    )
+        fun onRecognitionError(error: Exception)
+    }
+
+    private val recognizer: Recognizer
 
     @Volatile
-    private var routingInProgress = false
+    private var closed = false
+
+    init {
+        require(sampleRate.isFinite() && sampleRate > 0f) {
+            "Invalid audio sample rate"
+        }
+
+        recognizer = Recognizer(model, sampleRate)
+    }
 
     /**
-     * Recognized speech को सही subsystem तक भेजता है।
+     * Process PCM 16-bit mono audio.
      */
-    suspend fun routeRecognizedText(recognizedText: String): String {
+    @Synchronized
+    fun acceptAudio(
+        audioData: ByteArray,
+        length: Int = audioData.size
+    ) {
+        if (closed) return
 
-        val text = normalizer.normalize(recognizedText)
-
-        if (text.isBlank()) {
-            return "मैं आपकी बात समझ नहीं पाया। कृपया दोबारा बोलें।"
+        if (length <= 0 || length > audioData.size) {
+            return
         }
 
-        synchronized(this) {
-            if (routingInProgress) {
-                return "एक command पहले से process हो रही है।"
-            }
-
-            routingInProgress = true
+        // PCM 16-bit audio must contain complete samples.
+        if (length % 2 != 0) {
+            notifyError(
+                IllegalArgumentException(
+                    "Invalid PCM audio length: $length"
+                )
+            )
+            return
         }
 
-        return try {
+        try {
+            val completed = recognizer.acceptWaveForm(
+                audioData,
+                length
+            )
 
-            // Priority 1: Local phone commands
-            val command = phoneCommandParser.parse(text)
+            if (completed) {
+                val result = recognizer.result
 
-            if (command != null) {
-
-                val result = commandExecutionManager.execute(command)
-
-                result.message
-
+                extractText(result, "text")?.let {
+                    notifyFinalResult(it)
+                }
             } else {
+                val partial = recognizer.partialResult
 
-                // Priority 2: Offline conversational response
-                val offlineResponse = offlineCommandEngine.respond(text)
-
-                if (offlineResponse != null) {
-
-                    offlineResponse
-
-                } else if (settingsManager.offlineMode) {
-
-                    // Offline mode: Gemini is never called.
-                    "यह सवाल या काम अभी offline mode में उपलब्ध नहीं है।"
-
-                } else {
-
-                    // Priority 3: Online Gemini AI
-                    aiEngine.generateResponse(recognizedText)
+                extractText(partial, "partial")?.let {
+                    notifyPartialResult(it)
                 }
             }
 
-        } catch (cancelled: CancellationException) {
-
-            // Coroutine cancellation को सामान्य error में न बदलें।
-            throw cancelled
-
-        } catch (error: Exception) {
-
-            error.message
-                ?.takeIf { it.isNotBlank() }
-                ?.let {
-                    "Command process नहीं हो सकी: ${it.take(250)}"
-                }
-                ?: "Command process नहीं हो सकी। कृपया दोबारा कोशिश करें।"
-
-        } finally {
-
-            synchronized(this) {
-                routingInProgress = false
-            }
+        } catch (exception: Exception) {
+            notifyError(exception)
         }
     }
 
     /**
-     * Gemini conversation context साफ करता है।
+     * Flush remaining audio before final shutdown.
+     *
+     * Do not call this for ordinary pause operations
+     * if unfinished speech should be discarded.
      */
-    fun clearConversation() {
-        aiEngine.clearConversation()
+    @Synchronized
+    fun finish() {
+        if (closed) return
+
+        try {
+            val result = recognizer.finalResult
+
+            extractText(result, "text")?.let {
+                notifyFinalResult(it)
+            }
+
+        } catch (exception: Exception) {
+            notifyError(exception)
+        }
     }
 
     /**
-     * वर्तमान routing स्थिति बताता है।
+     * Reset recognition state without recreating the model.
      */
-    fun isProcessing(): Boolean {
-        return routingInProgress
+    @Synchronized
+    fun reset() {
+        if (closed) return
+
+        try {
+            recognizer.reset()
+        } catch (exception: Exception) {
+            notifyError(exception)
+        }
+    }
+
+    private fun extractText(
+        json: String,
+        key: String
+    ): String? {
+        return try {
+            val objectResult = JSONObject(json)
+
+            val text = objectResult.optString(
+                key,
+                ""
+            ).trim()
+
+            text.ifEmpty { null }
+
+        } catch (exception: Exception) {
+            notifyError(exception)
+            null
+        }
+    }
+
+    private fun notifyPartialResult(text: String) {
+        try {
+            listener.onPartialResult(text)
+        } catch (exception: Exception) {
+            notifyError(exception)
+        }
+    }
+
+    private fun notifyFinalResult(text: String) {
+        try {
+            listener.onFinalResult(text)
+        } catch (exception: Exception) {
+            notifyError(exception)
+        }
+    }
+
+    private fun notifyError(exception: Exception) {
+        try {
+            listener.onRecognitionError(exception)
+        } catch (_: Exception) {
+            // Listener errors must not crash audio processing.
+        }
+    }
+
+    /**
+     * Release native recognizer resources.
+     */
+    @Synchronized
+    override fun close() {
+        if (closed) return
+
+        closed = true
+
+        try {
+            recognizer.close()
+        } catch (exception: Exception) {
+            notifyError(exception)
+        }
     }
 }
