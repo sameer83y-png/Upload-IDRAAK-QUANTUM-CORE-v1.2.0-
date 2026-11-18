@@ -27,6 +27,9 @@ class MainActivity : Activity() {
     private var voiceStarted = false
     private var receiverRegistered = false
 
+    // Manual activation permission के बाद पूरी करने के लिए।
+    private var pendingManualActivation = false
+
     companion object {
         private const val REQUEST_AUDIO_PERMISSION = 7101
         private const val REQUEST_NOTIFICATION_PERMISSION = 7102
@@ -135,7 +138,7 @@ class MainActivity : Activity() {
                 showSettings()
             },
             onVoiceClick = {
-                // Voice control is handled by dedicated components.
+                handleVoiceButtonClick()
             }
         )
 
@@ -155,6 +158,7 @@ class MainActivity : Activity() {
 
                     if (
                         !isFinishing &&
+                        !isDestroyed &&
                         ::voiceEngine.isInitialized &&
                         ::homeView.isInitialized
                     ) {
@@ -188,6 +192,98 @@ class MainActivity : Activity() {
         applyWakeWordSetting()
 
         showHome()
+    }
+
+    // -------------------------------------------------
+    // MANUAL VOICE BUTTON CONTROL
+    // -------------------------------------------------
+
+    private fun handleVoiceButtonClick() {
+
+        if (
+            !::voiceSessionController.isInitialized ||
+            !::settingsManager.isInitialized
+        ) {
+            Log.e(TAG, "Voice session is not initialized")
+            return
+        }
+
+        if (
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+
+            pendingManualActivation = true
+
+            requestPermissions(
+                arrayOf(Manifest.permission.RECORD_AUDIO),
+                REQUEST_AUDIO_PERMISSION
+            )
+
+            Log.i(TAG, "Requesting microphone permission for manual voice")
+            return
+        }
+
+        if (!voiceStarted) {
+
+            startVoiceSystem()
+
+            if (!voiceStarted) {
+                Log.e(TAG, "Voice system failed to start")
+                return
+            }
+        }
+
+        activateManualVoiceSession()
+    }
+
+    private fun activateManualVoiceSession() {
+
+        if (!::voiceSessionController.isInitialized) return
+
+        try {
+
+            when (voiceSessionController.getVoiceState()) {
+
+                WakeWordController.VoiceState.SLEEPING -> {
+
+                    // Manual activation को Wake Word setting से
+                    // स्वतंत्र रूप से काम करने दें।
+                    voiceSessionController.setWakeWordEnabled(true)
+
+                    voiceSessionController.activate()
+
+                    if (::homeView.isInitialized) {
+                        homeView.setVoiceStatus(true)
+                    }
+
+                    Log.i(TAG, "IDRAAK manually activated")
+                }
+
+                WakeWordController.VoiceState.ACTIVE,
+                WakeWordController.VoiceState.PROCESSING -> {
+
+                    voiceSessionController.sleep()
+
+                    // Sleep के बाद user की original setting restore करें।
+                    applyWakeWordSetting()
+
+                    if (::homeView.isInitialized) {
+                        homeView.setVoiceStatus(false)
+                    }
+
+                    Log.i(TAG, "IDRAAK manually put to sleep")
+                }
+            }
+
+        } catch (exception: Exception) {
+
+            Log.e(TAG, "Manual voice activation failed", exception)
+
+            if (::homeView.isInitialized) {
+                homeView.setVoiceStatus(false)
+            }
+        }
     }
 
     private fun applyVoicePreferences() {
@@ -258,6 +354,10 @@ class MainActivity : Activity() {
         }
     }
 
+    // -------------------------------------------------
+    // BROADCAST RECEIVER
+    // -------------------------------------------------
+
     private fun registerVoiceReceiver() {
 
         if (receiverRegistered) return
@@ -285,6 +385,10 @@ class MainActivity : Activity() {
         receiverRegistered = true
     }
 
+    // -------------------------------------------------
+    // PERMISSIONS
+    // -------------------------------------------------
+
     private fun requestVoicePermissions() {
 
         val audioGranted =
@@ -303,9 +407,6 @@ class MainActivity : Activity() {
         )
     }
 
-    /**
-     * Microphone permission result handler.
-     */
     @Suppress("DEPRECATION")
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -333,8 +434,18 @@ class MainActivity : Activity() {
                     requestNotificationPermissionIfNeeded()
                     startVoiceSystem()
 
+                    if (pendingManualActivation) {
+
+                        pendingManualActivation = false
+
+                        if (voiceStarted) {
+                            activateManualVoiceSession()
+                        }
+                    }
+
                 } else {
 
+                    pendingManualActivation = false
                     voiceStarted = false
 
                     if (::homeView.isInitialized) {
@@ -376,6 +487,10 @@ class MainActivity : Activity() {
         }
     }
 
+    // -------------------------------------------------
+    // VOICE SYSTEM STARTUP
+    // -------------------------------------------------
+
     private fun startVoiceSystem() {
 
         if (voiceStarted) return
@@ -413,7 +528,9 @@ class MainActivity : Activity() {
                 voiceSessionController.getVoiceState() !=
                     WakeWordController.VoiceState.SLEEPING
 
-            homeView.setVoiceStatus(awake)
+            if (::homeView.isInitialized) {
+                homeView.setVoiceStatus(awake)
+            }
 
             Log.i(
                 TAG,
@@ -435,6 +552,10 @@ class MainActivity : Activity() {
             )
         }
     }
+
+    // -------------------------------------------------
+    // SCREENS
+    // -------------------------------------------------
 
     private fun showHome() {
 
@@ -485,6 +606,10 @@ class MainActivity : Activity() {
         }
     }
 
+    // -------------------------------------------------
+    // ERROR SCREEN
+    // -------------------------------------------------
+
     private fun showStartupError(exception: Exception) {
 
         val errorView = TextView(this).apply {
@@ -514,6 +639,10 @@ class MainActivity : Activity() {
         setContentView(container)
     }
 
+    // -------------------------------------------------
+    // BACK BUTTON
+    // -------------------------------------------------
+
     @Deprecated("Deprecated in Android API 33")
     override fun onBackPressed() {
 
@@ -533,7 +662,13 @@ class MainActivity : Activity() {
         super.onBackPressed()
     }
 
+    // -------------------------------------------------
+    // CLEANUP
+    // -------------------------------------------------
+
     override fun onDestroy() {
+
+        pendingManualActivation = false
 
         if (receiverRegistered) {
 
