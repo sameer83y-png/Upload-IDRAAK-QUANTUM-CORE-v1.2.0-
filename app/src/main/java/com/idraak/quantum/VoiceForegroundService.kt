@@ -37,6 +37,7 @@ class VoiceForegroundService : Service() {
         const val ACTION_RESULT = "com.idraak.quantum.voice.RESULT"
         const val ACTION_STATE = "com.idraak.quantum.voice.STATE"
         const val ACTION_ERROR = "com.idraak.quantum.voice.ERROR"
+        const val ACTION_PAUSED = "com.idraak.quantum.voice.PAUSED"
 
         const val EXTRA_TEXT = "text"
         const val EXTRA_LANGUAGE = "language"
@@ -92,6 +93,9 @@ class VoiceForegroundService : Service() {
 
     @Volatile
     private var serviceDestroyed = false
+
+    @Volatile
+    private var pausePending = false
 
     @Volatile
     private var activeLanguage = "hi-IN"
@@ -199,10 +203,6 @@ class VoiceForegroundService : Service() {
         startId: Int
     ): Int {
 
-        /*
-         * startForegroundService() के बाद सबसे पहले
-         * foreground notification शुरू करनी जरूरी है।
-         */
         if (!startForegroundSafely()) {
             stopSelf(startId)
             return START_NOT_STICKY
@@ -221,6 +221,7 @@ class VoiceForegroundService : Service() {
                     userStopped = true
                     listening = false
                     paused = false
+                    pausePending = false
                     pendingModel = null
 
                     preferences.edit()
@@ -242,6 +243,7 @@ class VoiceForegroundService : Service() {
 
                 ACTION_PAUSE -> {
                     paused = true
+                    pausePending = true
 
                     preferences.edit()
                         .putBoolean(PREF_PAUSED, true)
@@ -251,8 +253,13 @@ class VoiceForegroundService : Service() {
                     stopAudioCapture()
 
                     updateNotification("IDRAAK microphone paused")
-
                     sendState(false, false)
+
+                    val worker = audioThread
+
+                    if (worker == null || !worker.isAlive) {
+                        sendPauseComplete()
+                    }
 
                     return START_STICKY
                 }
@@ -381,6 +388,7 @@ class VoiceForegroundService : Service() {
     private fun startVoice(language: String) {
         if (serviceDestroyed) return
 
+        pausePending = false
         activeLanguage = canonicalLanguage(language)
 
         listening = true
@@ -408,6 +416,8 @@ class VoiceForegroundService : Service() {
 
     private fun resumeVoice(language: String) {
         if (serviceDestroyed) return
+
+        pausePending = false
 
         val newLanguage = canonicalLanguage(language)
 
@@ -938,13 +948,17 @@ class VoiceForegroundService : Service() {
                     Log.e(TAG, "AudioRecord release failed", exception)
                 }
 
-                if (generation == captureGeneration) {
-                    captureRunning = false
+                if (audioRecord === recorder) {
                     audioRecord = null
                 }
 
                 if (audioThread === Thread.currentThread()) {
+                    captureRunning = false
                     audioThread = null
+                }
+
+                if (paused && pausePending) {
+                    sendPauseComplete()
                 }
 
                 if (serviceDestroyed) {
@@ -1049,6 +1063,19 @@ class VoiceForegroundService : Service() {
         }
     }
 
+    private fun sendPauseComplete() {
+        if (!pausePending) return
+
+        pausePending = false
+
+        val intent = Intent(ACTION_PAUSED)
+            .setPackage(packageName)
+
+        sendBroadcast(intent)
+
+        Log.i(TAG, "Vosk microphone released successfully")
+    }
+
     private fun invalidateModelRequest() {
         modelRequestGeneration++
         modelLoading = false
@@ -1066,6 +1093,7 @@ class VoiceForegroundService : Service() {
         listening = false
         paused = false
         userStopped = true
+        pausePending = false
         pendingModel = null
 
         preferences.edit()
@@ -1185,10 +1213,6 @@ class VoiceForegroundService : Service() {
         return builder.build()
     }
 
-    /*
-     * Foreground notification is started immediately.
-     * Microphone permission is checked before AudioRecord is created.
-     */
     private fun startForegroundSafely(): Boolean {
         return try {
             val notification = buildNotification(
@@ -1273,6 +1297,7 @@ class VoiceForegroundService : Service() {
         listening = false
         paused = false
         serviceDestroyed = true
+        pausePending = false
 
         invalidateModelRequest()
         pendingModel = null
