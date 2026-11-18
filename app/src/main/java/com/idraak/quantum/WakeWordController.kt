@@ -1,20 +1,9 @@
 package com.idraak.quantum
 
-import android.util.Log
 import java.text.Normalizer
 import java.util.Locale
 
-/**
- * IDRAAK Wake Word Controller
- *
- * Responsibilities:
- * - Detect IDRAAK wake words.
- * - Manage SLEEPING, ACTIVE and PROCESSING states.
- * - Detect sleep commands in every state.
- * - Forward recognized commands.
- * - Keep microphone lifecycle independent.
- */
-class WakeWordController(
+internal class WakeWordController(
     private val onWakeWordDetected: () -> Unit,
     private val onCommandDetected: (String) -> Unit,
     private val onSleepDetected: () -> Unit,
@@ -29,324 +18,283 @@ class WakeWordController(
 
     companion object {
 
-        private const val TAG = "IDRAAK_WAKE_WORD"
-
         private val WAKE_WORDS = listOf(
             "idraak",
             "idraaq",
             "idrak",
             "इद्राक",
-            "इद्राक्",
-            "आईड्राक",
-            "आइड्राक",
-            "इत्राक"
+            "इद्राख",
+            "इदराज",
+            "इदराक",
+            "इधराक",
+            "इधराख",
+            "इद्राज",
+            "इतराक",
+            "इतराख",
+            "इतराज"
         )
 
         private val SLEEP_WORDS = listOf(
             "सो जाओ",
-            "सो जा",
-            "सो जाइए",
-            "स्लीप मोड",
             "स्लीप",
+            "बंद हो जाओ",
+            "आराम करो",
             "sleep",
             "go to sleep",
-            "sleep mode",
-            "खामोश हो जाओ",
-            "खामोश",
-            "خواب",
-            "سو جاؤ",
-            "سو جا",
-            "اذهب للنوم",
-            "نم"
+            "stop listening"
         )
 
-        private val ARABIC_DIACRITICS =
-            Regex("[\\u064B-\\u065F\\u0670]")
-
-        private val ARABIC_TATWEEL =
-            Regex("\\u0640")
-
-        private const val WORD_BOUNDARY_CHARS =
-            "[\\p{L}\\p{M}\\p{N}]"
-
-        private val WHITESPACE =
-            Regex("\\s+")
-
-        private val PUNCTUATION =
-            Regex("[،,!?؛:।؟.!]+")
-
-        private val INVISIBLE_CHARACTERS =
-            Regex("[\\u200C\\u200D\\uFEFF]")
-
-        private fun normalizeText(value: String): String {
-
-            var result = Normalizer.normalize(
-                value,
-                Normalizer.Form.NFC
-            )
-
-            result = result
-                .lowercase(Locale.ROOT)
-                .replace(ARABIC_DIACRITICS, "")
-                .replace(ARABIC_TATWEEL, "")
-                .replace("ā", "a")
-                .replace("ī", "i")
-                .replace("ū", "u")
-                .replace("’", "'")
-                .replace("'", "")
-                .replace(PUNCTUATION, " ")
-                .replace(INVISIBLE_CHARACTERS, "")
-                .replace(WHITESPACE, " ")
-                .trim()
-
-            return result
-        }
-
-        private val NORMALIZED_WAKE_WORDS =
-            WAKE_WORDS.map(::normalizeText).distinct()
-
-        private val NORMALIZED_SLEEP_WORDS =
-            SLEEP_WORDS.map(::normalizeText).distinct()
+        private const val MAX_EDIT_DISTANCE = 2
     }
 
-    @Volatile
-    private var currentState = VoiceState.SLEEPING
+    private var state = VoiceState.SLEEPING
 
-    @Volatile
-    private var enabled = true
+    private var wakeWordEnabled = true
 
-    fun getState(): VoiceState = currentState
+    @Synchronized
+    fun getVoiceState(): VoiceState = state
 
-    fun isActive(): Boolean =
-        enabled && currentState == VoiceState.ACTIVE
+    @Synchronized
+    fun setWakeWordEnabled(enabled: Boolean) {
 
-    fun isProcessing(): Boolean =
-        enabled && currentState == VoiceState.PROCESSING
+        wakeWordEnabled = enabled
 
-    fun isEnabled(): Boolean = enabled
+        val newState = if (enabled) {
+            VoiceState.SLEEPING
+        } else {
+            VoiceState.ACTIVE
+        }
 
-    /**
-     * Processes each recognized Vosk result.
-     */
+        changeState(newState)
+    }
+
+    @Synchronized
+    fun activate() {
+        changeState(VoiceState.ACTIVE)
+    }
+
+    @Synchronized
+    fun sleep() {
+
+        if (wakeWordEnabled) {
+            changeState(VoiceState.SLEEPING)
+        } else {
+            changeState(VoiceState.ACTIVE)
+        }
+
+        onSleepDetected()
+    }
+
+    @Synchronized
+    fun startProcessing() {
+        if (state == VoiceState.ACTIVE) {
+            changeState(VoiceState.PROCESSING)
+        }
+    }
+
+    @Synchronized
+    fun finishProcessing() {
+        if (state == VoiceState.PROCESSING) {
+            changeState(VoiceState.ACTIVE)
+        }
+    }
+
     @Synchronized
     fun processRecognizedText(recognizedText: String) {
-
-        if (!enabled || recognizedText.isBlank()) return
 
         val text = normalizeText(recognizedText)
 
         if (text.isBlank()) return
 
-        // Sleep commands have priority in every state.
-        if (containsAnyPhrase(text, NORMALIZED_SLEEP_WORDS)) {
-            sleep()
-            return
-        }
-
-        when (currentState) {
+        when (state) {
 
             VoiceState.SLEEPING -> {
 
-                if (!containsAnyPhrase(text, NORMALIZED_WAKE_WORDS)) {
+                if (!wakeWordEnabled) {
+                    changeState(VoiceState.ACTIVE)
+                    processRecognizedText(text)
                     return
                 }
 
-                val remainingCommand =
-                    removeWakeWords(text)
+                val wakeMatch = findWakeWord(text)
 
-                setState(VoiceState.ACTIVE)
+                if (wakeMatch == null) return
 
-                safelyInvoke("wake word callback") {
-                    onWakeWordDetected()
-                }
+                onWakeWordDetected()
 
-                if (remainingCommand.isNotBlank()) {
-                    safelyInvoke("command callback") {
-                        onCommandDetected(remainingCommand)
-                    }
+                changeState(VoiceState.ACTIVE)
+
+                val command = removeMatchedWord(
+                    text,
+                    wakeMatch
+                ).trim()
+
+                if (command.isNotBlank()) {
+                    onCommandDetected(command)
                 }
             }
 
             VoiceState.ACTIVE -> {
 
-                val command =
-                    if (containsAnyPhrase(text, NORMALIZED_WAKE_WORDS)) {
-                        removeWakeWords(text)
-                    } else {
-                        text
-                    }
+                if (containsSleepPhrase(text)) {
+                    sleep()
+                    return
+                }
+
+                val wakeMatch = findWakeWord(text)
+
+                val command = if (wakeMatch != null) {
+                    onWakeWordDetected()
+                    removeMatchedWord(text, wakeMatch).trim()
+                } else {
+                    text
+                }
 
                 if (command.isNotBlank()) {
-                    safelyInvoke("command callback") {
-                        onCommandDetected(command)
-                    }
+                    onCommandDetected(command)
                 }
             }
 
             VoiceState.PROCESSING -> {
-                // Ignore additional commands while processing.
-                // Sleep commands are already handled above.
-            }
-        }
-    }
 
-    /**
-     * Marks command processing as started.
-     */
-    @Synchronized
-    fun startProcessing() {
-
-        if (!enabled) return
-
-        if (currentState == VoiceState.ACTIVE) {
-            setState(VoiceState.PROCESSING)
-        }
-    }
-
-    /**
-     * Returns to ACTIVE after command processing.
-     */
-    @Synchronized
-    fun finishProcessing() {
-
-        if (!enabled) return
-
-        if (currentState == VoiceState.PROCESSING) {
-            setState(VoiceState.ACTIVE)
-        }
-    }
-
-    /**
-     * Puts IDRAAK to sleep without stopping microphone.
-     */
-    @Synchronized
-    fun sleep() {
-
-        if (currentState == VoiceState.SLEEPING) return
-
-        setState(VoiceState.SLEEPING)
-
-        safelyInvoke("sleep callback") {
-            onSleepDetected()
-        }
-    }
-
-    /**
-     * Enables or disables wake-word processing.
-     */
-    @Synchronized
-    fun setEnabled(value: Boolean) {
-
-        if (enabled == value) return
-
-        enabled = value
-
-        if (!value) {
-
-            val wasNotSleeping =
-                currentState != VoiceState.SLEEPING
-
-            setState(VoiceState.SLEEPING)
-
-            if (wasNotSleeping) {
-                safelyInvoke("sleep callback") {
-                    onSleepDetected()
+                if (containsSleepPhrase(text)) {
+                    sleep()
                 }
             }
         }
     }
 
-    /**
-     * Manually activates IDRAAK.
-     */
-    @Synchronized
-    fun activate() {
+    private fun changeState(newState: VoiceState) {
 
-        if (!enabled) return
+        if (state == newState) return
 
-        setState(VoiceState.ACTIVE)
+        state = newState
+        onStateChanged(newState)
     }
 
-    /**
-     * Removes all recognized wake-word occurrences.
-     */
-    private fun removeWakeWords(text: String): String {
+    private fun normalizeText(input: String): String {
 
-        var result = text
+        var text = Normalizer.normalize(
+            input,
+            Normalizer.Form.NFC
+        ).lowercase(Locale.ROOT)
 
-        for (word in NORMALIZED_WAKE_WORDS) {
-
-            val pattern = Regex(
-                "(?<!$WORD_BOUNDARY_CHARS)" +
-                    Regex.escape(word) +
-                    "(?!$WORD_BOUNDARY_CHARS)"
-            )
-
-            result = pattern.replace(result, " ")
-        }
-
-        return result
-            .replace(WHITESPACE, " ")
+        text = text
+            .replace("़", "")
+            .replace("ـ", "")
+            .replace(Regex("[\\u064B-\\u065F\\u0670]"), "")
+            .replace(Regex("[^\\p{L}\\p{N}\\s]"), " ")
+            .replace(Regex("\\s+"), " ")
             .trim()
+
+        return text
     }
 
-    private fun containsAnyPhrase(
+    private fun findWakeWord(text: String): String? {
+
+        val words = text.split(Regex("\\s+"))
+
+        for (word in words) {
+
+            if (word.isBlank()) continue
+
+            for (alias in WAKE_WORDS) {
+
+                val normalizedAlias = normalizeText(alias)
+
+                if (word == normalizedAlias) {
+                    return word
+                }
+
+                val distance = levenshteinDistance(
+                    word,
+                    normalizedAlias
+                )
+
+                val minimumLength = minOf(
+                    word.length,
+                    normalizedAlias.length
+                )
+
+                // छोटे शब्दों को Wake Word नहीं मानना।
+                if (
+                    minimumLength >= 4 &&
+                    distance <= MAX_EDIT_DISTANCE
+                ) {
+                    return word
+                }
+            }
+        }
+
+        return null
+    }
+
+    private fun removeMatchedWord(
         text: String,
-        phrases: List<String>
-    ): Boolean {
+        matchedWord: String
+    ): String {
 
-        return phrases.any { phrase ->
-            containsPhrase(text, phrase)
+        val words = text.split(Regex("\\s+")).toMutableList()
+
+        val index = words.indexOf(matchedWord)
+
+        if (index >= 0) {
+            words.removeAt(index)
+        }
+
+        return words.joinToString(" ").trim()
+    }
+
+    private fun containsSleepPhrase(text: String): Boolean {
+
+        return SLEEP_WORDS.any { phrase ->
+
+            val normalizedPhrase = normalizeText(phrase)
+
+            text == normalizedPhrase ||
+                text.contains(" $normalizedPhrase ") ||
+                text.startsWith("$normalizedPhrase ") ||
+                text.endsWith(" $normalizedPhrase")
         }
     }
 
-    private fun containsPhrase(
-        text: String,
-        phrase: String
-    ): Boolean {
+    private fun levenshteinDistance(
+        first: String,
+        second: String
+    ): Int {
 
-        if (phrase.isBlank()) return false
+        if (first == second) return 0
+        if (first.isEmpty()) return second.length
+        if (second.isEmpty()) return first.length
 
-        val pattern = Regex(
-            "(?<!$WORD_BOUNDARY_CHARS)" +
-                Regex.escape(phrase) +
-                "(?!$WORD_BOUNDARY_CHARS)"
-        )
-
-        return pattern.containsMatchIn(text)
-    }
-
-    /**
-     * Centralized state update.
-     */
-    private fun setState(newState: VoiceState) {
-
-        if (currentState == newState) return
-
-        currentState = newState
-
-        safelyInvoke("state callback") {
-            onStateChanged(newState)
+        var previous = IntArray(second.length + 1) {
+            it
         }
-    }
 
-    /**
-     * Prevents callback exceptions from crashing controller.
-     */
-    private inline fun safelyInvoke(
-        operation: String,
-        action: () -> Unit
-    ) {
+        var current = IntArray(second.length + 1)
 
-        try {
-            action()
-        } catch (exception: Exception) {
+        for (i in first.indices) {
 
-            Log.e(
-                TAG,
-                "$operation failed",
-                exception
-            )
+            current[0] = i + 1
+
+            for (j in second.indices) {
+
+                val cost = if (
+                    first[i] == second[j]
+                ) 0 else 1
+
+                current[j + 1] = minOf(
+                    current[j] + 1,
+                    previous[j + 1] + 1,
+                    previous[j] + cost
+                )
+            }
+
+            val temp = previous
+            previous = current
+            current = temp
         }
+
+        return previous[second.length]
     }
 }
