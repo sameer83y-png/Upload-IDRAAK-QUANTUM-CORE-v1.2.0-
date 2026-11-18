@@ -1,7 +1,7 @@
 package com.idraak.quantum
 
 import android.content.Context
-import kotlinx.coroutines.CancellationException
+import java.util.concurrent.CancellationException
 
 /**
  * Recognized speech को सही subsystem तक route करता है।
@@ -10,6 +10,11 @@ import kotlinx.coroutines.CancellationException
  * 1. Local phone command
  * 2. Offline conversational response
  * 3. Online Gemini AI
+ *
+ * Offline Mode में Gemini API call नहीं होती।
+ *
+ * यह class SpeechRecognizer या Accessibility Service
+ * को सीधे नियंत्रित नहीं करती।
  */
 internal class VoiceCommandRouter(context: Context) {
 
@@ -31,6 +36,9 @@ internal class VoiceCommandRouter(context: Context) {
     @Volatile
     private var routingInProgress = false
 
+    /**
+     * Recognized speech को सही subsystem तक भेजता है।
+     */
     suspend fun routeRecognizedText(
         recognizedText: String
     ): String {
@@ -70,6 +78,7 @@ internal class VoiceCommandRouter(context: Context) {
 
                 } else if (settingsManager.offlineMode) {
 
+                    // Offline mode: Gemini is never called.
                     "यह सवाल या काम अभी offline mode में उपलब्ध नहीं है।"
 
                 } else {
@@ -100,10 +109,16 @@ internal class VoiceCommandRouter(context: Context) {
         }
     }
 
+    /**
+     * Gemini conversation context साफ करता है।
+     */
     fun clearConversation() {
         aiEngine.clearConversation()
     }
 
+    /**
+     * वर्तमान routing स्थिति बताता है।
+     */
     fun isProcessing(): Boolean {
         return routingInProgress
     }
