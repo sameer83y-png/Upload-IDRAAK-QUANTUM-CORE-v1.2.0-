@@ -48,10 +48,7 @@ internal class WakeWordController(
     }
 
     private var state = VoiceState.SLEEPING
-
     private var wakeWordEnabled = true
-
-    // Compatibility methods for VoiceSessionController
 
     @Synchronized
     fun setEnabled(enabled: Boolean) {
@@ -78,13 +75,13 @@ internal class WakeWordController(
 
         wakeWordEnabled = enabled
 
-        val newState = if (enabled) {
-            VoiceState.SLEEPING
-        } else {
-            VoiceState.ACTIVE
-        }
-
-        changeState(newState)
+        changeState(
+            if (enabled) {
+                VoiceState.SLEEPING
+            } else {
+                VoiceState.ACTIVE
+            }
+        )
     }
 
     @Synchronized
@@ -95,18 +92,19 @@ internal class WakeWordController(
     @Synchronized
     fun sleep() {
 
-        if (wakeWordEnabled) {
-            changeState(VoiceState.SLEEPING)
-        } else {
-            changeState(VoiceState.ACTIVE)
-        }
+        changeState(
+            if (wakeWordEnabled) {
+                VoiceState.SLEEPING
+            } else {
+                VoiceState.ACTIVE
+            }
+        )
 
         onSleepDetected()
     }
 
     @Synchronized
     fun startProcessing() {
-
         if (state == VoiceState.ACTIVE) {
             changeState(VoiceState.PROCESSING)
         }
@@ -114,12 +112,23 @@ internal class WakeWordController(
 
     @Synchronized
     fun finishProcessing() {
-
         if (state == VoiceState.PROCESSING) {
             changeState(VoiceState.ACTIVE)
         }
     }
 
+    /**
+     * Vosk wake-word mode:
+     * When sleeping, detect only the wake word.
+     * Do not forward the remaining Vosk transcript.
+     *
+     * Google Speech Recognition will capture the actual command
+     * after the Vosk microphone has been released.
+     *
+     * When ACTIVE, recognized text is treated as a command.
+     * This also allows Google recognition results to use the
+     * existing VoiceCommandRouter.
+     */
     @Synchronized
     fun processRecognizedText(recognizedText: String) {
 
@@ -137,22 +146,17 @@ internal class WakeWordController(
                     return
                 }
 
-                val wakeMatch = findWakeWord(text)
+                val wakeMatch = findWakeWord(text) ?: return
 
-                if (wakeMatch == null) return
-
+                // Wake word मिला।
+                // Google recognition handoff callback शुरू होगा।
                 onWakeWordDetected()
 
+                // अब Google का command result ACTIVE state में आएगा।
                 changeState(VoiceState.ACTIVE)
 
-                val command = removeMatchedWord(
-                    text,
-                    wakeMatch
-                )
-
-                if (command.isNotBlank()) {
-                    onCommandDetected(command)
-                }
+                // जानबूझकर Vosk का बाकी transcript आगे नहीं भेजते।
+                // इससे एक ही command दो बार execute नहीं होगा।
             }
 
             VoiceState.ACTIVE -> {
@@ -165,8 +169,6 @@ internal class WakeWordController(
                 val wakeMatch = findWakeWord(text)
 
                 val command = if (wakeMatch != null) {
-
-                    onWakeWordDetected()
 
                     removeMatchedWord(
                         text,
@@ -248,7 +250,6 @@ internal class WakeWordController(
                     normalizedAlias.length
                 )
 
-                // बहुत छोटे शब्दों को Wake Word न मानें।
                 if (minimumLength < 4) continue
 
                 val distance = levenshteinDistance(
@@ -303,13 +304,9 @@ internal class WakeWordController(
 
         if (first == second) return 0
 
-        if (first.isEmpty()) {
-            return second.length
-        }
+        if (first.isEmpty()) return second.length
 
-        if (second.isEmpty()) {
-            return first.length
-        }
+        if (second.isEmpty()) return first.length
 
         var previous = IntArray(second.length + 1) {
             it
