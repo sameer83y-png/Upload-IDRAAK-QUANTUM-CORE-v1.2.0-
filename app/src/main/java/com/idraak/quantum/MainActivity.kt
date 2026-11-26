@@ -258,7 +258,10 @@ class MainActivity : Activity() {
         val command = raw.trim()
         val normalized = command.lowercase(Locale.ROOT)
 
-        val rememberPrefix = listOf("remember that ", "remember ", "याद रखो ", "याद रखना ")
+        val rememberPrefix = listOf(
+            "remember that ", "remember ", "یاد رکھو ", "یاد رکھنا ",
+            "یہ یاد رکھو ", "یہ بات یاد رکھو ", "याद रखो ", "याद रखना "
+        )
             .firstOrNull { normalized.startsWith(it) }
         if (rememberPrefix != null) {
             val fact = command.drop(rememberPrefix.length).trim()
@@ -271,13 +274,16 @@ class MainActivity : Activity() {
             }
         }
 
-        if (normalized in listOf("what do you remember", "show memory", "list memories", "मेरी यादें बताओ")) {
+        if (normalized in listOf(
+                "what do you remember", "show memory", "list memories", "मेरी यादें बताओ",
+                "تمہیں کیا یاد ہے", "کیا یاد ہے", "میری یادیں بتاؤ", "میری یادداشت دکھاؤ"
+            )) {
             val memories = memoryStore.all()
             return if (memories.isEmpty()) "Your local memory is empty."
             else memories.joinToString(separator = "\n\n") { "• [${it.category}] ${it.content}" }
         }
 
-        val searchPrefix = listOf("search memory for ", "find memory ")
+        val searchPrefix = listOf("search memory for ", "find memory ", "یادداشت میں تلاش کرو ", "یادوں میں تلاش کرو ")
             .firstOrNull { normalized.startsWith(it) }
         if (searchPrefix != null) {
             val query = command.drop(searchPrefix.length).trim()
@@ -287,7 +293,10 @@ class MainActivity : Activity() {
             else matches.joinToString(separator = "\n\n") { "• ${it.content}" }
         }
 
-        val forgetPrefix = listOf("forget memory ", "forget that ")
+        val forgetPrefix = listOf(
+            "forget memory ", "forget that ", "یہ بات بھول جاؤ ",
+            "یادداشت سے حذف کرو ", "یہ یادداشت بھول جاؤ "
+        )
             .firstOrNull { normalized.startsWith(it) }
         if (forgetPrefix != null) {
             val exactText = command.drop(forgetPrefix.length).trim()
@@ -297,7 +306,7 @@ class MainActivity : Activity() {
             else "I couldn't find an exact matching memory to remove."
         }
 
-        if (normalized.startsWith("correct memory:")) {
+        if (normalized.startsWith("correct memory:") || normalized.startsWith("یادداشت درست کرو:")) {
             val correction = command.substringAfter(":", "").split("->", limit = 2)
             if (correction.size != 2) return "Use this format: correct memory: old text -> corrected text"
             val changed = memoryStore.correct(correction[0], correction[1])
@@ -305,7 +314,7 @@ class MainActivity : Activity() {
             else "Correction saved in history, but no exact existing memory matched the old text."
         }
 
-        if (normalized == "show correction history") {
+        if (normalized == "show correction history" || normalized == "درستیوں کی تاریخ دکھاؤ") {
             val history = memoryStore.correctionHistory()
             return if (history.isEmpty()) "There are no saved corrections yet."
             else history.joinToString("\n\n") {
