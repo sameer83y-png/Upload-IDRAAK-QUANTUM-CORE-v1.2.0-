@@ -35,6 +35,40 @@ class OfflineCommandEngine {
             return CommandResult("میڈیا کی آواز خاموش کر رہا ہوں۔", CommandAction.AdjustVolume(VolumeDirection.MUTE))
         }
 
+        val englishReminder = Regex(
+            "(?:remind me|remind)\\\\s+(?:to\\\\s+)?(.+?)\\\\s+in\\\\s+(\\\\d+)\\\\s+(minutes?|mins?|hours?|hrs?)",
+            RegexOption.IGNORE_CASE
+        ).find(original)
+        if (englishReminder != null) {
+            val amount = englishReminder.groupValues[2].toLongOrNull() ?: 0L
+            val unit = englishReminder.groupValues[3].lowercase(Locale.ROOT)
+            val duration = amount * if (unit.startsWith("h")) 3_600_000L else 60_000L
+            if (amount in 1..10080) {
+                val message = englishReminder.groupValues[1].trim()
+                return CommandResult(
+                    "یاد دہانی لگا دی گئی ہے: $message",
+                    CommandAction.ScheduleReminder(System.currentTimeMillis() + duration, message)
+                )
+            }
+        }
+
+        val urduReminder = Regex(
+            "مجھے\\\\s*(\\\\d+)\\\\s*(منٹ|منٹوں|گھنٹے|گھنٹہ)\\\\s*بعد\\\\s*(.+?)\\\\s*(?:یاد دلانا|یاد دلا دینا)",
+            RegexOption.IGNORE_CASE
+        ).find(original)
+        if (urduReminder != null) {
+            val amount = urduReminder.groupValues[1].toLongOrNull() ?: 0L
+            val unit = urduReminder.groupValues[2]
+            val duration = amount * if (unit.startsWith("گھن")) 3_600_000L else 60_000L
+            if (amount in 1..10080) {
+                val message = urduReminder.groupValues[3].trim()
+                return CommandResult(
+                    "یاد دہانی لگا دی گئی ہے: $message",
+                    CommandAction.ScheduleReminder(System.currentTimeMillis() + duration, message)
+                )
+            }
+        }
+
         if (containsAny(text, "open alarm", "show alarms", "alarm kholo", "الارم کھولو", "الارم دکھاؤ", "میرے الارم دکھاؤ")) {
             return CommandResult("الارم کھول رہا ہوں۔", CommandAction.OpenAlarm)
         }
