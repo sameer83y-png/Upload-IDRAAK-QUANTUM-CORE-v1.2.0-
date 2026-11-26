@@ -37,12 +37,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
         }
-        val builder = if (Build.VERSION.SDK_INT >= 26) {
-            Notification.Builder(context, CHANNEL_ID)
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(context)
-        }
+        val builder = Notification.Builder(context, CHANNEL_ID)
         builder.setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("Idraak Reminder")
             .setContentText(message)
