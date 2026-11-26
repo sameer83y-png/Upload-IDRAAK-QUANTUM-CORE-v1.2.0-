@@ -84,6 +84,11 @@ class AndroidActionExecutor(private val context: Context) {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 "فون کی سیٹنگز کھول دی گئی ہیں۔"
             }
+            CommandAction.OpenWifiSettings -> openSettingsPage(Settings.ACTION_WIFI_SETTINGS, "وائی فائی سیٹنگز")
+            CommandAction.OpenBluetoothSettings -> openSettingsPage(Settings.ACTION_BLUETOOTH_SETTINGS, "بلوٹوتھ سیٹنگز")
+            CommandAction.OpenDisplaySettings -> openSettingsPage(Settings.ACTION_DISPLAY_SETTINGS, "ڈسپلے سیٹنگز")
+            CommandAction.OpenSoundSettings -> openSettingsPage(Settings.ACTION_SOUND_SETTINGS, "ساؤنڈ سیٹنگز")
+            CommandAction.OpenBatterySettings -> openSettingsPage(Settings.ACTION_BATTERY_SAVER_SETTINGS, "بیٹری سیٹنگز")
             CommandAction.OpenCamera -> {
                 context.startActivity(Intent(MediaStore.ACTION_IMAGE_CAPTURE)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -96,6 +101,11 @@ class AndroidActionExecutor(private val context: Context) {
         "Android نے مطلوبہ اجازت نہ ہونے کی وجہ سے یہ کام روک دیا۔"
     } catch (error: Exception) {
         "یہ کام مکمل نہیں ہو سکا: " + (error.localizedMessage ?: "نامعلوم خرابی")
+    }
+
+    private fun openSettingsPage(action: String, label: String): String {
+        context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        return "$label کھول دی گئی ہیں۔"
     }
 
     private fun openApp(requestedName: String): String {
