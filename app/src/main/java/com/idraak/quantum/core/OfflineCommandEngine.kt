@@ -14,7 +14,7 @@ class OfflineCommandEngine {
         val text = original.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
         if (text.isBlank()) return CommandResult("براہ کرم اپنا حکم بتائیں۔")
 
-        val englishGreeting = Regex("(^|\\\\s)(hello|hi|hey|salam|assalam)(\\\\s|$)", RegexOption.IGNORE_CASE)
+        val englishGreeting = Regex("(^|\\s)(hello|hi|hey|salam|assalam)(\\s|$)", RegexOption.IGNORE_CASE)
         if (englishGreeting.containsMatchIn(text) || containsAny(text, "السلام علیکم", "سلام")) {
             return CommandResult("وعلیکم السلام۔ ادراک حاضر ہے۔")
         }
@@ -36,7 +36,7 @@ class OfflineCommandEngine {
         }
 
         val englishReminder = Regex(
-            "(?:remind me|remind)\\\\s+(?:to\\\\s+)?(.+?)\\\\s+in\\\\s+(\\\\d+)\\\\s+(minutes?|mins?|hours?|hrs?)",
+            "(?:remind me|remind)\\s+(?:to\\s+)?(.+?)\\s+in\\s+(\\d+)\\s+(minutes?|mins?|hours?|hrs?)",
             RegexOption.IGNORE_CASE
         ).find(original)
         if (englishReminder != null) {
@@ -53,7 +53,7 @@ class OfflineCommandEngine {
         }
 
         val urduReminder = Regex(
-            "مجھے\\\\s*(\\\\d+)\\\\s*(منٹ|منٹوں|گھنٹے|گھنٹہ)\\\\s*بعد\\\\s*(.+?)\\\\s*(?:یاد دلانا|یاد دلا دینا)",
+            "مجھے\\s*(\\d+)\\s*(منٹ|منٹوں|گھنٹے|گھنٹہ)\\s*بعد\\s*(.+?)\\s*(?:یاد دلانا|یاد دلا دینا)",
             RegexOption.IGNORE_CASE
         ).find(original)
         if (urduReminder != null) {
