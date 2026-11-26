@@ -15,5 +15,10 @@ sealed interface CommandAction {
     data class ScheduleReminder(val triggerAtMillis: Long, val message: String) : CommandAction
     data object OpenAlarm : CommandAction
     data object OpenSettings : CommandAction
+    data object OpenWifiSettings : CommandAction
+    data object OpenBluetoothSettings : CommandAction
+    data object OpenDisplaySettings : CommandAction
+    data object OpenSoundSettings : CommandAction
+    data object OpenBatterySettings : CommandAction
     data object OpenCamera : CommandAction
 }
