@@ -21,6 +21,22 @@ class OfflineCommandEngine {
         if (containsAny(text, "open settings", "phone settings", "settings kholo", "سیٹنگ کھولو", "سیٹنگز کھولو", "فون کی سیٹنگ")) {
             return CommandResult("فون کی سیٹنگز کھول رہا ہوں۔", CommandAction.OpenSettings)
         }
+        if (containsAny(text, "wifi settings", "open wifi", "وائی فائی کھولو", "وائی فائی سیٹنگز", "وائی فائی کی سیٹنگ")) {
+            return CommandResult("وائی فائی سیٹنگز کھول رہا ہوں۔", CommandAction.OpenWifiSettings)
+        }
+        if (containsAny(text, "bluetooth settings", "open bluetooth", "بلوٹوتھ کھولو", "بلوٹوتھ سیٹنگز")) {
+            return CommandResult("بلوٹوتھ سیٹنگز کھول رہا ہوں۔", CommandAction.OpenBluetoothSettings)
+        }
+        if (containsAny(text, "display settings", "screen settings", "ڈسپلے سیٹنگز", "اسکرین سیٹنگز")) {
+            return CommandResult("ڈسپلے سیٹنگز کھول رہا ہوں۔", CommandAction.OpenDisplaySettings)
+        }
+        if (containsAny(text, "sound settings", "audio settings", "ساؤنڈ سیٹنگز", "آواز کی سیٹنگز")) {
+            return CommandResult("ساؤنڈ سیٹنگز کھول رہا ہوں۔", CommandAction.OpenSoundSettings)
+        }
+        if (containsAny(text, "battery settings", "battery saver settings", "بیٹری سیٹنگز", "بیٹری سیور")) {
+            return CommandResult("بیٹری سیٹنگز کھول رہا ہوں۔", CommandAction.OpenBatterySettings)
+        }
+
         if (containsAny(text, "open camera", "camera kholo", "کیمرہ کھولو", "کیمرا کھولو")) {
             return CommandResult("کیمرہ کھول رہا ہوں۔", CommandAction.OpenCamera)
         }
