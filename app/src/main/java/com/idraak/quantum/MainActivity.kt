@@ -1,8 +1,11 @@
 package com.idraak.quantum
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -12,100 +15,180 @@ import android.widget.TextView
 import com.idraak.quantum.core.AndroidActionExecutor
 import com.idraak.quantum.core.LocalMemoryStore
 import com.idraak.quantum.core.OfflineCommandEngine
+import com.idraak.quantum.core.OnDeviceVoiceController
 import java.util.Locale
 
 class MainActivity : Activity() {
+    companion object {
+        private const val REQUEST_MICROPHONE = 4201
+    }
+
     private val commandEngine = OfflineCommandEngine()
     private val memoryStore by lazy { LocalMemoryStore(applicationContext) }
     private lateinit var actionExecutor: AndroidActionExecutor
     private lateinit var responseView: TextView
+    private lateinit var commandInput: EditText
+    private var voiceController: OnDeviceVoiceController? = null
+    private var speechOutput: TextToSpeech? = null
+    private var speechOutputReady = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         actionExecutor = AndroidActionExecutor(this)
+        voiceController = OnDeviceVoiceController(
+            this,
+            onText = { spoken ->
+                runOnUiThread {
+                    commandInput.setText(spoken)
+                    executeCommand(spoken)
+                }
+            },
+            onStatus = { status -> runOnUiThread { responseView.text = status } }
+        )
+        speechOutput = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val result = speechOutput?.setLanguage(Locale("ur", "PK"))
+                speechOutputReady = result != TextToSpeech.LANG_MISSING_DATA &&
+                    result != TextToSpeech.LANG_NOT_SUPPORTED
+            }
+        }
         buildDashboard()
     }
 
     private fun buildDashboard() {
-        val accent = Color.rgb(71, 208, 255)
+        val accent = Color.rgb(67, 218, 255)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(28, 44, 28, 28)
-            setBackgroundColor(Color.rgb(7, 12, 24))
+            setPadding(28, 34, 28, 28)
+            setBackgroundColor(Color.rgb(5, 10, 23))
         }
+
         root.addView(TextView(this).apply {
             text = "IDRAAK"
-            textSize = 32f
+            textSize = 34f
             setTextColor(accent)
             gravity = Gravity.CENTER
-            letterSpacing = 0.18f
-        }, matchWrap())
-        root.addView(TextView(this).apply {
-            text = "QUANTUM CORE  •  OFFLINE FOUNDATION"
-            textSize = 11f
-            setTextColor(Color.LTGRAY)
-            gravity = Gravity.CENTER
-            setPadding(0, 8, 0, 34)
-        }, matchWrap())
-        root.addView(TextView(this).apply {
-            text = "◉"
-            textSize = 76f
-            setTextColor(accent)
-            gravity = Gravity.CENTER
-            setPadding(0, 8, 0, 12)
-        }, matchWrap())
-        root.addView(TextView(this).apply {
-            text = "CORE ONLINE  •  LOCAL MEMORY READY"
-            textSize = 13f
-            setTextColor(Color.rgb(105, 235, 178))
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 28)
+            letterSpacing = 0.22f
         }, matchWrap())
 
-        val commandInput = EditText(this).apply {
-            hint = "Type a command…"
+        root.addView(TextView(this).apply {
+            text = "Q U A N T U M   C O R E"
+            textSize = 10f
+            setTextColor(Color.LTGRAY)
+            gravity = Gravity.CENTER
+            setPadding(0, 8, 0, 26)
+        }, matchWrap())
+
+        root.addView(TextView(this).apply {
+            text = "◉"
+            textSize = 82f
+            setTextColor(accent)
+            gravity = Gravity.CENTER
+            setPadding(0, 4, 0, 6)
+        }, matchWrap())
+
+        root.addView(TextView(this).apply {
+            text = "LOCAL CORE  •  MEMORY READY"
+            textSize = 12f
+            setTextColor(Color.rgb(105, 235, 178))
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 26)
+        }, matchWrap())
+
+        commandInput = EditText(this).apply {
+            hint = "اپنا حکم یہاں لکھیں…"
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             textSize = 16f
             setSingleLine(true)
-            setPadding(18, 14, 18, 14)
-            setBackgroundColor(Color.rgb(24, 34, 52))
+            setPadding(18, 15, 18, 15)
+            setBackgroundColor(Color.rgb(22, 34, 54))
         }
         root.addView(commandInput, matchWrap())
 
         root.addView(Button(this).apply {
-            text = "RUN COMMAND"
+            text = "RUN COMMAND  /  حکم چلائیں"
             setTextColor(Color.BLACK)
             setBackgroundColor(accent)
-            setOnClickListener {
-                val command = commandInput.text.toString().trim()
-                val memoryResponse = handleMemoryCommand(command)
-                if (memoryResponse != null) {
-                    responseView.text = memoryResponse
-                } else {
-                    val result = commandEngine.process(command)
-                    val execution = actionExecutor.execute(result.action)
-                    responseView.text = result.message + "\n" + execution
-                }
-            }
-        }, matchWrap().apply { topMargin = 14 })
+            setOnClickListener { executeCommand(commandInput.text.toString()) }
+        }, matchWrap().apply { topMargin = 12 })
+
+        root.addView(Button(this).apply {
+            text = "🎙  اردو میں بولیں  •  OFFLINE VOICE"
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(25, 54, 82))
+            setOnClickListener { startVoiceInput() }
+        }, matchWrap().apply { topMargin = 10 })
 
         responseView = TextView(this).apply {
-            text = "Ready. Try: open settings, open camera, search YouTube, or say “remember that…”"
-            textSize = 14f
+            text = "تیار ہوں۔ اپنا حکم لکھیں یا مائیک سے بولیں۔"
+            textSize = 15f
             setTextColor(Color.WHITE)
-            setPadding(4, 24, 4, 0)
+            setPadding(6, 24, 6, 0)
             gravity = Gravity.CENTER
         }
         root.addView(responseView, matchWrap())
+
+        root.addView(TextView(this).apply {
+            text = "PRIVATE • ON-DEVICE MEMORY • PERMISSION-AWARE CONTROL"
+            textSize = 9f
+            setTextColor(Color.rgb(115, 135, 160))
+            gravity = Gravity.CENTER
+            setPadding(0, 34, 0, 0)
+        }, matchWrap())
+
         setContentView(root)
     }
 
-    /**
-     * Memory writes require an explicit remember/correct command from the user.
-     * Passwords and other credentials must not be stored here.
-     */
+    private fun startVoiceInput() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_MICROPHONE)
+            return
+        }
+        voiceController?.start()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_MICROPHONE) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                voiceController?.start()
+            } else {
+                responseView.text = "مائیکروفون کی اجازت کے بغیر آواز نہیں سن سکتا۔"
+            }
+        }
+    }
+
+    private fun executeCommand(rawCommand: String) {
+        val command = rawCommand.trim()
+        if (command.isBlank()) {
+            responseView.text = "براہ کرم اپنا حکم لکھیں یا بولیں۔"
+            return
+        }
+        val memoryResponse = handleMemoryCommand(command)
+        val response = if (memoryResponse != null) {
+            memoryResponse
+        } else {
+            val result = commandEngine.process(command)
+            val execution = actionExecutor.execute(result.action)
+            result.message + "\n" + execution
+        }
+        responseView.text = response
+        speakUrdu(response)
+    }
+
+    private fun speakUrdu(message: String) {
+        if (speechOutputReady) {
+            speechOutput?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "idraak-response")
+        }
+    }
+
+    /** Memory changes happen only after an explicit remember/correct command. */
     private fun handleMemoryCommand(raw: String): String? {
         val command = raw.trim()
         val normalized = command.lowercase(Locale.ROOT)
@@ -125,11 +208,8 @@ class MainActivity : Activity() {
 
         if (normalized in listOf("what do you remember", "show memory", "list memories", "मेरी यादें बताओ")) {
             val memories = memoryStore.all()
-            return if (memories.isEmpty()) {
-                "Your local memory is empty."
-            } else {
-                memories.joinToString(separator = "\n\n") { "• [${it.category}] ${it.content}" }
-            }
+            return if (memories.isEmpty()) "Your local memory is empty."
+            else memories.joinToString(separator = "\n\n") { "• [${it.category}] ${it.content}" }
         }
 
         val searchPrefix = listOf("search memory for ", "find memory ")
@@ -171,6 +251,9 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        voiceController?.destroy()
+        speechOutput?.stop()
+        speechOutput?.shutdown()
         if (::responseView.isInitialized) memoryStore.close()
         super.onDestroy()
     }
