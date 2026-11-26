@@ -14,7 +14,8 @@ class OfflineCommandEngine {
         val text = original.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
         if (text.isBlank()) return CommandResult("براہ کرم اپنا حکم بتائیں۔")
 
-        if (containsAny(text, "hello", "hi", "hey", "salam", "assalam", "السلام علیکم", "سلام")) {
+        val englishGreeting = Regex("(^|\\\\s)(hello|hi|hey|salam|assalam)(\\\\s|$)", RegexOption.IGNORE_CASE)
+        if (englishGreeting.containsMatchIn(text) || containsAny(text, "السلام علیکم", "سلام")) {
             return CommandResult("وعلیکم السلام۔ ادراک حاضر ہے۔")
         }
         if (containsAny(text, "open settings", "phone settings", "settings kholo", "سیٹنگ کھولو", "سیٹنگز کھولو", "فون کی سیٹنگ")) {
