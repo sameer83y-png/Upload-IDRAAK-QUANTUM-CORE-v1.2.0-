@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ImageView
 import android.widget.TextView
 import com.idraak.quantum.core.AndroidActionExecutor
 import com.idraak.quantum.core.LocalMemoryStore
@@ -80,13 +81,14 @@ class MainActivity : Activity() {
             setPadding(0, 8, 0, 26)
         }, matchWrap())
 
-        root.addView(TextView(this).apply {
-            text = "◉"
-            textSize = 82f
-            setTextColor(accent)
+        root.addView(ImageView(this).apply {
+            setImageResource(com.idraak.quantum.R.drawable.idraak_core_logo)
+            contentDescription = "Idraak Quantum Core logo"
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(0, 2, 0, 10)
+        }, LinearLayout.LayoutParams(176, 176).apply {
             gravity = Gravity.CENTER
-            setPadding(0, 4, 0, 6)
-        }, matchWrap())
+        })
 
         root.addView(TextView(this).apply {
             text = "LOCAL CORE  •  MEMORY READY"
