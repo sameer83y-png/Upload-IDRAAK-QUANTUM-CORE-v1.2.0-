@@ -24,10 +24,19 @@ class AndroidActionExecutor(private val context: Context) {
                 context.startActivity(intent)
                 "فون ڈائلر کھول دیا گیا ہے۔ کال کرنے سے پہلے نمبر چیک کریں۔"
             }
+            is CommandAction.SetAlarm -> {
+                val intent = Intent(AlarmClock.ACTION_SET_ALARM)
+                    .putExtra(AlarmClock.EXTRA_HOUR, action.hour)
+                    .putExtra(AlarmClock.EXTRA_MINUTES, action.minute)
+                    .putExtra(AlarmClock.EXTRA_MESSAGE, action.label)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+                "الارم بنانے کی درخواست گھڑی کی ایپ کو بھیج دی گئی۔ اگر تصدیق مانگی جائے تو اسے منظور کریں۔"
+            }
             CommandAction.OpenAlarm -> {
                 context.startActivity(Intent(AlarmClock.ACTION_SHOW_ALARMS)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                "الارم ایپ کھول دی گئی۔"
+                "الارم کھول دیا گیا۔"
             }
             CommandAction.OpenSettings -> {
                 context.startActivity(Intent(Settings.ACTION_SETTINGS)
