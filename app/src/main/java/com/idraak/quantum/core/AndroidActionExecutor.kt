@@ -21,6 +21,16 @@ class AndroidActionExecutor(private val context: Context) {
                 "لنک کھول دیا گیا۔"
             }
             is CommandAction.OpenApp -> openApp(action.appName)
+            is CommandAction.ShareText -> {
+                val shareIntent = Intent(Intent.ACTION_SEND)
+                    .setType("text/plain")
+                    .putExtra(Intent.EXTRA_TEXT, action.text)
+                context.startActivity(
+                    Intent.createChooser(shareIntent, "پیغام بھیجنے کے لیے ایپ منتخب کریں")
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+                "شیئر مینو کھل گیا ہے۔ ایپ منتخب کرکے بھیجنے سے پہلے پیغام چیک کریں۔"
+            }
             is CommandAction.DialNumber -> {
                 val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(action.number)))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -103,6 +113,19 @@ class AndroidActionExecutor(private val context: Context) {
                 listOf("com.openai.chatgpt")
             target.contains("gemini") ->
                 listOf("com.google.android.apps.bard")
+            target.contains("whatsapp") || target.contains("واٹس ایپ") ->
+                listOf("com.whatsapp")
+            target.contains("instagram") || target.contains("انسٹاگرام") ->
+                listOf("com.instagram.android")
+            target.contains("facebook") || target.contains("فیس بک") ->
+                listOf("com.facebook.katana")
+            target.contains("telegram") || target.contains("ٹیلیگرام") ->
+                listOf("org.telegram.messenger")
+            target.contains("maps") || target.contains("نقشہ") ->
+                listOf("com.google.android.apps.maps")
+            target.contains("gmail") ->
+                listOf("com.google.android.gm")
+
             else -> emptyList()
         }
         if (target.contains("settings") || target.contains("سیٹنگ")) return execute(CommandAction.OpenSettings)
