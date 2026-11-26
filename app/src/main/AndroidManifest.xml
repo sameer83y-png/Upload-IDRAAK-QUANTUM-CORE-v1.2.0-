@@ -12,6 +12,12 @@
         <package android:name="com.android.chrome" />
         <package android:name="com.openai.chatgpt" />
         <package android:name="com.google.android.apps.bard" />
+        <package android:name="com.whatsapp" />
+        <package android:name="com.instagram.android" />
+        <package android:name="com.facebook.katana" />
+        <package android:name="org.telegram.messenger" />
+        <package android:name="com.google.android.apps.maps" />
+        <package android:name="com.google.android.gm" />
     </queries>
 
     <application
