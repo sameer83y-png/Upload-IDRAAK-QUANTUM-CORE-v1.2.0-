@@ -47,17 +47,7 @@ class AndroidActionExecutor(private val context: Context) {
                 "الارم بنانے کی درخواست گھڑی کی ایپ کو بھیج دی گئی۔ اگر تصدیق مانگی جائے تو اسے منظور کریں۔"
             }
             is CommandAction.ScheduleReminder -> {
-                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-                val requestCode = (System.currentTimeMillis() and 0x7fffffff).toInt()
-                val reminderIntent = Intent(context, ReminderReceiver::class.java)
-                    .putExtra(ReminderReceiver.EXTRA_MESSAGE, action.message)
-                val pending = PendingIntent.getBroadcast(
-                    context, requestCode, reminderIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-                alarmManager.setAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP, action.triggerAtMillis, pending
-                )
+                ReminderReceiver.schedule(context, action.triggerAtMillis, action.message)
                 "یاد دہانی محفوظ کر دی گئی ہے۔ مقررہ وقت پر نوٹیفکیشن آئے گا۔"
             }
             is CommandAction.AdjustVolume -> {
