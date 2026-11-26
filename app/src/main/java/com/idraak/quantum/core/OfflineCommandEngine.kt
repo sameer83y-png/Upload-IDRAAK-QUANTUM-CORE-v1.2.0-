@@ -4,51 +4,106 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 
-/** First offline command layer. Android execution stays separate for permission-aware handling. */
+/**
+ * Deterministic offline intent router. Unknown requests are never reported as completed.
+ * Natural-language coverage is intentionally explicit and grows through tested rules.
+ */
 class OfflineCommandEngine {
     fun process(rawText: String): CommandResult {
-        val text = rawText.trim().lowercase(Locale.ROOT)
-        if (text.isBlank()) return CommandResult("Please enter a command.")
-        if (containsAny(text, "hello", "hi", "hey", "salam", "assalam")) {
-            return CommandResult("Hello. Idraak is ready.")
-        }
-        if (containsAny(text, "open settings", "phone settings", "settings kholo", "सेटिंग")) {
-            return CommandResult("Opening phone settings.", CommandAction.OpenSettings)
-        }
-        if (containsAny(text, "open camera", "camera kholo", "कैमरा खोल")) {
-            return CommandResult("Opening camera.", CommandAction.OpenCamera)
+        val original = rawText.trim()
+        val text = original.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+        if (text.isBlank()) return CommandResult("براہ کرم اپنا حکم بتائیں۔")
+
+        if (containsAny(text, "hello", "hi", "hey", "salam", "assalam", "السلام علیکم", "سلام")) {
+            return CommandResult("وعلیکم السلام۔ ادراک حاضر ہے۔")
         }
 
-        val youtubePrefix = listOf("search youtube for", "youtube par", "youtube pe", "यूट्यूब पर")
-            .firstOrNull { text.contains(it) }
-        if (youtubePrefix != null) {
-            val query = rawText.substringAfter(youtubePrefix, "").trim()
+        if (containsAny(text, "open settings", "phone settings", "settings kholo", "سیٹنگ کھولو", "سیٹنگز کھولو", "فون کی سیٹنگ")) {
+            return CommandResult("فون کی سیٹنگز کھول رہا ہوں۔", CommandAction.OpenSettings)
+        }
+        if (containsAny(text, "open camera", "camera kholo", "کیمرہ کھولو", "کیمرا کھولو")) {
+            return CommandResult("کیمرہ کھول رہا ہوں۔", CommandAction.OpenCamera)
+        }
+        if (containsAny(text, "open alarm", "show alarms", "alarm kholo", "الارم کھولو", "الارم دکھاؤ", "میرے الارم دکھاؤ")) {
+            return CommandResult("الارم کھول رہا ہوں۔", CommandAction.OpenAlarm)
+        }
+
+        val phoneMatch = Regex("(?:call|dial|phone|کال کرو|فون کرو|نمبر ملاؤ)\\s*([+0-9][+0-9() -]{5,})").find(original)
+        if (phoneMatch != null) {
+            val number = phoneMatch.groupValues[1].filter { it.isDigit() || it == '+' }
+            if (number.count(Char::isDigit) in 6..15) {
+                return CommandResult("ڈائلر کھول رہا ہوں۔ نمبر چیک کرکے خود کال کریں۔", CommandAction.DialNumber(number))
+            }
+        }
+
+        val youtubeMarkers = listOf(
+            "search youtube for", "youtube par", "youtube pe", "یوتیوب پر", "یوٹیوب پر",
+            "یوٹیوب میں", "یوٹیوب پہ", "یوٹیوب پر تلاش کرو", "یوٹیوب پر سرچ کرو"
+        )
+        val youtubeMarker = youtubeMarkers.firstOrNull { text.contains(it) }
+        if (youtubeMarker != null) {
+            val query = extractAfterMarker(original, youtubeMarker)
+                .removePrefixes("search", "تلاش کرو", "سرچ کرو", "دکھاؤ", "چلاؤ")
+                .trim()
             if (query.isNotBlank()) return CommandResult(
-                "Opening YouTube search for: $query",
+                "یوٹیوب پر تلاش کھول رہا ہوں: $query",
                 CommandAction.OpenUrl("https://www.youtube.com/results?search_query=" + encode(query))
             )
-            return CommandResult("What should I search for on YouTube?")
+            return CommandResult("یوٹیوب پر کیا تلاش کروں؟")
         }
 
-        val webPrefix = listOf("search web for", "google", "search for", "वेब पर खोजो")
-            .firstOrNull { text.startsWith(it) }
-        if (webPrefix != null) {
-            val query = rawText.drop(webPrefix.length).trim()
+        val openAppRules = listOf(
+            listOf("open youtube", "youtube kholo", "یوٹیوب کھولو") to "youtube",
+            listOf("open chrome", "chrome kholo", "کروم کھولو", "براوزر کھولو", "براؤزر کھولو") to "chrome",
+            listOf("open chatgpt", "chatgpt kholo", "چیٹ جی پی ٹی کھولو", "چیٹ جی پی ٹی") to "chatgpt",
+            listOf("open gemini", "gemini kholo", "جیمنائی کھولو", "جیمنی کھولو") to "gemini"
+        )
+        for ((phrases, app) in openAppRules) {
+            if (phrases.any { text == it || text.startsWith("$it ") }) {
+                return CommandResult("ایپ کھولنے کی کوشش کر رہا ہوں۔", CommandAction.OpenApp(app))
+            }
+        }
+
+        val webMarkers = listOf(
+            "search web for", "search google for", "google search", "google پر",
+            "ویب پر تلاش کرو", "گوگل پر تلاش کرو", "انٹرنیٹ پر تلاش کرو", "تلاش کرو"
+        )
+        val webMarker = webMarkers.firstOrNull { text.startsWith(it) }
+        if (webMarker != null) {
+            val query = extractAfterMarker(original, webMarker).trim()
             if (query.isNotBlank()) return CommandResult(
-                "Searching the web for: $query",
+                "ویب پر تلاش کر رہا ہوں: $query",
                 CommandAction.OpenUrl("https://www.google.com/search?q=" + encode(query))
             )
+            return CommandResult("کیا تلاش کرنا ہے؟")
         }
 
-        if (text.startsWith("open https://") || text.startsWith("open http://")) {
-            val url = rawText.substringAfter("open ").trim()
-            return CommandResult("Opening website.", CommandAction.OpenUrl(url))
+        val openWebsite = Regex("^(?:open|visit|کھولو|ویب سائٹ کھولو)\\s+(https?://\\S+)$", RegexOption.IGNORE_CASE)
+            .find(original)
+        if (openWebsite != null) {
+            return CommandResult("ویب سائٹ کھول رہا ہوں۔", CommandAction.OpenUrl(openWebsite.groupValues[1]))
         }
-        return CommandResult("I don't have an offline command for that yet. This will be added to the command coverage plan.")
+
+        return CommandResult("یہ حکم ابھی میرے آف لائن کمانڈز میں شامل نہیں۔ براہ کرم اسے دوسرے الفاظ میں بتائیں۔")
     }
 
     private fun containsAny(value: String, vararg candidates: String): Boolean =
         candidates.any(value::contains)
+
+    private fun extractAfterMarker(original: String, marker: String): String {
+        val index = original.lowercase(Locale.ROOT).indexOf(marker.lowercase(Locale.ROOT))
+        return if (index >= 0) original.substring(index + marker.length) else ""
+    }
+
+    private fun String.removePrefixes(vararg prefixes: String): String {
+        var value = this.trim()
+        for (prefix in prefixes) {
+            if (value.lowercase(Locale.ROOT).startsWith(prefix.lowercase(Locale.ROOT))) {
+                value = value.drop(prefix.length).trim()
+            }
+        }
+        return value
+    }
 
     private fun encode(value: String): String =
         URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
