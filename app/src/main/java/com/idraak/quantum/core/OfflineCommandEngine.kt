@@ -15,7 +15,7 @@ class OfflineCommandEngine {
         if (text.isBlank()) return CommandResult("براہ کرم اپنا حکم بتائیں۔")
 
         val englishGreeting = Regex("(^|\\s)(hello|hi|hey|salam|assalam)(\\s|$)", RegexOption.IGNORE_CASE)
-        if (englishGreeting.containsMatchIn(text) || containsAny(text, "السلام علیکم", "سلام")) {
+        if (englishGreeting.containsMatchIn(text) || text == "سلام" || text == "السلام" || text.contains("السلام علیکم") || text.contains("وعلیکم السلام")) {
             return CommandResult("وعلیکم السلام۔ ادراک حاضر ہے۔")
         }
         if (containsAny(text, "open settings", "phone settings", "settings kholo", "سیٹنگ کھولو", "سیٹنگز کھولو", "فون کی سیٹنگ")) {
@@ -113,11 +113,31 @@ class OfflineCommandEngine {
             return CommandResult("یوٹیوب پر کیا تلاش کروں؟")
         }
 
+        val shareMarkers = listOf(
+            "share message ", "share this message ", "send this message ",
+            "یہ پیغام شیئر کرو ", "یہ پیغام بھیجو ", "پیغام بھیجو "
+        )
+        val shareMarker = shareMarkers.firstOrNull { text.startsWith(it) }
+        if (shareMarker != null) {
+            val message = original.drop(shareMarker.length).trim()
+            if (message.isBlank()) return CommandResult("کون سا پیغام شیئر کرنا ہے؟")
+            return CommandResult(
+                "شیئر کرنے کے لیے ایپ منتخب کریں۔",
+                CommandAction.ShareText(message)
+            )
+        }
+
         val openAppRules = listOf(
             listOf("open youtube", "youtube kholo", "یوٹیوب کھولو") to "youtube",
             listOf("open chrome", "chrome kholo", "کروم کھولو", "براوزر کھولو", "براؤزر کھولو") to "chrome",
             listOf("open chatgpt", "chatgpt kholo", "چیٹ جی پی ٹی کھولو", "چیٹ جی پی ٹی") to "chatgpt",
-            listOf("open gemini", "gemini kholo", "جیمنائی کھولو", "جیمنی کھولو") to "gemini"
+            listOf("open gemini", "gemini kholo", "جیمنائی کھولو", "جیمنی کھولو") to "gemini",
+            listOf("open whatsapp", "whatsapp kholo", "واٹس ایپ کھولو") to "whatsapp",
+            listOf("open instagram", "instagram kholo", "انسٹاگرام کھولو") to "instagram",
+            listOf("open facebook", "facebook kholo", "فیس بک کھولو") to "facebook",
+            listOf("open telegram", "telegram kholo", "ٹیلیگرام کھولو") to "telegram",
+            listOf("open maps", "google maps kholo", "نقشہ کھولو") to "maps",
+            listOf("open gmail", "gmail kholo", "جی میل کھولو") to "gmail"
         )
         for ((phrases, app) in openAppRules) {
             if (phrases.any { text == it || text.startsWith("$it ") }) return CommandResult(
