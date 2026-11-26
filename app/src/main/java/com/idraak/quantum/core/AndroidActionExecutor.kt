@@ -2,6 +2,8 @@ package com.idraak.quantum.core
 
 import android.content.ActivityNotFoundException
 import android.content.Context
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.media.AudioManager
 import android.net.Uri
@@ -33,6 +35,20 @@ class AndroidActionExecutor(private val context: Context) {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(intent)
                 "الارم بنانے کی درخواست گھڑی کی ایپ کو بھیج دی گئی۔ اگر تصدیق مانگی جائے تو اسے منظور کریں۔"
+            }
+            is CommandAction.ScheduleReminder -> {
+                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                val requestCode = (System.currentTimeMillis() and 0x7fffffff).toInt()
+                val reminderIntent = Intent(context, ReminderReceiver::class.java)
+                    .putExtra(ReminderReceiver.EXTRA_MESSAGE, action.message)
+                val pending = PendingIntent.getBroadcast(
+                    context, requestCode, reminderIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP, action.triggerAtMillis, pending
+                )
+                "یاد دہانی محفوظ کر دی گئی ہے۔ مقررہ وقت پر نوٹیفکیشن آئے گا۔"
             }
             is CommandAction.AdjustVolume -> {
                 val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
