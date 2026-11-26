@@ -9,7 +9,7 @@ An offline-first Android assistant foundation designed around local command exec
 - Opens supported installed apps: YouTube, Chrome, ChatGPT, and Gemini.
 - Opens YouTube and Google search results for spoken or typed search requests.
 - Opens a phone dialer with a requested number; the user reviews and places the call.
-- Opens the device alarm screen.
+- Opens the device alarm screen and sends numeric-time alarm requests to the Android Clock app (for example, `set alarm for 7:30 PM` or `الارم 19:30 لگاؤ`). The Clock app may ask the user to confirm.
 - Local SQLite memory: explicit save, list, search, exact deletion, and correction history.
 - Urdu text-to-speech when the device has a compatible Urdu voice.
 - On-device speech recognition when Android 12+ and a compatible offline Urdu speech pack are available. No automatic network-recognition fallback is used.
