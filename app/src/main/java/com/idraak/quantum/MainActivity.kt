@@ -15,11 +15,13 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.ScrollView
 import com.idraak.quantum.core.AndroidActionExecutor
 import com.idraak.quantum.core.LocalMemoryStore
 import com.idraak.quantum.core.OfflineCommandEngine
 import com.idraak.quantum.core.OnDeviceVoiceController
 import java.util.Locale
+import java.util.Calendar
 
 class MainActivity : Activity() {
     companion object {
@@ -144,6 +146,40 @@ class MainActivity : Activity() {
             setPadding(6, 24, 6, 0)
             gravity = Gravity.CENTER
         }
+        root.addView(TextView(this).apply {
+            text = "SMART SUGGESTIONS"
+            textSize = 11f
+            setTextColor(accent)
+            gravity = Gravity.CENTER
+            setPadding(0, 24, 0, 8)
+        }, matchWrap())
+
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        val suggestions = when (hour) {
+            in 5..10 -> listOf("صبح کی یاد دہانی لگاؤ" to "مجھے 30 منٹ بعد اپنا دن پلان کرنا یاد دلانا")
+            in 11..16 -> listOf("YouTube تلاش" to "یوٹیوب پر آج کی ٹیک خبریں تلاش کرو")
+            in 17..21 -> listOf("شام کا الارم" to "الارم 19:30 لگاؤ")
+            else -> listOf("آواز کی سیٹنگز" to "ساؤنڈ سیٹنگز کھولو")
+        }
+        for ((label, command) in suggestions) {
+            root.addView(Button(this).apply {
+                text = label
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.rgb(20, 38, 60))
+                setOnClickListener {
+                    commandInput.setText(command)
+                    executeCommand(command)
+                }
+            }, matchWrap().apply { topMargin = 6 })
+        }
+
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            root.addView(Button(this).apply {
+                text = "ENABLE VOICE INPUT"
+                setOnClickListener { startVoiceInput() }
+            }, matchWrap().apply { topMargin = 6 })
+        }
+
         root.addView(responseView, matchWrap())
 
         root.addView(TextView(this).apply {
@@ -154,7 +190,11 @@ class MainActivity : Activity() {
             setPadding(0, 34, 0, 0)
         }, matchWrap())
 
-        setContentView(root)
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(root)
+        }
+        setContentView(scroll)
     }
 
 
