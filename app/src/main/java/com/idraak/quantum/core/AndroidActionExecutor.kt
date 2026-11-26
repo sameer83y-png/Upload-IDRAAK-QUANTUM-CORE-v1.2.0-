@@ -3,6 +3,7 @@ package com.idraak.quantum.core
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.net.Uri
 import android.provider.AlarmClock
 import android.provider.MediaStore
@@ -32,6 +33,20 @@ class AndroidActionExecutor(private val context: Context) {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(intent)
                 "الارم بنانے کی درخواست گھڑی کی ایپ کو بھیج دی گئی۔ اگر تصدیق مانگی جائے تو اسے منظور کریں۔"
+            }
+            is CommandAction.AdjustVolume -> {
+                val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                val direction = when (action.direction) {
+                    VolumeDirection.UP -> AudioManager.ADJUST_RAISE
+                    VolumeDirection.DOWN -> AudioManager.ADJUST_LOWER
+                    VolumeDirection.MUTE -> AudioManager.ADJUST_MUTE
+                }
+                audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI)
+                when (action.direction) {
+                    VolumeDirection.UP -> "میڈیا کی آواز بڑھا دی گئی۔"
+                    VolumeDirection.DOWN -> "میڈیا کی آواز کم کر دی گئی۔"
+                    VolumeDirection.MUTE -> "میڈیا کی آواز خاموش کر دی گئی۔"
+                }
             }
             CommandAction.OpenAlarm -> {
                 context.startActivity(Intent(AlarmClock.ACTION_SHOW_ALARMS)
