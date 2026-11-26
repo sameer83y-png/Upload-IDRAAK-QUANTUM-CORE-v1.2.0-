@@ -117,14 +117,14 @@ class MainActivity : Activity() {
         }, matchWrap().apply { topMargin = 12 })
 
         root.addView(Button(this).apply {
-            text = "🎙  اردو میں بولیں  •  OFFLINE VOICE"
+            text = "🎙  اردو میں بولیں  •  ON-DEVICE VOICE"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.rgb(25, 54, 82))
             setOnClickListener { startVoiceInput() }
         }, matchWrap().apply { topMargin = 10 })
 
         responseView = TextView(this).apply {
-            text = "تیار ہوں۔ اپنا حکم لکھیں یا مائیک سے بولیں۔"
+            text = "السلام علیکم۔ اپنا حکم لکھیں یا دستیاب آف لائن وائس انجن سے بولیں۔"
             textSize = 15f
             setTextColor(Color.WHITE)
             setPadding(6, 24, 6, 0)
