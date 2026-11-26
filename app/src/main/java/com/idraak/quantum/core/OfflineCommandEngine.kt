@@ -18,7 +18,11 @@ class OfflineCommandEngine {
         if (englishGreeting.containsMatchIn(text) || text == "سلام" || text == "السلام" || text.contains("السلام علیکم") || text.contains("وعلیکم السلام")) {
             return CommandResult("وعلیکم السلام۔ ادراک حاضر ہے۔")
         }
-        if (containsAny(text, "open settings", "phone settings", "settings kholo", "سیٹنگ کھولو", "سیٹنگز کھولو", "فون کی سیٹنگ")) {
+        if (
+            text == "open settings" || text == "phone settings" || text == "settings kholo" ||
+            text == "سیٹنگ کھولو" || text == "سیٹنگز کھولو" || text == "فون کی سیٹنگ" ||
+            text == "فون کی سیٹنگ کھولو"
+        ) {
             return CommandResult("فون کی سیٹنگز کھول رہا ہوں۔", CommandAction.OpenSettings)
         }
         if (containsAny(text, "wifi settings", "open wifi", "وائی فائی کھولو", "وائی فائی سیٹنگز", "وائی فائی کی سیٹنگ")) {
