@@ -5,6 +5,7 @@ import android.os.Build
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.content.Intent
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
@@ -59,12 +60,14 @@ class MainActivity : Activity() {
     }
 
     private fun buildDashboard() {
-        val accent = Color.rgb(67, 218, 255)
+        val preferences = getSharedPreferences("idraak_settings", MODE_PRIVATE)
+        val accent = preferences.getInt("accent", Color.rgb(67, 218, 255))
+        val background = preferences.getInt("background", Color.rgb(5, 10, 23))
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(28, 34, 28, 28)
-            setBackgroundColor(Color.rgb(5, 10, 23))
+            setBackgroundColor(background)
         }
 
         root.addView(TextView(this).apply {
@@ -82,6 +85,15 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(0, 8, 0, 26)
         }, matchWrap())
+
+        root.addView(Button(this).apply {
+            text = "⚙  SETTINGS"
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(24, 42, 65))
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+            }
+        }, matchWrap().apply { topMargin = 8; bottomMargin = 14 })
 
         root.addView(ImageView(this).apply {
             setImageResource(com.idraak.quantum.R.drawable.idraak_core_logo)
@@ -261,6 +273,11 @@ class MainActivity : Activity() {
             }
         }
         return null
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::responseView.isInitialized) buildDashboard()
     }
 
     override fun onDestroy() {
