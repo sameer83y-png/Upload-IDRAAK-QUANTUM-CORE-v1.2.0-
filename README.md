@@ -5,7 +5,7 @@ An offline-first Android assistant foundation designed around local command exec
 ## Current capabilities
 - Native Android dashboard with original Idraak Quantum Core vector branding and adaptive launcher icon.
 - Offline command router with Urdu and English phrase coverage.
-- Opens phone settings and camera.
+- Opens phone settings, camera, and dedicated Wi-Fi, Bluetooth, display, sound, and battery settings pages.
 - Opens supported installed apps: YouTube, Chrome, ChatGPT, and Gemini.
 - Opens YouTube and Google search results for spoken or typed search requests.
 - Opens a phone dialer with a requested number; the user reviews and places the call.
