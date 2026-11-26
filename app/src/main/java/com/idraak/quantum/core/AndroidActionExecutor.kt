@@ -70,6 +70,6 @@ class AndroidActionExecutor(private val context: Context) {
             ?: return "یہ ایپ انسٹال نہیں یا اس کا لانچر دستیاب نہیں۔"
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(launchIntent)
-        "ایپ کھول دی گئی۔"
+        return "ایپ کھول دی گئی۔"
     }
 }
