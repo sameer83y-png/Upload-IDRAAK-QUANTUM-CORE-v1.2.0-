@@ -24,6 +24,16 @@ class OfflineCommandEngine {
             return CommandResult("کیمرہ کھول رہا ہوں۔", CommandAction.OpenCamera)
         }
 
+        if (containsAny(text, "volume up", "increase volume", "آواز بڑھاؤ", "آواز بڑھاؤ", "آواز تیز کرو", "والیوم بڑھاؤ")) {
+            return CommandResult("میڈیا کی آواز بڑھا رہا ہوں۔", CommandAction.AdjustVolume(VolumeDirection.UP))
+        }
+        if (containsAny(text, "volume down", "decrease volume", "آواز کم کرو", "آواز گھٹاؤ", "والیوم کم کرو")) {
+            return CommandResult("میڈیا کی آواز کم کر رہا ہوں۔", CommandAction.AdjustVolume(VolumeDirection.DOWN))
+        }
+        if (containsAny(text, "mute", "mute volume", "آواز بند کرو", "آواز خاموش کرو", "والیوم بند کرو")) {
+            return CommandResult("میڈیا کی آواز خاموش کر رہا ہوں۔", CommandAction.AdjustVolume(VolumeDirection.MUTE))
+        }
+
         if (containsAny(text, "open alarm", "show alarms", "alarm kholo", "الارم کھولو", "الارم دکھاؤ", "میرے الارم دکھاؤ")) {
             return CommandResult("الارم کھول رہا ہوں۔", CommandAction.OpenAlarm)
         }
