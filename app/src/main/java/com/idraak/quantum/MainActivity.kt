@@ -1,6 +1,7 @@
 package com.idraak.quantum
 
 import android.Manifest
+import android.os.Build
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -54,6 +55,7 @@ class MainActivity : Activity() {
             }
         }
         buildDashboard()
+        requestNotificationPermissionIfNeeded()
     }
 
     private fun buildDashboard() {
@@ -141,6 +143,15 @@ class MainActivity : Activity() {
         }, matchWrap())
 
         setContentView(root)
+    }
+
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 4202)
+        }
     }
 
     private fun startVoiceInput() {
