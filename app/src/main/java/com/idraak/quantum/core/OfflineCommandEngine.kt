@@ -17,13 +17,34 @@ class OfflineCommandEngine {
         if (containsAny(text, "hello", "hi", "hey", "salam", "assalam", "السلام علیکم", "سلام")) {
             return CommandResult("وعلیکم السلام۔ ادراک حاضر ہے۔")
         }
-
         if (containsAny(text, "open settings", "phone settings", "settings kholo", "سیٹنگ کھولو", "سیٹنگز کھولو", "فون کی سیٹنگ")) {
             return CommandResult("فون کی سیٹنگز کھول رہا ہوں۔", CommandAction.OpenSettings)
         }
         if (containsAny(text, "open camera", "camera kholo", "کیمرہ کھولو", "کیمرا کھولو")) {
             return CommandResult("کیمرہ کھول رہا ہوں۔", CommandAction.OpenCamera)
         }
+
+        if (containsAny(text, "set alarm", "add alarm", "create alarm", "alarm lagao", "الارم لگاؤ", "الارم لگاو", "الارم سیٹ کرو", "الارم لگا دو")) {
+            val time = Regex("(?<!\\d)(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?", RegexOption.IGNORE_CASE).find(original)
+            if (time == null) return CommandResult("کس وقت کا الارم لگاؤں؟ مثال: 7:30 AM یا 19:30۔")
+            var hour = time.groupValues[1].toIntOrNull() ?: return CommandResult("وقت واضح نہیں۔ مثال: 7:30 AM یا 19:30۔")
+            val minute = time.groupValues[2].takeIf { it.isNotBlank() }?.toIntOrNull() ?: 0
+            val meridiem = time.groupValues[3].lowercase(Locale.ROOT)
+            if (minute !in 0..59 || hour !in 0..23) return CommandResult("یہ وقت درست نہیں۔ مثال: 7:30 AM یا 19:30۔")
+            if (meridiem.isNotBlank()) {
+                if (hour !in 1..12) return CommandResult("AM یا PM کے ساتھ گھنٹہ 1 سے 12 کے درمیان ہونا چاہیے۔")
+                hour = when {
+                    meridiem == "am" && hour == 12 -> 0
+                    meridiem == "pm" && hour != 12 -> hour + 12
+                    else -> hour
+                }
+            }
+            return CommandResult(
+                "الارم ${time.groupValues[0].trim()} کے لیے گھڑی کی ایپ میں سیٹ کر رہا ہوں۔",
+                CommandAction.SetAlarm(hour, minute, "Idraak alarm")
+            )
+        }
+
         if (containsAny(text, "open alarm", "show alarms", "alarm kholo", "الارم کھولو", "الارم دکھاؤ", "میرے الارم دکھاؤ")) {
             return CommandResult("الارم کھول رہا ہوں۔", CommandAction.OpenAlarm)
         }
@@ -31,20 +52,15 @@ class OfflineCommandEngine {
         val phoneMatch = Regex("(?:call|dial|phone|کال کرو|فون کرو|نمبر ملاؤ)\\s*([+0-9][+0-9() -]{5,})").find(original)
         if (phoneMatch != null) {
             val number = phoneMatch.groupValues[1].filter { it.isDigit() || it == '+' }
-            if (number.count(Char::isDigit) in 6..15) {
-                return CommandResult("ڈائلر کھول رہا ہوں۔ نمبر چیک کرکے خود کال کریں۔", CommandAction.DialNumber(number))
-            }
+            if (number.count(Char::isDigit) in 6..15) return CommandResult(
+                "ڈائلر کھول رہا ہوں۔ نمبر چیک کرکے خود کال کریں۔", CommandAction.DialNumber(number)
+            )
         }
 
-        val youtubeMarkers = listOf(
-            "search youtube for", "youtube par", "youtube pe", "یوتیوب پر", "یوٹیوب پر",
-            "یوٹیوب میں", "یوٹیوب پہ", "یوٹیوب پر تلاش کرو", "یوٹیوب پر سرچ کرو"
-        )
+        val youtubeMarkers = listOf("search youtube for", "youtube par", "youtube pe", "یوتیوب پر", "یوٹیوب پر", "یوٹیوب میں", "یوٹیوب پہ", "یوٹیوب پر تلاش کرو", "یوٹیوب پر سرچ کرو")
         val youtubeMarker = youtubeMarkers.firstOrNull { text.contains(it) }
         if (youtubeMarker != null) {
-            val query = extractAfterMarker(original, youtubeMarker)
-                .removePrefixes("search", "تلاش کرو", "سرچ کرو", "دکھاؤ", "چلاؤ")
-                .trim()
+            val query = extractAfterMarker(original, youtubeMarker).removePrefixes("search", "تلاش کرو", "سرچ کرو", "دکھاؤ", "چلاؤ").trim()
             if (query.isNotBlank()) return CommandResult(
                 "یوٹیوب پر تلاش کھول رہا ہوں: $query",
                 CommandAction.OpenUrl("https://www.youtube.com/results?search_query=" + encode(query))
@@ -59,15 +75,12 @@ class OfflineCommandEngine {
             listOf("open gemini", "gemini kholo", "جیمنائی کھولو", "جیمنی کھولو") to "gemini"
         )
         for ((phrases, app) in openAppRules) {
-            if (phrases.any { text == it || text.startsWith("$it ") }) {
-                return CommandResult("ایپ کھولنے کی کوشش کر رہا ہوں۔", CommandAction.OpenApp(app))
-            }
+            if (phrases.any { text == it || text.startsWith("$it ") }) return CommandResult(
+                "ایپ کھولنے کی کوشش کر رہا ہوں۔", CommandAction.OpenApp(app)
+            )
         }
 
-        val webMarkers = listOf(
-            "search web for", "search google for", "google search", "google پر",
-            "ویب پر تلاش کرو", "گوگل پر تلاش کرو", "انٹرنیٹ پر تلاش کرو", "تلاش کرو"
-        )
+        val webMarkers = listOf("search web for", "search google for", "google search", "google پر", "ویب پر تلاش کرو", "گوگل پر تلاش کرو", "انٹرنیٹ پر تلاش کرو", "تلاش کرو")
         val webMarker = webMarkers.firstOrNull { text.startsWith(it) }
         if (webMarker != null) {
             val query = extractAfterMarker(original, webMarker).trim()
@@ -78,17 +91,15 @@ class OfflineCommandEngine {
             return CommandResult("کیا تلاش کرنا ہے؟")
         }
 
-        val openWebsite = Regex("^(?:open|visit|کھولو|ویب سائٹ کھولو)\\s+(https?://\\S+)$", RegexOption.IGNORE_CASE)
-            .find(original)
-        if (openWebsite != null) {
-            return CommandResult("ویب سائٹ کھول رہا ہوں۔", CommandAction.OpenUrl(openWebsite.groupValues[1]))
-        }
+        val openWebsite = Regex("^(?:open|visit|کھولو|ویب سائٹ کھولو)\\s+(https?://\\S+)$", RegexOption.IGNORE_CASE).find(original)
+        if (openWebsite != null) return CommandResult(
+            "ویب سائٹ کھول رہا ہوں۔", CommandAction.OpenUrl(openWebsite.groupValues[1])
+        )
 
         return CommandResult("یہ حکم ابھی میرے آف لائن کمانڈز میں شامل نہیں۔ براہ کرم اسے دوسرے الفاظ میں بتائیں۔")
     }
 
-    private fun containsAny(value: String, vararg candidates: String): Boolean =
-        candidates.any(value::contains)
+    private fun containsAny(value: String, vararg candidates: String): Boolean = candidates.any(value::contains)
 
     private fun extractAfterMarker(original: String, marker: String): String {
         val index = original.lowercase(Locale.ROOT).indexOf(marker.lowercase(Locale.ROOT))
@@ -97,14 +108,11 @@ class OfflineCommandEngine {
 
     private fun String.removePrefixes(vararg prefixes: String): String {
         var value = this.trim()
-        for (prefix in prefixes) {
-            if (value.lowercase(Locale.ROOT).startsWith(prefix.lowercase(Locale.ROOT))) {
-                value = value.drop(prefix.length).trim()
-            }
+        for (prefix in prefixes) if (value.lowercase(Locale.ROOT).startsWith(prefix.lowercase(Locale.ROOT))) {
+            value = value.drop(prefix.length).trim()
         }
         return value
     }
 
-    private fun encode(value: String): String =
-        URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
+    private fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
 }
