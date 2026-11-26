@@ -24,7 +24,11 @@ class OfflineCommandEngine {
             return CommandResult("کیمرہ کھول رہا ہوں۔", CommandAction.OpenCamera)
         }
 
-        if (containsAny(text, "set alarm", "add alarm", "create alarm", "alarm lagao", "الارم لگاؤ", "الارم لگاو", "الارم سیٹ کرو", "الارم لگا دو")) {
+        if (containsAny(text, "open alarm", "show alarms", "alarm kholo", "الارم کھولو", "الارم دکھاؤ", "میرے الارم دکھاؤ")) {
+            return CommandResult("الارم کھول رہا ہوں۔", CommandAction.OpenAlarm)
+        }
+
+        if (containsAny(text, "set alarm", "add alarm", "create alarm", "alarm lagao", "الارم لگاؤ", "الارم لگاو", "الارم سیٹ کرو", "الارم لگا دو", "الارم")) {
             val time = Regex("(?<!\\d)(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?", RegexOption.IGNORE_CASE).find(original)
             if (time == null) return CommandResult("کس وقت کا الارم لگاؤں؟ مثال: 7:30 AM یا 19:30۔")
             var hour = time.groupValues[1].toIntOrNull() ?: return CommandResult("وقت واضح نہیں۔ مثال: 7:30 AM یا 19:30۔")
@@ -43,10 +47,6 @@ class OfflineCommandEngine {
                 "الارم ${time.groupValues[0].trim()} کے لیے گھڑی کی ایپ میں سیٹ کر رہا ہوں۔",
                 CommandAction.SetAlarm(hour, minute, "Idraak alarm")
             )
-        }
-
-        if (containsAny(text, "open alarm", "show alarms", "alarm kholo", "الارم کھولو", "الارم دکھاؤ", "میرے الارم دکھاؤ")) {
-            return CommandResult("الارم کھول رہا ہوں۔", CommandAction.OpenAlarm)
         }
 
         val phoneMatch = Regex("(?:call|dial|phone|کال کرو|فون کرو|نمبر ملاؤ)\\s*([+0-9][+0-9() -]{5,})").find(original)
