@@ -97,6 +97,18 @@ class LocalMemoryStore(context: Context) :
         )
     }
 
+    fun searchInCategory(category: String, query: String, limit: Int = 50): List<MemoryRecord> {
+        val cleanCategory = category.trim().lowercase().take(40)
+        val cleanQuery = query.trim()
+        if (cleanCategory.isBlank() || cleanQuery.isBlank()) return emptyList()
+        val escaped = cleanQuery.replace("%", "\\%").replace("_", "\\_")
+        return readMemories(
+            "category = ? AND content LIKE ? ESCAPE '\\\\'",
+            arrayOf(cleanCategory, "%$escaped%"),
+            limit.coerceIn(1, 100)
+        )
+    }
+
     fun forgetMatching(query: String): Int {
         val clean = query.trim()
         if (clean.isEmpty()) return 0
