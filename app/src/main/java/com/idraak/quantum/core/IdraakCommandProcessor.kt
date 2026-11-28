@@ -405,6 +405,16 @@ class IdraakCommandProcessor(
             else "اسکرین پر نظر آنے والی تحریر یہ ہے:\n$visible"
         }
 
+        val doubleTapTarget = DoubleTapCommandParser.parse(command)
+        if (doubleTapTarget != null) {
+            if (!IdraakAccessibilityService.isConnected()) return "ڈبل ٹیپ کے لیے Idraak Accessibility فعال کریں۔"
+            return if (IdraakAccessibilityService.doubleTapText(doubleTapTarget)) {
+                "“$doubleTapTarget” پر ڈبل ٹیپ کر دیا۔"
+            } else {
+                "“$doubleTapTarget” کا واضح اور منفرد کنٹرول نہیں ملا؛ کوئی دوسرا کنٹرول نہیں دبایا گیا۔"
+            }
+        }
+
         val clickTarget = when {
             lower.matches(Regex("^(tap|click)( on)? .+")) ->
                 command.replaceFirst(Regex("^(tap|click)( on)?\\s+"), "").trim()
