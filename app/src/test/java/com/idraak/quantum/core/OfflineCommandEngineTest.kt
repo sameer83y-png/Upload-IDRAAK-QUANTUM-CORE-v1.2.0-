@@ -42,7 +42,7 @@ class OfflineCommandEngineTest {
         assertTrue(action is CommandAction.OpenUrl)
         val url = (action as CommandAction.OpenUrl).url
         assertTrue(url.contains("youtube.com/results"))
-        assertFalse(url.contains("%D8%AA%D9%84%D8%A7%D8%B4"))
+        assertTrue(!url.contains("%D8%AA%D9%84%D8%A7%D8%B4"))
     }
 
     @Test
