@@ -323,6 +323,27 @@ class IdraakCommandProcessor(
             return "اس عمل کی تصدیق درکار ہے۔ آگے بڑھنے کے لیے “ہاں” یا روکنے کے لیے “نہیں” کہیں۔"
         }
 
+        val cursorPosition = MoveCursorCommandParser.parse(command)
+        if (cursorPosition != null) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "کرسر منتقل کرنے کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            val moved = if (cursorPosition == CursorPosition.START) {
+                IdraakAccessibilityService.moveCursorToStart()
+            } else {
+                IdraakAccessibilityService.moveCursorToEnd()
+            }
+            return if (moved) {
+                if (cursorPosition == CursorPosition.START) {
+                    "کرسر ٹیکسٹ فیلڈ کے شروع میں منتقل کر دیا۔"
+                } else {
+                    "کرسر ٹیکسٹ فیلڈ کے آخر میں منتقل کر دیا۔"
+                }
+            } else {
+                "کرسر منتقل نہیں ہوا؛ ایک عام، منتخب اور قابلِ تدوین ٹیکسٹ فیلڈ پر فوکس کریں۔ پاس ورڈ فیلڈ محفوظ رہے گی۔"
+            }
+        }
+
         val searchQuery = when {
             lower.startsWith("search for ") -> command.substringAfter("search for ").trim()
             lower.startsWith("search ") && !lower.startsWith("search memory ") &&
