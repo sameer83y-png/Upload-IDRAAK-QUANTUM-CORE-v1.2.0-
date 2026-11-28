@@ -148,6 +148,26 @@ class OfflineCommandEngine {
             return CommandResult("یوٹیوب پر کیا تلاش کروں؟")
         }
 
+        val targetedSharePatterns = listOf(
+            Regex("^(?:share|send)(?:\\\\s+this)?\\\\s+(.+?)\\\\s+(?:on|to|via)\\\\s+(whatsapp|telegram|instagram|facebook|gmail)$", RegexOption.IGNORE_CASE),
+            Regex("^(whatsapp|telegram|instagram|facebook|gmail)\\\\s+par\\\\s+(.+?)\\\\s+(?:bhejo|share karo)$", RegexOption.IGNORE_CASE),
+            Regex("^(.+?)\\\\s+(?:کو\\\\s+)?(whatsapp|telegram|instagram|facebook|gmail)\\\\s+(?:پر|میں)\\\\s+(?:بھیجو|شیئر کرو)$", RegexOption.IGNORE_CASE),
+            Regex("^(whatsapp|telegram|instagram|facebook|gmail)\\\\s+پر\\\\s+(.+?)\\\\s+(?:بھیجو|شیئر کرو)$", RegexOption.IGNORE_CASE)
+        )
+        val targetedShare = targetedSharePatterns.firstNotNullOfOrNull { it.find(original) }
+        if (targetedShare != null) {
+            val first = targetedShare.groupValues[1].trim()
+            val second = targetedShare.groupValues[2].trim()
+            val appFirst = first.lowercase(Locale.ROOT) in setOf("whatsapp", "telegram", "instagram", "facebook", "gmail")
+            val appName = if (appFirst) first else second
+            val message = if (appFirst) second else first
+            if (message.isBlank()) return CommandResult("کیا پیغام بھیجنا ہے؟")
+            return CommandResult(
+                "متعلقہ ایپ کا شیئر مینو کھول رہا ہوں۔ بھیجنے سے پہلے پیغام چیک کریں۔",
+                CommandAction.ShareTextToApp(message, appName)
+            )
+        }
+
         val shareMarkers = listOf(
             "share message ", "share this message ", "send this message ",
             "یہ پیغام شیئر کرو ", "یہ پیغام بھیجو ", "پیغام بھیجو "
