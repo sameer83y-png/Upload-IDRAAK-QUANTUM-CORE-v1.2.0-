@@ -16,8 +16,7 @@ import kotlin.math.min
 
 /**
  * Animated command HUD for the Home Launcher.
- * Place idraak_home_background.jpg in drawable-nodpi to show the supplied portrait.
- * The fallback remains build-safe until that artwork is added to the repository.
+ * Loads idraak_home_background.jpg from res/drawable and overlays a live command HUD.
  */
 class HomeLauncherView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -108,6 +107,10 @@ class HomeLauncherView(context: Context) : View(context) {
             "listening" -> "LISTENING  •  VOICE INPUT"
             "speaking" -> "SPEAKING  •  URDU VOICE"
             "processing" -> "PROCESSING  •  COMMAND"
+            "executing" -> "EXECUTING  •  DEVICE ACTION"
+            "confirming" -> "WAITING  •  CONFIRMATION"
+            "explaining" -> "RESPONSE  •  EXPLAINING"
+            "error" -> "ATTENTION  •  ACTION NEEDS HELP"
             else -> "SYSTEM ONLINE  •  READY"
         }
         paint.textSize = min(w * 0.035f, 14f)
@@ -128,7 +131,13 @@ class HomeLauncherView(context: Context) : View(context) {
         val scanY = top + 5f + (bottom - top - 10f) * phase
         paint.color = 0x773AFFB0
         canvas.drawRect(left + 4f, scanY, right - 4f, scanY + 2f, paint)
-        paint.color = 0xFF36FFAA.toInt()
+        paint.color = when (mode) {
+            "error" -> 0xFFFF6B72.toInt()
+            "confirming" -> 0xFFFFD166.toInt()
+            "processing", "executing" -> 0xFF55C8FF.toInt()
+            "speaking", "explaining" -> 0xFFB88CFF.toInt()
+            else -> 0xFF36FFAA.toInt()
+        }
         canvas.drawCircle(right - 18f, top + 20f, 4f + (phase * 3f), paint)
     }
 
