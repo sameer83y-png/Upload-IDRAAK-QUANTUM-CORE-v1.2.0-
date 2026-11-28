@@ -281,7 +281,7 @@ class OfflineCommandEngine {
             listOf(
                 "open youtube", "youtube kholo", "youtube khol do", "youtube chalao", "youtube chala do",
                 "یوٹیوب کھولو", "یوٹیوب کھول دو", "یوٹیوب چلاؤ", "یوٹیوب چلاو", "یوٹیوب چلا دو",
-                "यूट्यूब खोलो", "यूट्यूब चलाो", "यूट्यूब चलाओ"
+                "यूट्यूब खोलो", "यूट्यूब चलाओ"
             ) to "youtube",
             listOf("open chrome", "chrome kholo", "chrome chalao", "کروم کھولو", "کروم چلاؤ", "براوزر کھولو", "براؤزر کھولو") to "chrome",
             listOf("open chatgpt", "chatgpt kholo", "chatgpt chalao", "چیٹ جی پی ٹی کھولو", "چیٹ جی پی ٹی چلاؤ", "چیٹ جی پی ٹی") to "chatgpt",
