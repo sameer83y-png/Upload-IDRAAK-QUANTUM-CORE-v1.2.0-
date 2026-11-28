@@ -33,7 +33,10 @@ class OfflineCommandEngine {
         val original = greetingPrefix.replaceFirst(rawOriginal, "").trim()
         if (original.isBlank()) return CommandResult(greetingReply)
         val numericText = normalizeDigits(original)
-        val text = original.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+        val text = original.lowercase(Locale.ROOT)
+            .replace(Regex("[.!?؟،,]+$"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
         if (
             text == "open settings" || text == "phone settings" || text == "settings kholo" ||
             text == "سیٹنگ کھولو" || text == "سیٹنگز کھولو" || text == "فون کی سیٹنگ" ||
@@ -275,16 +278,20 @@ class OfflineCommandEngine {
         }
 
         val openAppRules = listOf(
-            listOf("open youtube", "youtube kholo", "یوٹیوب کھولو", "यूट्यूब खोलो") to "youtube",
-            listOf("open chrome", "chrome kholo", "کروم کھولو", "براوزر کھولو", "براؤزر کھولو") to "chrome",
-            listOf("open chatgpt", "chatgpt kholo", "چیٹ جی پی ٹی کھولو", "چیٹ جی پی ٹی") to "chatgpt",
-            listOf("open gemini", "gemini kholo", "جیمنائی کھولو", "جیمنی کھولو") to "gemini",
-            listOf("open whatsapp", "whatsapp kholo", "واٹس ایپ کھولو") to "whatsapp",
-            listOf("open instagram", "instagram kholo", "انسٹاگرام کھولو") to "instagram",
-            listOf("open facebook", "facebook kholo", "فیس بک کھولو") to "facebook",
-            listOf("open telegram", "telegram kholo", "ٹیلیگرام کھولو") to "telegram",
-            listOf("open maps", "google maps kholo", "نقشہ کھولو") to "maps",
-            listOf("open gmail", "gmail kholo", "جی میل کھولو") to "gmail"
+            listOf(
+                "open youtube", "youtube kholo", "youtube khol do", "youtube chalao", "youtube chala do",
+                "یوٹیوب کھولو", "یوٹیوب کھول دو", "یوٹیوب چلاؤ", "یوٹیوب چلاو", "یوٹیوب چلا دو",
+                "यूट्यूब खोलो", "यूट्यूब चलाो", "यूट्यूब चलाओ"
+            ) to "youtube",
+            listOf("open chrome", "chrome kholo", "chrome chalao", "کروم کھولو", "کروم چلاؤ", "براوزر کھولو", "براؤزر کھولو") to "chrome",
+            listOf("open chatgpt", "chatgpt kholo", "chatgpt chalao", "چیٹ جی پی ٹی کھولو", "چیٹ جی پی ٹی چلاؤ", "چیٹ جی پی ٹی") to "chatgpt",
+            listOf("open gemini", "gemini kholo", "gemini chalao", "جیمنائی کھولو", "جیمنی کھولو", "جیمنائی چلاؤ", "جیمنی چلاؤ") to "gemini",
+            listOf("open whatsapp", "whatsapp kholo", "whatsapp chalao", "واٹس ایپ کھولو", "واٹس ایپ چلاؤ") to "whatsapp",
+            listOf("open instagram", "instagram kholo", "instagram chalao", "انسٹاگرام کھولو", "انسٹاگرام چلاؤ") to "instagram",
+            listOf("open facebook", "facebook kholo", "facebook chalao", "فیس بک کھولو", "فیس بک چلاؤ") to "facebook",
+            listOf("open telegram", "telegram kholo", "telegram chalao", "ٹیلیگرام کھولو", "ٹیلیگرام چلاؤ") to "telegram",
+            listOf("open maps", "google maps kholo", "maps chalao", "نقشہ کھولو", "گوگل میپس کھولو") to "maps",
+            listOf("open gmail", "gmail kholo", "gmail chalao", "جی میل کھولو", "جی میل چلاؤ") to "gmail"
         )
         for ((phrases, app) in openAppRules) {
             if (phrases.any { text == it || text.startsWith("$it ") }) return CommandResult(
