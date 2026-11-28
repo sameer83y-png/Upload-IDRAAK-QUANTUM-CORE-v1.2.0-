@@ -23,6 +23,7 @@ import com.idraak.quantum.core.ConversationHistoryStore
 import com.idraak.quantum.core.OfflineCommandEngine
 import com.idraak.quantum.core.OnDeviceVoiceController
 import com.idraak.quantum.core.IdraakAccessibilityService
+import com.idraak.quantum.core.ActionRecoveryPolicy
 import java.util.Locale
 import java.util.Calendar
 
@@ -251,8 +252,19 @@ class MainActivity : Activity() {
             memoryResponse
         } else {
             val result = commandEngine.process(command)
-            val execution = actionExecutor.execute(result.action)
-            result.message + "\n" + execution
+            if (result.action == com.idraak.quantum.core.CommandAction.None) {
+                ActionRecoveryPolicy.responseForUnknownCommand(command, result.message)
+            } else {
+                val execution = actionExecutor.execute(result.action)
+                if (execution.contains("compatible") ||
+                    execution.contains("Android نے مطلوبہ اجازت") ||
+                    execution.contains("یہ کام مکمل نہیں ہو سکا")
+                ) {
+                    ActionRecoveryPolicy.responseForExecutionFailure(command, execution)
+                } else {
+                    result.message + "\n" + execution
+                }
+            }
         }
         responseView.text = response
         historyStore.add("user", command)
