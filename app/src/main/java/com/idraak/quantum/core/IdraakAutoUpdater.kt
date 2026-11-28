@@ -198,16 +198,8 @@ class IdraakAutoUpdater(private val activity: Activity) {
         MessageDigest.getInstance("SHA-256").digest(bytes)
             .joinToString("") { "%02x".format(it) }
 
-    private fun isNewer(candidate: String, installed: String): Boolean {
-        val left = candidate.split(".", "-", "+").map { it.toIntOrNull() ?: 0 }
-        val right = installed.split(".", "-", "+").map { it.toIntOrNull() ?: 0 }
-        for (index in 0 until maxOf(left.size, right.size)) {
-            val a = left.getOrElse(index) { 0 }
-            val b = right.getOrElse(index) { 0 }
-            if (a != b) return a > b
-        }
-        return false
-    }
+    private fun isNewer(candidate: String, installed: String): Boolean =
+        IdraakVersionComparator.isNewer(candidate, installed)
 
     companion object {
         private const val MAX_APK_BYTES = 150L * 1024L * 1024L
