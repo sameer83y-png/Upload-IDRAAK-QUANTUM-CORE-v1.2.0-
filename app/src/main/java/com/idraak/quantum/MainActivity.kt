@@ -70,7 +70,16 @@ class MainActivity : FragmentActivity() {
     override fun onStop() {
         super.onStop()
         if (!isFinishing && com.idraak.quantum.core.AppLockManager(this).isEnabled()) {
+            // Lock the command surface immediately and stop foreground mic capture
+            // before the unlock screen is shown on return.
             lockOnReturn = true
+            isLocked = true
+            voiceController?.destroy()
+            voiceController = null
+            speechOutput?.stop()
+            speechOutput?.shutdown()
+            speechOutput = null
+            speechOutputReady = false
         }
     }
 
@@ -255,7 +264,7 @@ class MainActivity : FragmentActivity() {
             this,
             onText = { spoken ->
                 runOnUiThread {
-                    if (::commandInput.isInitialized) {
+                    if (!isLocked && !isFinishing && ::commandInput.isInitialized) {
                         commandInput.setText(spoken)
                         executeCommand(spoken)
                     }
