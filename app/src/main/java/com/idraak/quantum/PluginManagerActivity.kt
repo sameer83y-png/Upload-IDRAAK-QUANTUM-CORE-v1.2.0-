@@ -115,7 +115,7 @@ class PluginManagerActivity : Activity() {
                     text = buildString {
                         append("ANDROID CAPABILITIES: LAUNCH")
                         if (canShareText) append(" • TEXT SHARE")
-                        if (!canShareText && !canOpenLinks) append(" • NO EXTRA INTENT FOUND")
+                        if (!canShareText) append(" • NO EXTRA INTENT FOUND")
                     }
                     textSize = 10f
                     setTextColor(if (canShareText) accent else Color.LTGRAY)
