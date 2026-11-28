@@ -29,6 +29,28 @@ class OfflineCommandEngineTest {
     }
 
     @Test
+    fun parsesCompositeEnglishYoutubeSearch() {
+        val action = engine.process("open youtube and search for quantum computing").action
+        assertTrue(action is CommandAction.OpenUrl)
+        assertTrue((action as CommandAction.OpenUrl).url.contains("quantum+computing"))
+    }
+
+    @Test
+    fun parsesCompositeRomanUrduYoutubeSearch() {
+        val action = engine.process("youtube kholo aur cricket highlights search karo").action
+        assertTrue(action is CommandAction.OpenUrl)
+        assertTrue((action as CommandAction.OpenUrl).url.contains("cricket+highlights"))
+    }
+
+    @Test
+    fun parsesCompositeUrduYoutubeSearch() {
+        val action = engine.process("یوٹیوب کھولو اور ٹیک خبریں تلاش کرو").action
+        assertTrue(action is CommandAction.OpenUrl)
+        assertTrue((action as CommandAction.OpenUrl).url.contains("youtube.com/results"))
+        assertTrue((action as CommandAction.OpenUrl).url.contains("%D9%") || (action as CommandAction.OpenUrl).url.contains("+"))
+    }
+
+    @Test
     fun parsesGenericShareCommand() {
         val action = engine.process("یہ پیغام بھیجو میں راستے میں ہوں").action
         assertTrue(action is CommandAction.ShareText)
