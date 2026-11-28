@@ -761,7 +761,13 @@ class MainActivity : FragmentActivity() {
             return
         }
 
-        val processor = IdraakCommandProcessor(applicationContext)
+        val processor = IdraakCommandProcessor(applicationContext) { state, detail ->
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) {
+                    launcherSurface?.setState(state, detail)
+                }
+            }
+        }
         val processed = try {
             processor.process(command)
         } catch (error: Exception) {
