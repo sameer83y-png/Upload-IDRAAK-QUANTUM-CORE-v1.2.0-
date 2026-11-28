@@ -8,6 +8,21 @@ class OfflineCommandEngineTest {
     private val engine = OfflineCommandEngine()
 
     @Test
+    fun greetingIsAHandledOfflineReplyRatherThanAnUnknownCommand() {
+        val result = engine.process("السلام علیکم")
+        assertEquals(CommandAction.None, result.action)
+        assertEquals("وعلیکم السلام۔ ادراک حاضر ہے۔", result.message)
+        assertTrue(!ActionRecoveryPolicy.isUnknownCommand(result.message))
+    }
+
+    @Test
+    fun genuinelyUnsupportedCommandRemainsEligibleForFallback() {
+        val result = engine.process("do something impossible")
+        assertEquals(CommandAction.None, result.action)
+        assertTrue(ActionRecoveryPolicy.isUnknownCommand(result.message))
+    }
+
+    @Test
     fun parsesEnglishReminder() {
         val action = engine.process("remind me to drink water in 10 minutes").action
         assertTrue(action is CommandAction.ScheduleReminder)
