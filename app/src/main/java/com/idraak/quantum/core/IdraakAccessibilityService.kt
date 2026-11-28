@@ -62,6 +62,22 @@ class IdraakAccessibilityService : AccessibilityService() {
         return false
     }
 
+    private fun swipeScreen(up: Boolean): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+        val metrics = resources.displayMetrics
+        val centerX = metrics.widthPixels / 2f
+        val startY = if (up) metrics.heightPixels * 0.78f else metrics.heightPixels * 0.24f
+        val endY = if (up) metrics.heightPixels * 0.24f else metrics.heightPixels * 0.78f
+        val path = Path().apply {
+            moveTo(centerX, startY)
+            lineTo(centerX, endY)
+        }
+        val gesture = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 350))
+            .build()
+        return dispatchGesture(gesture, null, null)
+    }
+
     private fun global(action: Int): Boolean = performGlobalAction(action)
 
     companion object {
@@ -80,6 +96,19 @@ class IdraakAccessibilityService : AccessibilityService() {
 
         fun goBack(): Boolean =
             activeService?.global(AccessibilityService.GLOBAL_ACTION_BACK) == true
+
+        fun goHome(): Boolean =
+            activeService?.global(AccessibilityService.GLOBAL_ACTION_HOME) == true
+
+        fun showNotifications(): Boolean =
+            activeService?.global(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS) == true
+
+        fun showQuickSettings(): Boolean =
+            activeService?.global(AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS) == true
+
+        fun swipeUp(): Boolean = activeService?.swipeScreen(true) == true
+
+        fun swipeDown(): Boolean = activeService?.swipeScreen(false) == true
 
         fun goHome(): Boolean =
             activeService?.global(AccessibilityService.GLOBAL_ACTION_HOME) == true
