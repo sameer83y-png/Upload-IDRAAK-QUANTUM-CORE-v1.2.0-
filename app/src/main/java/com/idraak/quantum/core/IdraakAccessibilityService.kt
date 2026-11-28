@@ -198,14 +198,27 @@ class IdraakAccessibilityService : AccessibilityService() {
         }
         if (!target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)) return false
 
+        val submitTerms = searchTerms + listOf("go", "submit", "done", "ابحث", "چلو")
         val searchButtons = allNodes(root).filter { node ->
             node.isVisibleToUser && node.isEnabled && node.isClickable &&
-                !node.isEditable && searchTerms.any { term ->
-                    normalized(node.text).contains(term) ||
+                !node.isEditable && submitTerms.any { term ->
+                    normalized(node.text) == term ||
+                        normalized(node.contentDescription) == term ||
+                        normalized(node.text).contains(term) ||
                         normalized(node.contentDescription).contains(term)
                 }
         }
-        if (searchButtons.size == 1) performClick(searchButtons.single())
+        if (searchButtons.size == 1 && performClick(searchButtons.single())) return true
+
+        // If the app exposes no separate search button, submit through the
+        // focused field's IME action on Android 11+. Never tap an arbitrary
+        // nearby control just because a search field was found.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            target.performAction(AccessibilityNodeInfo.ACTION_IME_ENTER)
+        ) return true
+
+        // Text was entered, but the app did not expose a safe submit action.
+        // The caller can tell the user to press Search/Enter themselves.
         return true
     }
 
