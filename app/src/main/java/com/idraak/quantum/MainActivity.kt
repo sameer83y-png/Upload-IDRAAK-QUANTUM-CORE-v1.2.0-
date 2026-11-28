@@ -257,6 +257,7 @@ class MainActivity : Activity() {
             } else {
                 val execution = actionExecutor.execute(result.action)
                 if (execution.contains("compatible") ||
+                    execution.contains("ایپ نہیں ملی") ||
                     execution.contains("Android نے مطلوبہ اجازت") ||
                     execution.contains("یہ کام مکمل نہیں ہو سکا")
                 ) {
