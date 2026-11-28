@@ -90,8 +90,8 @@ class IdraakCommandProcessor(context: Context) {
             "show command errors", "show error log", "غلطیوں کی تاریخ دکھاؤ", "کمانڈ کی غلطیاں دکھاؤ" -> {
                 val entries = errorStore.recent(10)
                 if (entries.isEmpty()) "ابھی کوئی کمانڈ خرابی محفوظ نہیں۔"
-                else entries.joinToString("\\n\\n") {
-                    "کمانڈ: ${it.command}\\nخرابی: ${it.error}"
+                else entries.joinToString("\n\n") {
+                    "کمانڈ: ${it.command}\nخرابی: ${it.error}"
                 }
             }
             "clear command errors", "clear error log", "غلطیوں کی تاریخ صاف کرو", "کمانڈ کی غلطیاں حذف کرو" -> {
