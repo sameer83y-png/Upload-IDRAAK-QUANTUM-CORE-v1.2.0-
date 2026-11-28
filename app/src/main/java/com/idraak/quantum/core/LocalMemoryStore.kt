@@ -62,6 +62,9 @@ class LocalMemoryStore(context: Context) :
         val clean = content.trim()
         require(clean.isNotEmpty()) { "Memory cannot be empty." }
         require(clean.length <= MAX_CONTENT_LENGTH) { "Memory is too long." }
+        require(!containsCredentialMaterial(clean)) {
+            "Passwords, PINs, one-time codes, API keys, and access tokens must not be stored in memory."
+        }
         val now = System.currentTimeMillis()
         val values = ContentValues().apply {
             put("category", category.trim().lowercase().ifBlank { "general" }.take(40))
@@ -120,6 +123,9 @@ class LocalMemoryStore(context: Context) :
         val corrected = correctedValue.trim()
         require(previous.isNotEmpty() && corrected.isNotEmpty()) { "Both values are required." }
         require(corrected.length <= MAX_CONTENT_LENGTH) { "Corrected memory is too long." }
+        require(!containsCredentialMaterial(previous) && !containsCredentialMaterial(corrected)) {
+            "Credentials and authentication codes must not be stored in correction history."
+        }
 
         val db = writableDatabase
         val now = System.currentTimeMillis()
@@ -195,6 +201,17 @@ class LocalMemoryStore(context: Context) :
     }
 
     companion object {
+        private val CREDENTIAL_ASSIGNMENT = Regex(
+            """\b(password|passcode|pin|otp|one[- ]time code|verification code|api[- ]?key|access token|refresh token|secret key|private key)\b\s*(?:is|:|=|->)\s*\S+""",
+            RegexOption.IGNORE_CASE
+        )
+        private val TOKEN_PATTERN = Regex(
+            """\b(?:sk-[A-Za-z0-9_-]{12,}|AIza[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b"""
+        )
+
+        internal fun containsCredentialMaterial(value: String): Boolean =
+            CREDENTIAL_ASSIGNMENT.containsMatchIn(value) || TOKEN_PATTERN.containsMatchIn(value)
+
         private const val DATABASE_NAME = "idraak_local_memory.db"
         private const val DATABASE_VERSION = 1
         private const val MAX_CONTENT_LENGTH = 2000
