@@ -38,7 +38,13 @@ class ConversationHistoryStore(context: Context) :
             put("message", clean.take(8000))
             put("created_at", System.currentTimeMillis())
         }
-        writableDatabase.insert("conversation_entries", null, values)
+        val db = writableDatabase
+        db.insert("conversation_entries", null, values)
+        // Keep history bounded so long-running voice use cannot grow the database forever.
+        db.execSQL(
+            "DELETE FROM conversation_entries WHERE id NOT IN " +
+                "(SELECT id FROM conversation_entries ORDER BY id DESC LIMIT 300)"
+        )
     }
 
     fun recent(limit: Int = 100): List<ConversationEntry> {
