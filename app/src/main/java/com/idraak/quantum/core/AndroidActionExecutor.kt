@@ -33,19 +33,23 @@ class AndroidActionExecutor(private val context: Context) {
             }
             is CommandAction.ShareTextToApp -> {
                 val packageName = AppPluginRegistry.findConnectedPackage(context, action.appName)
-                    ?: return "یہ ایپ ابھی Idraak Plugin Manager میں connected نہیں۔ پہلے اسے connect کریں۔"
-                if (!AppPluginRegistry.supportsTextShare(context, packageName)) {
-                    return "یہ ایپ Android کے ذریعے text sharing سپورٹ نہیں کرتی۔ عام share menu یا Accessibility استعمال کریں۔"
+                when {
+                    packageName == null ->
+                        "یہ ایپ ابھی Idraak Plugin Manager میں connected نہیں۔ پہلے اسے connect کریں۔"
+                    !AppPluginRegistry.supportsTextShare(context, packageName) ->
+                        "یہ ایپ Android کے ذریعے text sharing سپورٹ نہیں کرتی۔ عام share menu یا Accessibility استعمال کریں۔"
+                    else -> {
+                        val shareIntent = Intent(Intent.ACTION_SEND)
+                            .setType("text/plain")
+                            .setPackage(packageName)
+                            .putExtra(Intent.EXTRA_TEXT, action.text)
+                        context.startActivity(
+                            Intent.createChooser(shareIntent, "${action.appName} میں بھیجنے سے پہلے چیک کریں")
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                        "ایپ کا شیئر مینو کھل گیا ہے۔ پیغام چیک کرکے خود Send کریں۔"
+                    }
                 }
-                val shareIntent = Intent(Intent.ACTION_SEND)
-                    .setType("text/plain")
-                    .setPackage(packageName)
-                    .putExtra(Intent.EXTRA_TEXT, action.text)
-                context.startActivity(
-                    Intent.createChooser(shareIntent, "${action.appName} میں بھیجنے سے پہلے چیک کریں")
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
-                "ایپ کا شیئر مینو کھل گیا ہے۔ پیغام چیک کرکے خود Send کریں۔"
             }
             is CommandAction.DialNumber -> {
                 val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(action.number)))
