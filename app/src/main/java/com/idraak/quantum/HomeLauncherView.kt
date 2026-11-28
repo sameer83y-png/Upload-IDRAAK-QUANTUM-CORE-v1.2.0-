@@ -13,6 +13,7 @@ import android.graphics.Typeface
 import android.os.SystemClock
 import android.view.View
 import kotlin.math.min
+import kotlin.math.sin
 
 /**
  * Animated command HUD for the Home Launcher.
@@ -128,24 +129,43 @@ class HomeLauncherView(context: Context) : View(context) {
         val safeDetail = detail.replace('\n', ' ').take(52)
         if (safeDetail.isNotBlank()) canvas.drawText(safeDetail, left + 15f, top + 73f, paint)
 
-        paint.color = 0xFF39DFFF.toInt()
-        paint.textSize = min(w * 0.027f, 10f)
-        val bits = buildString {
-            repeat(34) { i -> append(if (((i * 7 + (phase * 100).toInt()) % 3) == 0) '1' else '0') }
-        }
-        canvas.drawText(bits, left + 15f, bottom - 13f, paint)
-
-        val scanY = top + 5f + (bottom - top - 10f) * phase
-        paint.color = 0x7752DFFF
-        canvas.drawRect(left + 4f, scanY, right - 4f, scanY + 2f, paint)
-        paint.color = when (mode) {
+        val stateColor = when (mode) {
             "error" -> 0xFFFF6B72.toInt()
             "confirming" -> 0xFFFFD166.toInt()
             "processing", "executing" -> 0xFF55C8FF.toInt()
             "speaking", "explaining" -> 0xFFB88CFF.toInt()
             else -> 0xFF38DFFF.toInt()
         }
-        canvas.drawCircle(right - 18f, top + 20f, 4f + (phase * 3f), paint)
+
+        // A compact animated signal trace reacts to the current assistant state.
+        val signalActive = mode != "idle" && mode != "error"
+        val pulse = (sin(phase * 6.28318f) + 1f) * 0.5f
+        val signalLeft = left + 16f
+        val signalRight = right - 16f
+        val signalWidth = (signalRight - signalLeft) / 26f
+        val baseline = bottom - 18f
+        paint.color = stateColor
+        paint.strokeWidth = 2.4f
+        paint.strokeCap = Paint.Cap.ROUND
+        for (i in 0 until 26) {
+            val wave = sin((i * 0.62f) + (phase * 12.566f))
+            val envelope = if (signalActive) 0.35f + pulse * 0.65f else 0.18f
+            val height = (3f + kotlin.math.abs(wave) * 12f * envelope)
+            val x = signalLeft + signalWidth * i + signalWidth / 2f
+            canvas.drawLine(x, baseline - height, x, baseline + height, paint)
+        }
+        paint.strokeCap = Paint.Cap.BUTT
+
+        // The scan line travels more slowly while the system is idle.
+        val scanProgress = if (mode == "idle") phase else (phase * 1.7f) % 1f
+        val scanY = top + 5f + (bottom - top - 10f) * scanProgress
+        paint.color = if (signalActive) 0x9952DFFF.toInt() else 0x4452DFFF
+        canvas.drawRect(left + 4f, scanY, right - 4f, scanY + 2f, paint)
+
+        paint.color = stateColor
+        paint.setShadowLayer(7f + pulse * 5f, 0f, 0f, stateColor)
+        canvas.drawCircle(right - 18f, top + 20f, 4f + (pulse * 2.5f), paint)
+        paint.clearShadowLayer()
     }
 
     override fun onDetachedFromWindow() {
