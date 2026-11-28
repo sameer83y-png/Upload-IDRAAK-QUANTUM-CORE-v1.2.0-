@@ -52,16 +52,91 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (com.idraak.quantum.core.AppLockManager(this).isEnabled()) {
+            showAppUnlockScreen()
+        } else {
+            initializeIdraak()
+        }
+    }
+
+    private fun showAppUnlockScreen() {
+        val preferences = getSharedPreferences("idraak_settings", MODE_PRIVATE)
+        val background = preferences.getInt("background", Color.rgb(5, 10, 23))
+        val accent = preferences.getInt("accent", Color.rgb(67, 218, 255))
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(28, 32, 28, 32)
+            setBackgroundColor(background)
+        }
+        root.addView(TextView(this).apply {
+            text = "IDRAAK LOCKED"
+            textSize = 25f
+            gravity = Gravity.CENTER
+            setTextColor(accent)
+        }, matchWrap())
+        root.addView(TextView(this).apply {
+            text = "اپنا ایپ پاس ورڈ درج کریں"
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setPadding(0, 16, 0, 18)
+        }, matchWrap())
+        val passwordInput = EditText(this).apply {
+            hint = "App password"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine(true)
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+            setPadding(16, 14, 16, 14)
+            setBackgroundColor(Color.rgb(22, 34, 54))
+        }
+        root.addView(passwordInput, matchWrap())
+        val status = TextView(this).apply {
+            text = ""
+            setTextColor(Color.rgb(255, 130, 130))
+            gravity = Gravity.CENTER
+            setPadding(0, 10, 0, 4)
+        }
+        root.addView(status, matchWrap())
+        root.addView(Button(this).apply {
+            text = "UNLOCK IDRAAK"
+            setOnClickListener {
+                val entered = passwordInput.text.toString().toCharArray()
+                val valid = try {
+                    com.idraak.quantum.core.AppLockManager(this@MainActivity).verify(entered)
+                } finally {
+                    entered.fill('\\u0000')
+                }
+                if (valid) {
+                    initializeIdraak()
+                } else {
+                    passwordInput.text.clear()
+                    status.text = "پاس ورڈ درست نہیں۔ دوبارہ کوشش کریں۔"
+                }
+            }
+        }, matchWrap().apply { topMargin = 14 })
+        setContentView(root)
+    }
+
+    private fun initializeIdraak() {
         actionExecutor = AndroidActionExecutor(this)
         voiceController = OnDeviceVoiceController(
             this,
             onText = { spoken ->
                 runOnUiThread {
-                    commandInput.setText(spoken)
-                    executeCommand(spoken)
+                    if (::commandInput.isInitialized) {
+                        commandInput.setText(spoken)
+                        executeCommand(spoken)
+                    }
                 }
             },
-            onStatus = { status -> runOnUiThread { responseView.text = status } }
+            onStatus = { status ->
+                runOnUiThread {
+                    if (::responseView.isInitialized) responseView.text = status
+                }
+            }
         )
         speechOutput = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
