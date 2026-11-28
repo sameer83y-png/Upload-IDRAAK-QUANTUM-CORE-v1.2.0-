@@ -40,6 +40,8 @@ class SettingsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // Returning from Android App Settings may grant notifications without a permission callback.
+        ReminderPermissionRecovery.restorePendingIfAllowed(this)
         if (::permissionStatus.isInitialized) updatePermissionStatus()
     }
 

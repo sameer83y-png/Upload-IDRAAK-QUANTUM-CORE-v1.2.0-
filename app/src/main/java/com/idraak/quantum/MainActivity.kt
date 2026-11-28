@@ -918,6 +918,8 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Re-arm reminders that fired while notification permission was disabled.
+        ReminderPermissionRecovery.restorePendingIfAllowed(this)
         if (!isLocked && ::responseView.isInitialized) {
             if (voiceController == null) voiceController = createVoiceController()
             buildDashboard()
