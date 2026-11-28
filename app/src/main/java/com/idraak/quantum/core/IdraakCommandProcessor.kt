@@ -45,6 +45,11 @@ class IdraakCommandProcessor(context: Context) {
         val effectiveCommand = learnedStore.resolve(command) ?: command
         val result = commandEngine.process(effectiveCommand)
         if (result.action == CommandAction.None) {
+            if (!ActionRecoveryPolicy.isUnknownCommand(result.message)) {
+                // Greetings and other valid conversational replies are handled offline;
+                // they must not fall through to the optional Gemini network path.
+                return completed(command, result.message)
+            }
             errorStore.record(command, result.message)
             return IdraakProcessingResult(
                 false,
