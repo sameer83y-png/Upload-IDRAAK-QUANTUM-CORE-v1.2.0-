@@ -63,7 +63,8 @@ object CommandSuggestionEngine {
         hourOfDay: Int,
         accessibilityEnabled: Boolean,
         connectedAppLabels: List<String>,
-        batteryPercent: Int? = null
+        batteryPercent: Int? = null,
+        networkConnected: Boolean = true
     ): List<DashboardSuggestionCategory> {
         val timeSuggestions = when (hourOfDay.coerceIn(0, 23)) {
             in 5..10 -> listOf(DashboardSuggestion("دن کی منصوبہ بندی", "مجھے 30 منٹ بعد اپنا دن پلان کرنا یاد دلانا"))
@@ -83,6 +84,12 @@ object CommandSuggestionEngine {
                     DashboardSuggestion("Home اسکرین", "ہوم پر جاؤ"),
                     DashboardSuggestion("Quick Settings", "فوری سیٹنگز کھولو")
                 )
+            )
+        }
+        if (!networkConnected) {
+            categories += DashboardSuggestionCategory(
+                "انٹرنیٹ کنکشن",
+                listOf(DashboardSuggestion("وائی فائی کنکشن چیک کریں", "open wifi"))
             )
         }
         if (batteryPercent != null && batteryPercent in 0..20) {
