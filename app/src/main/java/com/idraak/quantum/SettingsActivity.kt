@@ -248,6 +248,10 @@ class SettingsActivity : Activity() {
             setOnClickListener { requestRuntimePermissions() }
         }, matchWrap().apply { topMargin = 10 })
         root.addView(Button(this).apply {
+            text = "ENABLE CONTACT ACCESS FOR CALLS"
+            setOnClickListener { requestContactPermission() }
+        }, matchWrap().apply { topMargin = 8 })
+        root.addView(Button(this).apply {
             text = "ENABLE ACCESSIBILITY CONTROL"
             setOnClickListener {
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -459,9 +463,6 @@ class SettingsActivity : Activity() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requested.add(Manifest.permission.RECORD_AUDIO)
         }
-        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
-            requested.add(Manifest.permission.READ_CONTACTS)
-        }
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -474,13 +475,22 @@ class SettingsActivity : Activity() {
         requestPermissions(requested.toTypedArray(), REQUEST_REQUIRED_PERMISSIONS)
     }
 
+    private fun requestContactPermission() {
+        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+            updatePermissionStatus()
+            android.widget.Toast.makeText(this, "Contacts access is already enabled.", android.widget.Toast.LENGTH_SHORT).show()
+        } else {
+            requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), REQUEST_CONTACTS_PERMISSION)
+        }
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_REQUIRED_PERMISSIONS) updatePermissionStatus()
+        if (requestCode == REQUEST_REQUIRED_PERMISSIONS || requestCode == REQUEST_CONTACTS_PERMISSION) updatePermissionStatus()
     }
 
     private fun updatePermissionStatus() {
@@ -528,5 +538,6 @@ class SettingsActivity : Activity() {
 
     companion object {
         private const val REQUEST_REQUIRED_PERMISSIONS = 4301
+        private const val REQUEST_CONTACTS_PERMISSION = 4302
     }
 }
