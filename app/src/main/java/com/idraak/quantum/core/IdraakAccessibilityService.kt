@@ -432,6 +432,70 @@ class IdraakAccessibilityService : AccessibilityService() {
         return field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, arguments)
     }
 
+    /** Moves the collapsed cursor to the previous/next word boundary in one safe field. */
+    private fun moveFocusedCursorByWord(forward: Boolean): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focusedFields = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled && node.isEditable &&
+                node.isFocused && !node.isPassword
+        }
+        if (focusedFields.size != 1) return false
+        val field = focusedFields.single()
+        val text = field.text?.toString() ?: return false
+        val cursor = field.textSelectionStart
+        if (text.isEmpty() || cursor < 0 || field.textSelectionEnd != cursor ||
+            cursor > text.length
+        ) return false
+
+        val iterator = java.text.BreakIterator.getWordInstance(Locale.ROOT)
+        iterator.setText(text)
+        fun isWordSegment(start: Int, end: Int): Boolean {
+            var index = start
+            while (index < end) {
+                val codePoint = text.codePointAt(index)
+                val type = Character.getType(codePoint)
+                if (Character.isLetterOrDigit(codePoint) || codePoint == '_'.code ||
+                    type == Character.NON_SPACING_MARK.toInt() ||
+                    type == Character.COMBINING_SPACING_MARK.toInt() ||
+                    type == Character.ENCLOSING_MARK.toInt()
+                ) return true
+                index += Character.charCount(codePoint)
+            }
+            return false
+        }
+
+        var destination = BreakIterator.DONE
+        if (forward) {
+            var start = cursor
+            var end = iterator.following(start)
+            while (end != BreakIterator.DONE) {
+                if (isWordSegment(start, end)) {
+                    destination = end
+                    break
+                }
+                start = end
+                end = iterator.following(start)
+            }
+        } else {
+            var end = cursor
+            var start = iterator.preceding(end)
+            while (start != BreakIterator.DONE) {
+                if (isWordSegment(start, end)) {
+                    destination = start
+                    break
+                }
+                end = start
+                start = iterator.preceding(end)
+            }
+        }
+        if (destination == BreakIterator.DONE || destination == cursor) return false
+        val arguments = Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, destination)
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, destination)
+        }
+        return field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, arguments)
+    }
+
     /** Deletes one Unicode code point beside a collapsed cursor; never deletes a selection. */
     private fun deleteFocusedCharacter(forward: Boolean): Boolean {
         val root = rootInActiveWindow ?: return false
@@ -629,6 +693,8 @@ class IdraakAccessibilityService : AccessibilityService() {
             activeService?.moveFocusedCursorByCharacter(forward) == true
         fun deleteCharacter(forward: Boolean): Boolean =
             activeService?.deleteFocusedCharacter(forward) == true
+        fun moveCursorByWord(forward: Boolean): Boolean =
+            activeService?.moveFocusedCursorByWord(forward) == true
         fun moveCursorToStart(): Boolean = activeService?.moveFocusedCursor(false) == true
         fun moveCursorToEnd(): Boolean = activeService?.moveFocusedCursor(true) == true
         fun selectFromCursorToStart(): Boolean = activeService?.selectFromCursorToEdge(false) == true
