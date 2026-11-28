@@ -162,7 +162,13 @@ class OfflineCommandEngine {
         val youtubeMarkers = listOf("search youtube for", "youtube par", "youtube pe", "یوتیوب پر", "یوٹیوب پر", "یوٹیوب میں", "یوٹیوب پہ", "یوٹیوب پر تلاش کرو", "یوٹیوب پر سرچ کرو")
         val youtubeMarker = youtubeMarkers.firstOrNull { text.contains(it) }
         if (youtubeMarker != null) {
-            val query = extractAfterMarker(original, youtubeMarker).removePrefixes("search", "تلاش کرو", "سرچ کرو", "دکھاؤ", "چلاؤ").trim()
+            val query = extractAfterMarker(original, youtubeMarker)
+                .removePrefixes("search", "تلاش کرو", "سرچ کرو", "دکھاؤ", "چلاؤ")
+                .removeSuffixes(
+                    "search karo", "search", "talaash karo", "talaash",
+                    "تلاش کرو", "سرچ کرو", "ڈھونڈو", "دکھاؤ", "چلاؤ"
+                )
+                .trim()
             if (query.isNotBlank()) return CommandResult(
                 "یوٹیوب پر تلاش کھول رہا ہوں: $query",
                 CommandAction.OpenUrl("https://www.youtube.com/results?search_query=" + encode(query))
@@ -312,6 +318,17 @@ class OfflineCommandEngine {
         var value = this.trim()
         for (prefix in prefixes) if (value.lowercase(Locale.ROOT).startsWith(prefix.lowercase(Locale.ROOT))) {
             value = value.drop(prefix.length).trim()
+        }
+        return value
+    }
+
+    private fun String.removeSuffixes(vararg suffixes: String): String {
+        var value = this.trim()
+        for (suffix in suffixes) {
+            if (value.lowercase(Locale.ROOT).endsWith(suffix.lowercase(Locale.ROOT))) {
+                value = value.dropLast(suffix.length).trim()
+                break
+            }
         }
         return value
     }
