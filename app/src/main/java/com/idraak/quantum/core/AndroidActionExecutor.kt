@@ -233,9 +233,11 @@ class AndroidActionExecutor(private val context: Context) {
      */
     private fun findInstalledLauncherApp(requestedName: String): Intent? {
         val launcherQuery = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        // Launcher activities are identified by CATEGORY_LAUNCHER, not necessarily
+        // CATEGORY_DEFAULT. MATCH_DEFAULT_ONLY can therefore hide valid installed apps.
         val matches = context.packageManager.queryIntentActivities(
             launcherQuery,
-            android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+            0
         ).mapNotNull { resolveInfo ->
             val label = resolveInfo.loadLabel(context.packageManager)?.toString()?.trim().orEmpty()
             if (label.isBlank()) null else label to resolveInfo
