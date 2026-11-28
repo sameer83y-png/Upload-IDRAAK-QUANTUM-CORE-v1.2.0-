@@ -130,6 +130,25 @@ class SettingsActivity : Activity() {
         }, matchWrap().apply { topMargin = 16 })
 
 
+        root.addView(TextView(this).apply {
+            text = "HYBRID APP PLUGIN MANAGER"
+            textSize = 15f
+            setTextColor(preferences.getInt("accent", Color.rgb(67, 218, 255)))
+            setPadding(0, 28, 0, 8)
+        }, matchWrap())
+        root.addView(TextView(this).apply {
+            text = "Discover installed apps, connect only after your approval, and disconnect whenever you want. Unsupported apps continue to use Android intents and Accessibility where available."
+            textSize = 10f
+            setTextColor(Color.LTGRAY)
+            setPadding(4, 4, 4, 8)
+        }, matchWrap())
+        root.addView(Button(this).apply {
+            text = "OPEN APP PLUGIN MANAGER"
+            setOnClickListener {
+                startActivity(Intent(this@SettingsActivity, PluginManagerActivity::class.java))
+            }
+        }, matchWrap())
+
         addAppLockSection(root)
         addReleaseSigningSection(root)
 
