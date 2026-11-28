@@ -44,8 +44,26 @@ class IdraakWakeWordService : Service() {
         createChannel()
         tts = TextToSpeech(applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                val result = tts?.setLanguage(Locale("ur", "PK"))
-                ttsReady = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED
+                val supportedLocales = listOf(
+                    Locale("ur", "PK"),
+                    Locale("hi", "IN"),
+                    Locale.US
+                )
+                ttsReady = false
+                for (locale in supportedLocales) {
+                    val result = tts?.setLanguage(locale)
+                    if (result != null &&
+                        result != TextToSpeech.LANG_MISSING_DATA &&
+                        result != TextToSpeech.LANG_NOT_SUPPORTED
+                    ) {
+                        ttsReady = true
+                        break
+                    }
+                }
+                if (!ttsReady) updateNotification("Speech voice unavailable. Install a supported Urdu, Hindi, or English TTS voice.")
+            } else {
+                ttsReady = false
+                updateNotification("Text-to-speech is unavailable on this device.")
             }
         }
     }
