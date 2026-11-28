@@ -463,6 +463,18 @@ class IdraakCommandProcessor(
             else "اسکرین پر اس نام کا قابلِ رسائی کنٹرول نہیں ملا۔"
         }
 
+        val recentAppTarget = RecentAppSelectionCommandParser.parse(command)
+        if (recentAppTarget != null) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "Recent Apps سے ایپ منتخب کرنے کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.clickText(recentAppTarget)) {
+                "Recent Apps میں “$recentAppTarget” منتخب کر لیا۔"
+            } else {
+                "“$recentAppTarget” کا واضح اور منفرد کارڈ نہیں ملا۔ پہلے Recent Apps کھولیں، پھر دوبارہ کہیں۔"
+            }
+        }
+
         if (RecentAppsCommandParser.matches(command)) {
             if (!IdraakAccessibilityService.isConnected()) return "Recent Apps کھولنے کے لیے Idraak Accessibility فعال کریں۔"
             return if (IdraakAccessibilityService.showRecentApps()) {
