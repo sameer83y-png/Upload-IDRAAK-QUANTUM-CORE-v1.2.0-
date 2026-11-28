@@ -32,6 +32,7 @@ class OfflineCommandEngine {
         )
         val original = greetingPrefix.replaceFirst(rawOriginal, "").trim()
         if (original.isBlank()) return CommandResult(greetingReply)
+        val numericText = normalizeDigits(original)
         val text = original.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
         if (
             text == "open settings" || text == "phone settings" || text == "settings kholo" ||
@@ -81,7 +82,7 @@ class OfflineCommandEngine {
         val englishReminder = Regex(
             "(?:remind me|remind)\\s+(?:to\\s+)?(.+?)\\s+in\\s+(\\d+)\\s+(minutes?|mins?|hours?|hrs?)",
             RegexOption.IGNORE_CASE
-        ).find(original)
+        ).find(numericText)
         if (englishReminder != null) {
             val amount = englishReminder.groupValues[2].toLongOrNull() ?: 0L
             val unit = englishReminder.groupValues[3].lowercase(Locale.ROOT)
@@ -98,7 +99,7 @@ class OfflineCommandEngine {
         val urduReminder = Regex(
             "مجھے\\s*(\\d+)\\s*(منٹ|منٹوں|گھنٹے|گھنٹہ)\\s*بعد\\s*(.+?)\\s*(?:یاد دلانا|یاد دلا دینا)",
             RegexOption.IGNORE_CASE
-        ).find(original)
+        ).find(numericText)
         if (urduReminder != null) {
             val amount = urduReminder.groupValues[1].toLongOrNull() ?: 0L
             val unit = urduReminder.groupValues[2]
@@ -117,7 +118,7 @@ class OfflineCommandEngine {
         }
 
         if (containsAny(text, "set alarm", "add alarm", "create alarm", "alarm lagao", "الارم لگاؤ", "الارم لگاو", "الارم سیٹ کرو", "الارم لگا دو", "الارم")) {
-            val time = Regex("(?<!\\d)(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?", RegexOption.IGNORE_CASE).find(original)
+            val time = Regex("(?<!\\d)(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?", RegexOption.IGNORE_CASE).find(numericText)
             if (time == null) return CommandResult("کس وقت کا الارم لگاؤں؟ مثال: 7:30 AM یا 19:30۔")
             var hour = time.groupValues[1].toIntOrNull() ?: return CommandResult("وقت واضح نہیں۔ مثال: 7:30 AM یا 19:30۔")
             val minute = time.groupValues[2].takeIf { it.isNotBlank() }?.toIntOrNull() ?: 0
@@ -137,7 +138,7 @@ class OfflineCommandEngine {
             )
         }
 
-        val phoneMatch = Regex("(?:call|dial|phone|کال کرو|فون کرو|نمبر ملاؤ)\\s*([+0-9][+0-9() -]{5,})", RegexOption.IGNORE_CASE).find(original)
+        val phoneMatch = Regex("(?:call|dial|phone|کال کرو|فون کرو|نمبر ملاؤ)\\s*([+0-9][+0-9() -]{5,})", RegexOption.IGNORE_CASE).find(numericText)
         if (phoneMatch != null) {
             val number = phoneMatch.groupValues[1].filter { it.isDigit() || it == '+' }
             if (number.count(Char::isDigit) in 6..15) return CommandResult(
@@ -362,6 +363,15 @@ class OfflineCommandEngine {
         }
         return value
     }
+
+    private fun normalizeDigits(value: String): String = value.map { char ->
+        when (char) {
+            in '۰'..'۹' -> ('0'.code + (char.code - '۰'.code)).toChar()
+            in '٠'..'٩' -> ('0'.code + (char.code - '٠'.code)).toChar()
+            in '०'..'९' -> ('0'.code + (char.code - '०'.code)).toChar()
+            else -> char
+        }
+    }.joinToString("")
 
     private fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
 }
