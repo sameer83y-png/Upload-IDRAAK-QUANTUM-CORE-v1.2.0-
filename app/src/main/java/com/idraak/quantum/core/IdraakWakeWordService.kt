@@ -1,0 +1,282 @@
+package com.idraak.quantum.core
+
+import android.Manifest
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
+import android.os.Build
+import android.os.IBinder
+import android.speech.tts.TextToSpeech
+import androidx.core.app.NotificationCompat
+import com.idraak.quantum.MainActivity
+import com.k2fsa.sherpa.onnx.FeatureConfig
+import com.k2fsa.sherpa.onnx.KeywordSpotter
+import com.k2fsa.sherpa.onnx.KeywordSpotterConfig
+import com.k2fsa.sherpa.onnx.OnlineModelConfig
+import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * User-started foreground microphone service. It listens only for the configured wake phrase,
+ * then hands the microphone to the existing offline Whisper recognizer for one command.
+ */
+class IdraakWakeWordService : Service() {
+    @Volatile private var active = false
+    private val stopping = AtomicBoolean(false)
+    @Volatile private var recorder: AudioRecord? = null
+    @Volatile private var spotter: KeywordSpotter? = null
+    @Volatile private var wakeStream: com.k2fsa.sherpa.onnx.OnlineStream? = null
+    @Volatile private var voiceController: OnDeviceVoiceController? = null
+    private var tts: TextToSpeech? = null
+    @Volatile private var ttsReady = false
+
+    override fun onCreate() {
+        super.onCreate()
+        createChannel()
+        tts = TextToSpeech(applicationContext) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val result = tts?.setLanguage(Locale("ur", "PK"))
+                ttsReady = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED
+            }
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopAssistant()
+            return START_NOT_STICKY
+        }
+        if (active) return START_STICKY
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        try {
+            val notification = buildNotification()
+            if (Build.VERSION.SDK_INT >= 29) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (_: Exception) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        active = true
+        stopping.set(false)
+        Thread({ listenForWakeWord() }, "idraak-wake-word").start()
+        return START_STICKY
+    }
+
+    private fun listenForWakeWord() {
+        var stream: com.k2fsa.sherpa.onnx.OnlineStream? = null
+        var kws: KeywordSpotter? = null
+        try {
+            val files = WakeWordModelManager(this).prepare()
+            if (stopping.get()) return
+            val model = OnlineModelConfig(
+                transducer = OnlineTransducerModelConfig(
+                    encoder = files.encoder.absolutePath,
+                    decoder = files.decoder.absolutePath,
+                    joiner = files.joiner.absolutePath
+                ),
+                tokens = files.tokens.absolutePath,
+                numThreads = 2,
+                provider = "cpu",
+                modelType = "zipformer2"
+            )
+            kws = KeywordSpotter(config = KeywordSpotterConfig(
+                featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
+                modelConfig = model,
+                keywordsFile = files.keywords.absolutePath,
+                keywordsScore = 1.5f,
+                keywordsThreshold = 0.25f
+            ))
+            spotter = kws
+            stream = kws.createStream("Idraak")
+            wakeStream = stream
+            if (stream.ptr == 0L) throw IllegalStateException("Wake phrase could not be configured.")
+            val minBuffer = AudioRecord.getMinBufferSize(
+                SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
+            )
+            if (minBuffer <= 0) throw IllegalStateException("Microphone is unavailable.")
+            val audio = AudioRecord(
+                MediaRecorder.AudioSource.MIC, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuffer * 2, SAMPLE_RATE)
+            )
+            recorder = audio
+            if (audio.state != AudioRecord.STATE_INITIALIZED) throw IllegalStateException("Microphone could not start.")
+            audio.startRecording()
+            updateNotification("Idraak is listening for its wake phrase")
+            val buffer = ShortArray(SAMPLE_RATE / 10)
+            while (!stopping.get()) {
+                val count = audio.read(buffer, 0, buffer.size)
+                if (count <= 0) continue
+                val samples = FloatArray(count) { buffer[it] / 32768.0f }
+                stream.acceptWaveform(samples, SAMPLE_RATE)
+                while (kws.isReady(stream)) {
+                    kws.decode(stream)
+                    val keyword = kws.getResult(stream).keyword
+                    if (keyword.isNotBlank()) {
+                        kws.reset(stream)
+                        updateNotification("Idraak woke up. Speak your command.")
+                        stopWakeRecorder(audio, stream, kws)
+                        recorder = null
+                        wakeStream = null
+                        wakeStream = null
+                        stream = null
+                        spotter = null
+                        kws.release()
+                        kws = null
+                        captureCommand()
+                        return
+                    }
+                }
+            }
+        } catch (error: Exception) {
+            if (!stopping.get()) updateNotification("Voice service stopped: " + (error.message ?: "microphone error"))
+        } finally {
+            stream?.let { try { it.release() } catch (_: Exception) { } }
+            val audio = recorder
+            if (audio != null) {
+                try { audio.stop() } catch (_: Exception) { }
+                try { audio.release() } catch (_: Exception) { }
+                recorder = null
+            }
+            kws?.let { try { it.release() } catch (_: Exception) { } }
+            wakeStream = null
+            spotter = null
+            if (!stopping.get() && active && voiceController == null) {
+                // If initialization fails, keep the foreground service visible but do not spin/retry.
+                stopAssistant()
+            }
+        }
+    }
+
+    private fun stopWakeRecorder(
+        audio: AudioRecord,
+        stream: com.k2fsa.sherpa.onnx.OnlineStream,
+        kws: KeywordSpotter
+    ) {
+        try { audio.stop() } catch (_: Exception) { }
+        try { audio.release() } catch (_: Exception) { }
+        try { stream.release() } catch (_: Exception) { }
+    }
+
+    private fun captureCommand() {
+        if (stopping.get()) return
+        val controller = OnDeviceVoiceController(
+            this,
+            onText = { text ->
+                if (text.isNotBlank() && !stopping.get()) {
+                    val result = OfflineCommandEngine().process(text)
+                    val reply = if (result.action == CommandAction.None) {
+                        ActionRecoveryPolicy.responseForUnknownCommand(text, result.message)
+                    } else {
+                        AndroidActionExecutor(this).execute(result.action)
+                    }
+                    speak(reply)
+                    updateNotification("Command processed. Listening for 'Idraak' again.")
+                }
+                voiceController?.destroy()
+                voiceController = null
+                if (!stopping.get()) Thread({ listenForWakeWord() }, "idraak-wake-restart").start()
+            },
+            onStatus = { status ->
+                if (!stopping.get()) updateNotification(status)
+            }
+        )
+        voiceController = controller
+        controller.start()
+    }
+
+    private fun speak(message: String) {
+        if (ttsReady) tts?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "idraak-background-reply")
+    }
+
+    private fun stopAssistant() {
+        if (!stopping.compareAndSet(false, true)) return
+        active = false
+        voiceController?.destroy()
+        voiceController = null
+        recorder?.let {
+            try { it.stop() } catch (_: Exception) { }
+            try { it.release() } catch (_: Exception) { }
+        }
+        recorder = null
+        wakeStream?.let { try { it.release() } catch (_: Exception) { } }
+        wakeStream = null
+        spotter?.let { try { it.release() } catch (_: Exception) { } }
+        spotter = null
+        tts?.stop()
+        stopForeground(true)
+        stopSelf()
+    }
+
+    private fun createChannel() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(NotificationChannel(
+                CHANNEL_ID, "Idraak background voice", NotificationManager.IMPORTANCE_LOW
+            ))
+        }
+    }
+
+    private fun buildNotification(): Notification {
+        val open = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0
+        )
+        val stop = PendingIntent.getService(
+            this, 1, Intent(this, IdraakWakeWordService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentTitle("Idraak voice assistant is active")
+            .setContentText("Listening for 'Idraak' • Microphone active")
+            .setContentIntent(open)
+            .setOngoing(true)
+            .addAction(android.R.drawable.ic_media_pause, "Stop listening", stop)
+            .build()
+    }
+
+    private fun updateNotification(message: String) {
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentTitle("Idraak voice assistant")
+            .setContentText(message.take(120))
+            .setOngoing(true)
+            .addAction(android.R.drawable.ic_media_pause, "Stop listening",
+                PendingIntent.getService(this, 1, Intent(this, IdraakWakeWordService::class.java).setAction(ACTION_STOP),
+                    PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0))
+            .build()
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification)
+    }
+
+    override fun onDestroy() {
+        stopAssistant()
+        tts?.shutdown()
+        tts = null
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    companion object {
+        const val ACTION_START = "com.idraak.quantum.action.START_WAKE_WORD"
+        const val ACTION_STOP = "com.idraak.quantum.action.STOP_WAKE_WORD"
+        private const val CHANNEL_ID = "idraak_background_voice"
+        private const val NOTIFICATION_ID = 7301
+        private const val SAMPLE_RATE = 16000
+    }
+}
