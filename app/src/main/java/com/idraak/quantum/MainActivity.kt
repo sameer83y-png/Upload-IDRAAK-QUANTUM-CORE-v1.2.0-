@@ -418,22 +418,37 @@ class MainActivity : FragmentActivity() {
         }, matchWrap())
 
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        val suggestions = when (hour) {
-            in 5..10 -> listOf("صبح کی یاد دہانی لگاؤ" to "مجھے 30 منٹ بعد اپنا دن پلان کرنا یاد دلانا")
-            in 11..16 -> listOf("YouTube تلاش" to "یوٹیوب پر آج کی ٹیک خبریں تلاش کرو")
-            in 17..21 -> listOf("شام کا الارم" to "الارم 19:30 لگاؤ")
-            else -> listOf("آواز کی سیٹنگز" to "ساؤنڈ سیٹنگز کھولو")
+        val connectedLabels = try {
+            val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            packageManager.queryIntentActivities(launcherIntent, PackageManager.MATCH_DEFAULT_ONLY)
+                .filter { it.activityInfo.packageName in com.idraak.quantum.core.AppPluginRegistry.connectedPackages(this) }
+                .map { it.loadLabel(packageManager).toString() }
+        } catch (_: Exception) {
+            emptyList()
         }
-        for ((label, command) in suggestions) {
-            root.addView(Button(this).apply {
-                text = label
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.rgb(20, 38, 60))
-                setOnClickListener {
-                    commandInput.setText(command)
-                    executeCommand(command)
-                }
-            }, matchWrap().apply { topMargin = 6 })
+        val suggestionCategories = com.idraak.quantum.core.CommandSuggestionEngine.dashboardSuggestions(
+            hour,
+            IdraakAccessibilityService.isConnected(),
+            connectedLabels
+        )
+        suggestionCategories.forEach { category ->
+            root.addView(TextView(this).apply {
+                text = category.title
+                textSize = 12f
+                setTextColor(accent)
+                setPadding(0, 14, 0, 4)
+            }, matchWrap())
+            category.suggestions.forEach { suggestion ->
+                root.addView(Button(this).apply {
+                    text = suggestion.title
+                    setTextColor(Color.WHITE)
+                    setBackgroundColor(Color.rgb(20, 38, 60))
+                    setOnClickListener {
+                        commandInput.setText(suggestion.command)
+                        executeCommand(suggestion.command)
+                    }
+                }, matchWrap().apply { topMargin = 5 })
+            }
         }
 
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
