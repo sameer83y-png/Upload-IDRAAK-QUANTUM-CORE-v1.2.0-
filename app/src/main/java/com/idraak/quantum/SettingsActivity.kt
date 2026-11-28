@@ -22,6 +22,7 @@ import com.idraak.quantum.core.IdraakAutoUpdater
 import com.idraak.quantum.core.DownloadedIdraakUpdate
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.biometric.BiometricManager
 import com.idraak.quantum.core.IdraakAccessibilityService
 
 class SettingsActivity : Activity() {
@@ -253,6 +254,33 @@ class SettingsActivity : Activity() {
             text = if (manager.isEnabled()) "CHANGE APP PASSWORD" else "SET APP PASSWORD"
             setOnClickListener { showSetAppPasswordDialog() }
         }, matchWrap().apply { topMargin = 8 })
+        val biometricAvailable = BiometricManager.from(this)
+            .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) ==
+            BiometricManager.BIOMETRIC_SUCCESS
+        val biometricEnabled = preferences.getBoolean("face_unlock_enabled", false)
+        root.addView(Button(this).apply {
+            text = if (biometricEnabled) "DISABLE FACE / BIOMETRIC UNLOCK"
+                else "ENABLE FACE / BIOMETRIC UNLOCK"
+            isEnabled = biometricAvailable || biometricEnabled
+            setOnClickListener {
+                if (!biometricAvailable && !biometricEnabled) {
+                    android.widget.Toast.makeText(
+                        this@SettingsActivity,
+                        "इस फोन में compatible biometric enrollment उपलब्ध नहीं है। पहले Android Settings में Face/Fingerprint सेट करें।",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    preferences.edit().putBoolean("face_unlock_enabled", !biometricEnabled).apply()
+                    render()
+                }
+            }
+        }, matchWrap().apply { topMargin = 8 })
+        root.addView(TextView(this).apply {
+            text = "Biometric verification is handled by Android. If this phone supports face unlock, Android may show it; otherwise it may use its enrolled fingerprint or another supported biometric. Idraak never receives or stores your face image. If you forget your password, biometric verification lets you RESET it; the old password cannot be read back because only its salted hash is stored."
+            textSize = 10f
+            setTextColor(Color.LTGRAY)
+            setPadding(4, 8, 4, 12)
+        }, matchWrap())
         if (manager.isEnabled()) {
             root.addView(Button(this).apply {
                 text = "TURN OFF APP LOCK"
@@ -260,7 +288,7 @@ class SettingsActivity : Activity() {
             }, matchWrap().apply { topMargin = 6 })
         }
         root.addView(TextView(this).apply {
-            text = "Set a password of 6–64 characters. Idraak stores only a salted PBKDF2 verification hash, not the password itself. If you forget it, app data must be cleared to regain access; this removes local Idraak data."
+            text = "Set a password of 6–64 characters. Idraak stores only a salted PBKDF2 verification hash, not the password itself. If biometric recovery is enabled, verify with Android biometrics to reset a forgotten password."
             textSize = 10f
             setTextColor(Color.LTGRAY)
             setPadding(4, 8, 4, 12)
