@@ -113,6 +113,23 @@ class OfflineCommandEngine {
             }
         }
 
+        val hindiReminder = Regex(
+            "मुझे\\s*(\\d+)\\s*(मिनट|मिनटों|घंटे|घंटा)\\s*बाद\\s*(.+?)\\s*(?:याद दिलाना|याद दिला देना)",
+            RegexOption.IGNORE_CASE
+        ).find(numericText)
+        if (hindiReminder != null) {
+            val amount = hindiReminder.groupValues[1].toLongOrNull() ?: 0L
+            val unit = hindiReminder.groupValues[2]
+            val duration = amount * if (unit.startsWith("घंट")) 3_600_000L else 60_000L
+            if (amount in 1..10080) {
+                val message = hindiReminder.groupValues[3].trim()
+                return CommandResult(
+                    "یاد دہانی لگا دی گئی ہے: $message",
+                    CommandAction.ScheduleReminder(System.currentTimeMillis() + duration, message)
+                )
+            }
+        }
+
         if (containsAny(text, "open alarm", "show alarms", "alarm kholo", "الارم کھولو", "الارم دکھاؤ", "میرے الارم دکھاؤ")) {
             return CommandResult("الارم کھول رہا ہوں۔", CommandAction.OpenAlarm)
         }
