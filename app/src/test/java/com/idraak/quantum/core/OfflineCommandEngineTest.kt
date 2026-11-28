@@ -117,6 +117,19 @@ class OfflineCommandEngineTest {
     }
 
     @Test
+    fun parsesTargetedWebLinkForConnectedApp() {
+        val english = engine.process("open https://example.com in Chrome").action
+        val urdu = engine.process("یہ لنک https://example.com Chrome میں کھولو").action
+
+        assertTrue(english is CommandAction.OpenUrlInApp)
+        assertEquals("https://example.com", (english as CommandAction.OpenUrlInApp).url)
+        assertEquals("Chrome", english.appName)
+        assertTrue(urdu is CommandAction.OpenUrlInApp)
+        assertEquals("https://example.com", (urdu as CommandAction.OpenUrlInApp).url)
+        assertEquals("Chrome", urdu.appName)
+    }
+
+    @Test
     fun parsesEnglishTargetedAppShare() {
         val action = engine.process("share hello from Idraak on whatsapp").action
         assertTrue(action is CommandAction.ShareTextToApp)

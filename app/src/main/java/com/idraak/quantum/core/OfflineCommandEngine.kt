@@ -299,6 +299,21 @@ class OfflineCommandEngine {
             return CommandResult("کیا تلاش کرنا ہے؟")
         }
 
+        val targetedWebLink = Regex(
+            "^(?:open|visit)\\s+(https?://\\S+)\\s+(?:in|with)\\s+(.+)$",
+            RegexOption.IGNORE_CASE
+        ).find(original) ?: Regex(
+            "^(?:یہ لنک|اس لنک کو)\\s+(https?://\\S+)\\s+(.+?)\\s+میں کھولو$"
+        ).find(original)
+        if (targetedWebLink != null) {
+            val url = targetedWebLink.groupValues[1]
+            val appName = targetedWebLink.groupValues[2].trim()
+            if (appName.isNotBlank() && appName.length <= 60) return CommandResult(
+                "لنک ${appName} میں کھول رہا ہوں۔",
+                CommandAction.OpenUrlInApp(url, appName)
+            )
+        }
+
         val openWebsite = Regex("^(?:open|visit|کھولو|ویب سائٹ کھولو)\\s+(https?://\\S+)$", RegexOption.IGNORE_CASE).find(original)
         if (openWebsite != null) return CommandResult(
             "ویب سائٹ کھول رہا ہوں۔", CommandAction.OpenUrl(openWebsite.groupValues[1])

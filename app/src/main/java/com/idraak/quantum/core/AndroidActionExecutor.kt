@@ -21,6 +21,22 @@ class AndroidActionExecutor(private val context: Context) {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 "لنک کھول دیا گیا۔"
             }
+            is CommandAction.OpenUrlInApp -> {
+                val packageName = AppPluginRegistry.findConnectedPackage(context, action.appName)
+                when {
+                    packageName == null ->
+                        "یہ ایپ Idraak Plugin Manager میں connected نہیں۔ پہلے اسے connect کریں۔"
+                    !AppPluginRegistry.supportsWebLinks(context, packageName) ->
+                        "یہ ایپ Android کے ذریعے ویب لنکس کھولنے کی سہولت نہیں دیتی۔"
+                    else -> {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(action.url))
+                            .setPackage(packageName)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                        "لنک ${action.appName} میں کھول دیا گیا۔"
+                    }
+                }
+            }
             is CommandAction.OpenApp -> openApp(action.appName)
             is CommandAction.ShareText -> {
                 val shareIntent = Intent(Intent.ACTION_SEND)

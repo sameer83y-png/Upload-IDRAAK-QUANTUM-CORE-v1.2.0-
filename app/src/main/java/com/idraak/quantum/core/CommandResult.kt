@@ -7,6 +7,7 @@ enum class VolumeDirection { UP, DOWN, MUTE }
 sealed interface CommandAction {
     data object None : CommandAction
     data class OpenUrl(val url: String) : CommandAction
+    data class OpenUrlInApp(val url: String, val appName: String) : CommandAction
     data class OpenApp(val appName: String) : CommandAction
     data class ShareText(val text: String) : CommandAction
     data class ShareTextToApp(val text: String, val appName: String) : CommandAction
