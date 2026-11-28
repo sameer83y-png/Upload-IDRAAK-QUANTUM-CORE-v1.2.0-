@@ -359,6 +359,31 @@ class IdraakCommandProcessor(
             }
         }
 
+        val mediaAction = when (lower) {
+            "play", "play video", "resume", "resume video",
+            "ویڈیو چلاؤ", "ویڈیو چلائیں", "پلے کرو", "دوبارہ چلاؤ" -> "play"
+            "pause", "pause video", "pause playback",
+            "ویڈیو روک دو", "ویڈیو روکیں", "پاز کرو" -> "pause"
+            "next", "next video", "اگلی ویڈیو", "اگلا ویڈیو", "اگلا" -> "next"
+            "previous", "previous video", "پچھلی ویڈیو", "پچھلا ویڈیو", "پچھلا" -> "previous"
+            else -> null
+        }
+        if (mediaAction != null) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "میڈیا کنٹرول کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.controlMedia(mediaAction)) {
+                when (mediaAction) {
+                    "play" -> "ویڈیو چلانے کا کنٹرول فعال کر دیا۔"
+                    "pause" -> "ویڈیو روکنے کا کنٹرول فعال کر دیا۔"
+                    "next" -> "اگلی ویڈیو کا کنٹرول فعال کر دیا۔"
+                    else -> "پچھلی ویڈیو کا کنٹرول فعال کر دیا۔"
+                }
+            } else {
+                "اس ایپ کی اسکرین پر متعلقہ میڈیا بٹن دستیاب نہیں ملا؛ کوئی دوسرا بٹن نہیں دبایا گیا۔"
+            }
+        }
+
         val seekMatch = Regex(
             "^(?:(?:go|move|seek) )?(forward|backward|ahead|back) (\\d+) (seconds?|secs?|minutes?|mins?)$",
             RegexOption.IGNORE_CASE
