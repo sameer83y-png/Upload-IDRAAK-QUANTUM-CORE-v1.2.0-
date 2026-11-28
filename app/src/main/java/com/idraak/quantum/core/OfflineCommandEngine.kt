@@ -14,27 +14,6 @@ class OfflineCommandEngine {
         val text = original.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
         if (text.isBlank()) return CommandResult("براہ کرم اپنا حکم بتائیں۔")
 
-        // Deterministic app-targeted sharing: always hands off to Android's review UI.
-        val directSharePrefix = listOf("share this ", "send this ", "share ", "send ")
-            .firstOrNull { text.startsWith(it) }
-        if (directSharePrefix != null) {
-            val targetApps = listOf("whatsapp", "telegram", "instagram", "facebook", "gmail")
-            val matchedSuffix = targetApps.firstNotNullOfOrNull { app ->
-                listOf(" on ", " to ", " via ").firstNotNullOfOrNull { separator ->
-                    val suffix = separator + app
-                    if (text.endsWith(suffix)) suffix else null
-                }?.let { suffix -> app to suffix }
-            }
-            if (matchedSuffix != null) {
-                val messageEnd = original.length - matchedSuffix.second.length
-                val message = original.substring(directSharePrefix.length, messageEnd).trim()
-                if (message.isNotBlank()) return CommandResult(
-                    "متعلقہ ایپ کا شیئر مینو کھول رہا ہوں۔ بھیجنے سے پہلے پیغام چیک کریں۔",
-                    CommandAction.ShareTextToApp(message, matchedSuffix.first)
-                )
-            }
-        }
-
         val englishGreeting = Regex("(^|\\s)(hello|hi|hey|salam|assalam)(\\s|$)", RegexOption.IGNORE_CASE)
         if (englishGreeting.containsMatchIn(text) || text == "سلام" || text == "السلام" || text.contains("السلام علیکم") || text.contains("وعلیکم السلام")) {
             return CommandResult("وعلیکم السلام۔ ادراک حاضر ہے۔")
@@ -183,37 +162,51 @@ class OfflineCommandEngine {
             return CommandResult("یوٹیوب پر کیا تلاش کروں؟")
         }
 
-        val shareCommandPrefix = listOf("share this ", "send this ", "share ", "send ")
-            .firstOrNull { text.startsWith(it) }
-        val connectedAppSuffix = listOf("whatsapp", "telegram", "instagram", "facebook", "gmail")
-            .firstNotNullOfOrNull { app ->
-                listOf(" on $app", " to $app", " via $app").firstOrNull { text.endsWith(it) }
-                    ?.let { suffix -> app to suffix }
-            }
-        if (shareCommandPrefix != null && connectedAppSuffix != null) {
-            val message = original.drop(shareCommandPrefix.length)
-                .dropLast(connectedAppSuffix.second.length).trim()
-            if (message.isNotBlank()) return CommandResult(
+        val englishTargetedShare = Regex(
+            "^(?:share|send)(?:\\s+this)?\\s+(.+?)\\s+(?:on|to|via)\\s+(.+)$",
+            RegexOption.IGNORE_CASE
+        ).find(original)
+        if (englishTargetedShare != null) {
+            val message = englishTargetedShare.groupValues[1].trim()
+            val appName = englishTargetedShare.groupValues[2].trim()
+            if (message.isNotBlank() && appName.length in 1..60) return CommandResult(
                 "متعلقہ ایپ کا شیئر مینو کھول رہا ہوں۔ بھیجنے سے پہلے پیغام چیک کریں۔",
-                CommandAction.ShareTextToApp(message, connectedAppSuffix.first)
+                CommandAction.ShareTextToApp(message, appName)
             )
         }
 
-        val targetedSharePatterns = listOf(
-            Regex("^(?:share|send)(?:\\s+this)?\\s+(.+?)\\s+(?:on|to|via)\\s+(whatsapp|telegram|instagram|facebook|gmail)$", RegexOption.IGNORE_CASE),
-            Regex("^(whatsapp|telegram|instagram|facebook|gmail)\\s+par\\s+(.+?)\\s+(?:bhejo|share karo)$", RegexOption.IGNORE_CASE),
-            Regex("^(.+?)\\s+(?:کو\\s+)?(whatsapp|telegram|instagram|facebook|gmail)\\s+(?:پر|میں)\\s+(?:بھیجو|شیئر کرو)$", RegexOption.IGNORE_CASE),
-            Regex("^(whatsapp|telegram|instagram|facebook|gmail)\\s+پر\\s+(.+?)\\s+(?:بھیجو|شیئر کرو)$", RegexOption.IGNORE_CASE)
-        )
-        val targetedShare = targetedSharePatterns.firstNotNullOfOrNull { it.find(original) }
-        if (targetedShare != null) {
-            val first = targetedShare.groupValues[1].trim()
-            val second = targetedShare.groupValues[2].trim()
-            val appFirst = first.lowercase(Locale.ROOT) in setOf("whatsapp", "telegram", "instagram", "facebook", "gmail")
-            val appName = if (appFirst) first else second
-            val message = if (appFirst) second else first
-            if (message.isBlank()) return CommandResult("کیا پیغام بھیجنا ہے؟")
-            return CommandResult(
+        val romanUrduAppFirst = Regex(
+            "^(.+?)\\s+par\\s+(.+?)\\s+(?:bhejo|share karo)$",
+            RegexOption.IGNORE_CASE
+        ).find(original)
+        if (romanUrduAppFirst != null) {
+            val appName = romanUrduAppFirst.groupValues[1].trim()
+            val message = romanUrduAppFirst.groupValues[2].trim()
+            if (appName.length in 1..60 && message.isNotBlank()) return CommandResult(
+                "متعلقہ ایپ کا شیئر مینو کھول رہا ہوں۔ بھیجنے سے پہلے پیغام چیک کریں۔",
+                CommandAction.ShareTextToApp(message, appName)
+            )
+        }
+
+        val urduAppFirst = Regex(
+            "^(.+?)\\s+پر\\s+(.+?)\\s+(?:بھیجو|شیئر کرو)$"
+        ).find(original)
+        if (urduAppFirst != null) {
+            val appName = urduAppFirst.groupValues[1].trim()
+            val message = urduAppFirst.groupValues[2].trim()
+            if (appName.length in 1..60 && message.isNotBlank()) return CommandResult(
+                "متعلقہ ایپ کا شیئر مینو کھول رہا ہوں۔ بھیجنے سے پہلے پیغام چیک کریں۔",
+                CommandAction.ShareTextToApp(message, appName)
+            )
+        }
+
+        val urduMessageFirst = Regex(
+            "^(.+?)\\s+(?:کو\\s+)?(.+?)\\s+(?:پر|میں)\\s+(?:بھیجو|شیئر کرو)$"
+        ).find(original)
+        if (urduMessageFirst != null) {
+            val message = urduMessageFirst.groupValues[1].trim()
+            val appName = urduMessageFirst.groupValues[2].trim()
+            if (appName.length in 1..60 && message.isNotBlank()) return CommandResult(
                 "متعلقہ ایپ کا شیئر مینو کھول رہا ہوں۔ بھیجنے سے پہلے پیغام چیک کریں۔",
                 CommandAction.ShareTextToApp(message, appName)
             )
