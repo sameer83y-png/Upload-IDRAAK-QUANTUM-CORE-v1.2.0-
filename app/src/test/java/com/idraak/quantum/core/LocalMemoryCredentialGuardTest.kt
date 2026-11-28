@@ -10,6 +10,7 @@ class LocalMemoryCredentialGuardTest {
         assertTrue(LocalMemoryStore.containsCredentialMaterial("my password is Example123"))
         assertTrue(LocalMemoryStore.containsCredentialMaterial("PIN: 4829"))
         assertTrue(LocalMemoryStore.containsCredentialMaterial("OTP = 123456"))
+        assertTrue(LocalMemoryStore.containsCredentialMaterial("OTP 123456"))
     }
 
     @Test
