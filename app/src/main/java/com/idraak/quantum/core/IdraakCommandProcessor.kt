@@ -384,13 +384,16 @@ class IdraakCommandProcessor(
             }
         }
 
+        val seekCommand = lower.map { character ->
+            character.digitToIntOrNull()?.toString() ?: character.toString()
+        }.joinToString("").replace(Regex("\\s+"), " ").trim()
         val seekMatch = Regex(
-            "^(?:(?:go|move|seek) )?(forward|backward|ahead|back) (\\d+) (seconds?|secs?|minutes?|mins?)$",
+            "^(?:(?:go|move|seek) )?(forward|backward|ahead|back|آگے|پیچھے) (\\d+) (seconds?|secs?|minutes?|mins?|سیکنڈ|منٹ)$",
             RegexOption.IGNORE_CASE
-        ).find(command) ?: Regex(
-            "^(\\d+) (seconds?|secs?|minutes?|mins?) (forward|backward|ahead|back)$",
+        ).find(seekCommand) ?: Regex(
+            "^(\\d+) (seconds?|secs?|minutes?|mins?|سیکنڈ|منٹ) (forward|backward|ahead|back|آگے|پیچھے)$",
             RegexOption.IGNORE_CASE
-        ).find(command)
+        ).find(seekCommand)
         if (seekMatch != null) {
             val first = seekMatch.groupValues[1]
             val isAmountFirst = first.all { it.isDigit() }
@@ -399,8 +402,12 @@ class IdraakCommandProcessor(
             val unit = if (isAmountFirst) seekMatch.groupValues[2] else seekMatch.groupValues[3]
             val amount = amountText.toLongOrNull()
                 ?: return "وقت کی مقدار سمجھ نہیں آئی۔"
-            val seconds = amount * if (unit.startsWith("min", true)) 60L else 1L
-            val offset = if (direction.equals("forward", true) || direction.equals("ahead", true)) seconds else -seconds
+            val multiplier = if (unit.startsWith("min", true) || unit == "منٹ") 60L else 1L
+            if (amount > Long.MAX_VALUE / multiplier) return "وقت کی مقدار بہت زیادہ ہے۔"
+            val seconds = amount * multiplier
+            val forward = direction.equals("forward", true) ||
+                direction.equals("ahead", true) || direction == "آگے"
+            val offset = if (forward) seconds else -seconds
             if (!IdraakAccessibilityService.isConnected()) return "ویڈیو کنٹرول کے لیے Idraak Accessibility فعال کریں۔"
             return if (IdraakAccessibilityService.seekBySeconds(offset)) {
                 if (offset > 0) "ویڈیو کو $seconds سیکنڈ آگے کر دیا۔"
