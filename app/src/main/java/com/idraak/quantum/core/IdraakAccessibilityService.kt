@@ -312,6 +312,28 @@ class IdraakAccessibilityService : AccessibilityService() {
      * Pastes clipboard content only into the single currently focused, editable,
      * non-password field. It never reads or speaks clipboard contents.
      */
+    /**
+     * Clears only the single focused, visible, editable, non-password text field.
+     * It never guesses which field to change and never targets password inputs.
+     */
+    private fun clearFocusedTextField(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focusedFields = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled && node.isEditable &&
+                node.isFocused && !node.isPassword
+        }
+        if (focusedFields.size != 1) return false
+        val field = focusedFields.single()
+        if (field.text.isNullOrEmpty()) return false
+        val arguments = Bundle().apply {
+            putCharSequence(
+                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                ""
+            )
+        }
+        return field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+    }
+
     private fun pasteClipboardText(): Boolean {
         val root = rootInActiveWindow ?: return false
         val focusedFields = allNodes(root).filter { node ->
@@ -415,6 +437,7 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun takeScreenshot(): Boolean = activeService?.takeSystemScreenshot() == true
         fun copyScreenText(): Boolean = activeService?.copyVisibleScreenText() == true
         fun pasteClipboardText(): Boolean = activeService?.pasteClipboardText() == true
+        fun clearFocusedTextField(): Boolean = activeService?.clearFocusedTextField() == true
         fun goHome(): Boolean = activeService?.global(GLOBAL_ACTION_HOME) == true
         fun showNotifications(): Boolean = activeService?.global(GLOBAL_ACTION_NOTIFICATIONS) == true
         fun showQuickSettings(): Boolean = activeService?.global(GLOBAL_ACTION_QUICK_SETTINGS) == true

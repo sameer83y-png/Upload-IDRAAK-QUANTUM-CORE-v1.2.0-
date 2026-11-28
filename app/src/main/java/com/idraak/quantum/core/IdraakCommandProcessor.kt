@@ -406,6 +406,17 @@ class IdraakCommandProcessor(
             }
         }
 
+        if (ClearTextFieldCommandParser.matches(command)) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "ٹیکسٹ فیلڈ صاف کرنے کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.clearFocusedTextField()) {
+                "منتخب ٹیکسٹ فیلڈ کا متن صاف کر دیا۔"
+            } else {
+                "متن صاف نہیں ہوا؛ ایک عام، قابلِ تدوین ٹیکسٹ فیلڈ منتخب کریں۔ پاس ورڈ فیلڈ کو تبدیل نہیں کیا جائے گا۔"
+            }
+        }
+
         if (PasteClipboardCommandParser.matches(command)) {
             if (!IdraakAccessibilityService.isConnected()) {
                 return "کلپ بورڈ سے پیسٹ کرنے کے لیے Idraak Accessibility فعال کریں۔"
