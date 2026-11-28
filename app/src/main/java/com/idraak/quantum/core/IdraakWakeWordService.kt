@@ -94,17 +94,22 @@ class IdraakWakeWordService : Service() {
                 provider = "cpu",
                 modelType = "zipformer2"
             )
-            kws = KeywordSpotter(config = KeywordSpotterConfig(
+            val createdSpotter = KeywordSpotter(config = KeywordSpotterConfig(
                 featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
                 modelConfig = model,
                 keywordsFile = files.keywords.absolutePath,
                 keywordsScore = 1.5f,
                 keywordsThreshold = 0.25f
             ))
-            spotter = kws
-            stream = kws.createStream("Idraak")
-            wakeStream = stream
-            if (stream.ptr == 0L) throw IllegalStateException("Wake phrase could not be configured.")
+            kws = createdSpotter
+            spotter = createdSpotter
+            val activeSpotter = createdSpotter
+            val createdStream = activeSpotter.createStream("Idraak")
+                ?: throw IllegalStateException("Wake phrase stream could not be created.")
+            stream = createdStream
+            wakeStream = createdStream
+            val activeStream = createdStream
+            if (activeStream.ptr == 0L) throw IllegalStateException("Wake phrase could not be configured.")
             val minBuffer = AudioRecord.getMinBufferSize(
                 SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
             )
@@ -122,20 +127,19 @@ class IdraakWakeWordService : Service() {
                 val count = audio.read(buffer, 0, buffer.size)
                 if (count <= 0) continue
                 val samples = FloatArray(count) { buffer[it] / 32768.0f }
-                stream.acceptWaveform(samples, SAMPLE_RATE)
-                while (kws.isReady(stream)) {
-                    kws.decode(stream)
-                    val keyword = kws.getResult(stream).keyword
+                activeStream.acceptWaveform(samples, SAMPLE_RATE)
+                while (activeSpotter.isReady(activeStream)) {
+                    activeSpotter.decode(activeStream)
+                    val keyword = activeSpotter.getResult(activeStream).keyword
                     if (keyword.isNotBlank()) {
-                        kws.reset(stream)
+                        activeSpotter.reset(activeStream)
                         updateNotification("Idraak woke up. Speak your command.")
-                        stopWakeRecorder(audio, stream, kws)
+                        stopWakeRecorder(audio, activeStream, activeSpotter)
                         recorder = null
-                        wakeStream = null
                         wakeStream = null
                         stream = null
                         spotter = null
-                        kws.release()
+                        activeSpotter.release()
                         kws = null
                         captureCommand()
                         return
