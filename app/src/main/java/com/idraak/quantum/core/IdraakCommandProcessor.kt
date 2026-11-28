@@ -45,6 +45,7 @@ class IdraakCommandProcessor(context: Context) {
         val effectiveCommand = learnedStore.resolve(command) ?: command
         val result = commandEngine.process(effectiveCommand)
         if (result.action == CommandAction.None) {
+            errorStore.record(command, result.message)
             return IdraakProcessingResult(
                 false,
                 ActionRecoveryPolicy.responseForUnknownCommand(command, result.message)
@@ -58,6 +59,7 @@ class IdraakCommandProcessor(context: Context) {
             execution.contains("permission", ignoreCase = true) ||
             execution.contains("رابطے تلاش نہیں ہو سکے") ||
             execution.contains("رابطے تلاش کرنے کے لیے") ||
+            execution.contains("رابطہ نہیں ملا") ||
             execution.contains("یہ کام مکمل نہیں ہو سکا")
         if (failed) errorStore.record(command, execution)
         val response = if (failed) {
