@@ -110,6 +110,32 @@ class IdraakAccessibilityService : AccessibilityService() {
             dispatchTap(bounds)
     }
 
+    private fun doubleTapVisibleText(query: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        // Only double-tap a unique visible label; never guess between duplicate controls.
+        val node = uniqueMatchingNode(root, query) ?: return false
+        if (!node.isEnabled) return false
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        if (bounds.isEmpty ||
+            bounds.width() >= resources.displayMetrics.widthPixels * 0.95f ||
+            bounds.height() >= resources.displayMetrics.heightPixels * 0.45f ||
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.N
+        ) return false
+
+        val centerX = bounds.centerX().toFloat()
+        val centerY = bounds.centerY().toFloat()
+        fun tapPath() = Path().apply {
+            moveTo(centerX, centerY)
+            lineTo(centerX + 1f, centerY)
+        }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(tapPath(), 0, 70))
+            .addStroke(GestureDescription.StrokeDescription(tapPath(), 160, 70))
+            .build()
+        return dispatchGesture(gesture, null, null)
+    }
+
     private fun longPressVisibleText(query: String): Boolean {
         val root = rootInActiveWindow ?: return false
         // Ambiguous labels are rejected rather than long-pressing an arbitrary control.
@@ -311,6 +337,7 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun seekBySeconds(offsetSeconds: Long): Boolean =
             activeService?.seekBySeconds(offsetSeconds) == true
         fun longPressText(text: String): Boolean = activeService?.longPressVisibleText(text.trim()) == true
+        fun doubleTapText(text: String): Boolean = activeService?.doubleTapVisibleText(text.trim()) == true
         fun scrollForward(): Boolean = activeService?.scroll(true) == true
         fun scrollBackward(): Boolean = activeService?.scroll(false) == true
         fun scrollByCount(forward: Boolean, count: Int): Int =
