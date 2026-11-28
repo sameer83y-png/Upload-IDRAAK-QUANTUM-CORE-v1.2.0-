@@ -205,12 +205,23 @@ class LocalMemoryStore(context: Context) :
             """\b(password|passcode|pin|otp|one[- ]time code|verification code|api[- ]?key|access token|refresh token|secret key|private key)\b\s*(?:is|:|=|->)\s*\S+""",
             RegexOption.IGNORE_CASE
         )
+        private val CODE_ASSIGNMENT = Regex(
+            """\b(password|passcode|pin|otp|one[- ]time code|verification code)\s+\d{4,8}\b""",
+            RegexOption.IGNORE_CASE
+        )
+        private val TOKEN_ASSIGNMENT = Regex(
+            """\b(api[- ]?key|access token|refresh token|secret key|private key)\s+[A-Za-z0-9_-]{12,}\b""",
+            RegexOption.IGNORE_CASE
+        )
         private val TOKEN_PATTERN = Regex(
             """\b(?:sk-[A-Za-z0-9_-]{12,}|AIza[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b"""
         )
 
         internal fun containsCredentialMaterial(value: String): Boolean =
-            CREDENTIAL_ASSIGNMENT.containsMatchIn(value) || TOKEN_PATTERN.containsMatchIn(value)
+            CREDENTIAL_ASSIGNMENT.containsMatchIn(value) ||
+                CODE_ASSIGNMENT.containsMatchIn(value) ||
+                TOKEN_ASSIGNMENT.containsMatchIn(value) ||
+                TOKEN_PATTERN.containsMatchIn(value)
 
         private const val DATABASE_NAME = "idraak_local_memory.db"
         private const val DATABASE_VERSION = 1
