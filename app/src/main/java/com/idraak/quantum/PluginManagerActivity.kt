@@ -11,6 +11,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.idraak.quantum.core.AppPluginRegistry
 
 /**
  * User-approved app connector registry.
@@ -20,10 +21,8 @@ import android.widget.TextView
  * third-party plugin code and does not bypass Android permissions.
  */
 class PluginManagerActivity : Activity() {
-    private val prefs by lazy { getSharedPreferences(PREFS_NAME, MODE_PRIVATE) }
-    private val connectedPackages: MutableSet<String>
-        get() = prefs.getStringSet(KEY_CONNECTED_PACKAGES, emptySet())
-            ?.toMutableSet() ?: mutableSetOf()
+    private val connectedPackages: Set<String>
+        get() = AppPluginRegistry.connectedPackages(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -111,6 +110,19 @@ class PluginManagerActivity : Activity() {
                     setTextColor(if (isConnected) accent else Color.LTGRAY)
                     setPadding(0, 3, 0, 5)
                 }, matchWrap())
+                val canShareText = AppPluginRegistry.supportsTextShare(this, appPackage)
+                val canOpenLinks = AppPluginRegistry.supportsWebLinks(this, appPackage)
+                card.addView(TextView(this).apply {
+                    text = buildString {
+                        append("ANDROID CAPABILITIES: LAUNCH")
+                        if (canShareText) append(" • TEXT SHARE")
+                        if (canOpenLinks) append(" • WEB LINKS")
+                        if (!canShareText && !canOpenLinks) append(" • NO EXTRA INTENT FOUND")
+                    }
+                    textSize = 10f
+                    setTextColor(if (canShareText || canOpenLinks) accent else Color.LTGRAY)
+                    setPadding(0, 3, 0, 7)
+                }, matchWrap())
                 card.addView(Button(this).apply {
                     text = if (isConnected) "DISCONNECT" else "CONNECT"
                     setOnClickListener {
@@ -157,9 +169,7 @@ class PluginManagerActivity : Activity() {
             .setMessage("Allow Idraak to add $appName to your personal app connector list? Idraak will use only supported Android app entry points. This does not grant access to private data or enable hidden actions.")
             .setNegativeButton("CANCEL", null)
             .setPositiveButton("CONNECT") { _, _ ->
-                val updated = connectedPackages
-                updated.add(appPackage)
-                prefs.edit().putStringSet(KEY_CONNECTED_PACKAGES, updated).apply()
+                AppPluginRegistry.connect(this, appPackage)
                 toast("$appName connected.")
                 render()
             }
@@ -172,9 +182,7 @@ class PluginManagerActivity : Activity() {
             .setMessage("Remove this app from Idraak's connector list? You can connect it again later.")
             .setNegativeButton("KEEP", null)
             .setPositiveButton("DISCONNECT") { _, _ ->
-                val updated = connectedPackages
-                updated.remove(appPackage)
-                prefs.edit().putStringSet(KEY_CONNECTED_PACKAGES, updated).apply()
+                AppPluginRegistry.disconnect(this, appPackage)
                 toast("$appName disconnected.")
                 render()
             }
@@ -190,8 +198,4 @@ class PluginManagerActivity : Activity() {
         ViewGroup.LayoutParams.WRAP_CONTENT
     )
 
-    companion object {
-        private const val PREFS_NAME = "idraak_plugin_registry"
-        private const val KEY_CONNECTED_PACKAGES = "connected_packages"
-    }
 }
