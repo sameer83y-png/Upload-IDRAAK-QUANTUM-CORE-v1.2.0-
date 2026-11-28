@@ -608,25 +608,31 @@ class MainActivity : FragmentActivity() {
         val apiKey = GeminiKeyStore(this).read()
         if (!apiKey.isNullOrBlank()) {
             responseView.text = "Gemini سے جواب حاصل کر رہا ہوں…"
-            historyStore.add("user", command)
+            // History is optional: a database error must not prevent the Gemini reply.
+            runCatching { historyStore.add("user", command) }
             val model = getSharedPreferences("idraak_settings", MODE_PRIVATE)
                 .getString("gemini_model", GeminiBrainClient.DEFAULT_MODEL)
                 ?: GeminiBrainClient.DEFAULT_MODEL
             processor.close()
-            geminiExecutor.execute {
-                val reply = try {
-                    GeminiBrainClient(apiKey, model).reply(command)
-                } catch (error: Exception) {
-                    "Gemini سے جواب نہیں ملا: " + (error.message ?: "network یا API کی خرابی") +
-                        "\\n\\n" + processed.response
-                }
-                runOnUiThread {
-                    if (!isFinishing && !isDestroyed) {
-                        responseView.text = reply
-                        historyStore.add("assistant", reply)
-                        speakUrdu(reply)
+            try {
+                geminiExecutor.execute {
+                    val reply = try {
+                        GeminiBrainClient(apiKey, model).reply(command)
+                    } catch (error: Exception) {
+                        "Gemini سے جواب نہیں ملا: " + (error.message ?: "network یا API کی خرابی") +
+                            "\\n\\n" + processed.response
+                    }
+                    runOnUiThread {
+                        if (!isFinishing && !isDestroyed) {
+                            responseView.text = reply
+                            runCatching { historyStore.add("assistant", reply) }
+                            speakUrdu(reply)
+                        }
                     }
                 }
+            } catch (_: java.util.concurrent.RejectedExecutionException) {
+                responseView.text = processed.response
+                speakUrdu(processed.response)
             }
             return
         }
@@ -888,6 +894,7 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
+        geminiExecutor.shutdownNow()
         voiceController?.destroy()
         speechOutput?.stop()
         speechOutput?.shutdown()
