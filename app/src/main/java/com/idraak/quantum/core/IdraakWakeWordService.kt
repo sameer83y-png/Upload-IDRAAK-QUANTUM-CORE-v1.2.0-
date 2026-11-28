@@ -50,11 +50,7 @@ class IdraakWakeWordService : Service() {
         tts = TextToSpeech(applicationContext) { status ->
             ttsInitialized = true
             if (status == TextToSpeech.SUCCESS) {
-                val supportedLocales = listOf(
-                    Locale("ur", "PK"),
-                    Locale("hi", "IN"),
-                    Locale.US
-                )
+                val supportedLocales = VoiceLanguagePolicy.supportedLocales
                 ttsReady = false
                 for (locale in supportedLocales) {
                     val result = try {
@@ -73,7 +69,7 @@ class IdraakWakeWordService : Service() {
                 if (!ttsReady) {
                     pendingSpeech = null
                     speechPending.set(false)
-                    updateNotification("Speech voice unavailable. Install a supported Urdu, Hindi, or English TTS voice.")
+                    updateNotification("Urdu speech voice unavailable. Install an Urdu (Pakistan) TTS voice.")
                     if (restartRequested.get()) restartWakeWordListening()
                 }
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
