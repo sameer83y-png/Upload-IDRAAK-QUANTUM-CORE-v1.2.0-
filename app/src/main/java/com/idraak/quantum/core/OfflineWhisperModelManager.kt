@@ -23,6 +23,7 @@ class OfflineWhisperModelManager(context: Context) {
 
     data class ModelFiles(val encoder: File, val decoder: File, val tokens: File)
 
+    @Synchronized
     fun prepare(onProgress: (Int) -> Unit = {}): ModelFiles {
         root.mkdirs()
         findModelFiles()?.let { return it }
@@ -140,6 +141,7 @@ class OfflineWhisperModelManager(context: Context) {
             archiveFile.delete()
         } catch (error: Exception) {
             extractTemp.deleteRecursively()
+            archiveFile.delete()
             throw error
         }
     }
