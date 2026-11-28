@@ -129,6 +129,9 @@ class SettingsActivity : Activity() {
         }, matchWrap().apply { topMargin = 16 })
 
 
+        addAppLockSection(root)
+        addReleaseSigningSection(root)
+
         root.addView(TextView(this).apply {
             text = "GEMINI BRAIN (OPTIONAL)"
             textSize = 15f
@@ -229,6 +232,151 @@ class SettingsActivity : Activity() {
             setOnClickListener { finish() }
         }, matchWrap().apply { topMargin = 12 })
         setContentView(root)
+    }
+
+    private fun addAppLockSection(root: LinearLayout) {
+        root.addView(TextView(this).apply {
+            text = "APP LOCK & PRIVACY"
+            textSize = 15f
+            setTextColor(preferences.getInt("accent", Color.rgb(67, 218, 255)))
+            setPadding(0, 28, 0, 8)
+        }, matchWrap())
+        val manager = com.idraak.quantum.core.AppLockManager(this)
+        root.addView(TextView(this).apply {
+            text = if (manager.isEnabled()) "App Lock: ENABLED" else "App Lock: NOT SET"
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            setPadding(12, 10, 12, 10)
+            setBackgroundColor(Color.rgb(22, 34, 54))
+        }, matchWrap())
+        root.addView(Button(this).apply {
+            text = if (manager.isEnabled()) "CHANGE APP PASSWORD" else "SET APP PASSWORD"
+            setOnClickListener { showSetAppPasswordDialog() }
+        }, matchWrap().apply { topMargin = 8 })
+        if (manager.isEnabled()) {
+            root.addView(Button(this).apply {
+                text = "TURN OFF APP LOCK"
+                setOnClickListener { showDisableAppLockDialog() }
+            }, matchWrap().apply { topMargin = 6 })
+        }
+        root.addView(TextView(this).apply {
+            text = "Set a password of 6–64 characters. Idraak stores only a salted PBKDF2 verification hash, not the password itself. If you forget it, app data must be cleared to regain access; this removes local Idraak data."
+            textSize = 10f
+            setTextColor(Color.LTGRAY)
+            setPadding(4, 8, 4, 12)
+        }, matchWrap())
+    }
+
+    private fun showSetAppPasswordDialog() {
+        val manager = com.idraak.quantum.core.AppLockManager(this)
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 12, 24, 4)
+        }
+        val current = if (manager.isEnabled()) EditText(this).apply {
+            hint = "Current password"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        } else null
+        if (current != null) layout.addView(current, matchWrap())
+        val first = EditText(this).apply {
+            hint = "New password (6–64 characters)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val second = EditText(this).apply {
+            hint = "Confirm new password"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        layout.addView(first, matchWrap())
+        layout.addView(second, matchWrap().apply { topMargin = 8 })
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("SET IDRAAK APP PASSWORD")
+            .setMessage("The password is never displayed again after saving.")
+            .setView(layout)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("SAVE", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val oldChars = current?.text?.toString()?.toCharArray()
+                val newText = first.text.toString()
+                val confirmText = second.text.toString()
+                val oldValid = oldChars == null || manager.verify(oldChars)
+                oldChars?.fill('\\u0000')
+                when {
+                    !oldValid -> android.widget.Toast.makeText(this, "Current password is incorrect.", android.widget.Toast.LENGTH_LONG).show()
+                    newText.length !in 6..64 -> android.widget.Toast.makeText(this, "Use 6–64 characters.", android.widget.Toast.LENGTH_LONG).show()
+                    newText != confirmText -> android.widget.Toast.makeText(this, "Passwords do not match.", android.widget.Toast.LENGTH_LONG).show()
+                    else -> {
+                        val chars = newText.toCharArray()
+                        val saved = manager.setPassword(chars)
+                        chars.fill('\\u0000')
+                        if (saved) {
+                            android.widget.Toast.makeText(this, "App password saved on this device.", android.widget.Toast.LENGTH_LONG).show()
+                            dialog.dismiss()
+                            render()
+                        } else {
+                            android.widget.Toast.makeText(this, "Could not save app password.", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun showDisableAppLockDialog() {
+        val manager = com.idraak.quantum.core.AppLockManager(this)
+        val input = EditText(this).apply {
+            hint = "Current app password"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("TURN OFF APP LOCK")
+            .setMessage("Enter your current password to disable the lock.")
+            .setView(input)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("TURN OFF", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val chars = input.text.toString().toCharArray()
+                val valid = manager.verify(chars)
+                chars.fill('\\u0000')
+                if (valid) {
+                    manager.disable()
+                    dialog.dismiss()
+                    android.widget.Toast.makeText(this, "App Lock disabled.", android.widget.Toast.LENGTH_SHORT).show()
+                    render()
+                } else {
+                    input.text.clear()
+                    android.widget.Toast.makeText(this, "Password incorrect.", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun addReleaseSigningSection(root: LinearLayout) {
+        root.addView(TextView(this).apply {
+            text = "RELEASE SIGNING & SELF-UPDATES"
+            textSize = 15f
+            setTextColor(preferences.getInt("accent", Color.rgb(67, 218, 255)))
+            setPadding(0, 28, 0, 8)
+        }, matchWrap())
+        root.addView(TextView(this).apply {
+            text = "This is a developer publishing credential, not an app password. Idraak never receives or reads it. Create and keep your signing keystore privately, then add these four values as GitHub Actions Secrets: IDRAAK_KEYSTORE_BASE64, IDRAAK_KEYSTORE_PASSWORD, IDRAAK_KEY_ALIAS, IDRAAK_KEY_PASSWORD. Do not paste them into Idraak, chat, source code, or a public file. GitHub uses them only to sign official release APKs."
+            textSize = 10f
+            setTextColor(Color.LTGRAY)
+            setPadding(4, 8, 4, 10)
+        }, matchWrap())
+        root.addView(Button(this).apply {
+            text = "OPEN GITHUB RELEASE SECRETS"
+            setOnClickListener {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(
+                    "https://github.com/sameer83y-png/Upload-IDRAAK-QUANTUM-CORE-v1.2.0-/settings/secrets/actions"
+                )))
+            }
+        }, matchWrap())
     }
 
     private fun requestRuntimePermissions() {
