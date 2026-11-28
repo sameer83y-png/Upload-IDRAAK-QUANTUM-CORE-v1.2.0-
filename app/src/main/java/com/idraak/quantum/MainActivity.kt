@@ -599,25 +599,6 @@ class MainActivity : FragmentActivity() {
             else "اسکرین پر نظر آنے والی تحریر یہ ہے:\\n$visibleText"
         }
 
-        val textToType = when {
-            lower.startsWith("type text:") -> command.substringAfter(":", "").trim()
-            lower.startsWith("enter text:") -> command.substringAfter(":", "").trim()
-            lower.startsWith("لکھو:") -> command.substringAfter(":", "").trim()
-            lower.startsWith("ٹیکسٹ لکھو:") -> command.substringAfter(":", "").trim()
-            lower.startsWith("یہ لکھو:") -> command.substringAfter(":", "").trim()
-            else -> ""
-        }
-        if (textToType.isNotBlank()) {
-            if (!IdraakAccessibilityService.isConnected()) {
-                return "متن لکھنے کے لیے پہلے Settings میں Idraak Accessibility فعال کریں۔"
-            }
-            return if (IdraakAccessibilityService.typeIntoFocusedField(textToType)) {
-                "منتخب ٹیکسٹ فیلڈ میں متن لکھ دیا۔ بھیجنے سے پہلے خود چیک کریں۔"
-            } else {
-                "کوئی قابلِ رسائی focused text field نہیں ملا۔ پہلے دوسری ایپ کے input box پر ٹیپ کریں۔"
-            }
-        }
-
         val longPressTarget = when {
             lower.matches(Regex("^(long press|press and hold)( on)? .+")) ->
                 command.replaceFirst(Regex("^(long press|press and hold)( on)?\\s+"), "").trim()
