@@ -384,34 +384,12 @@ class IdraakCommandProcessor(
             }
         }
 
-        val seekCommand = lower.map { character ->
-            character.digitToIntOrNull()?.toString() ?: character.toString()
-        }.joinToString("").replace(Regex("\\s+"), " ").trim()
-        val seekMatch = Regex(
-            "^(?:(?:go|move|seek) )?(forward|backward|ahead|back|آگے|پیچھے) (\\d+) (seconds?|secs?|minutes?|mins?|سیکنڈ|منٹ)$",
-            RegexOption.IGNORE_CASE
-        ).find(seekCommand) ?: Regex(
-            "^(\\d+) (seconds?|secs?|minutes?|mins?|سیکنڈ|منٹ) (forward|backward|ahead|back|آگے|پیچھے)$",
-            RegexOption.IGNORE_CASE
-        ).find(seekCommand)
-        if (seekMatch != null) {
-            val first = seekMatch.groupValues[1]
-            val isAmountFirst = first.all { it.isDigit() }
-            val direction = if (isAmountFirst) seekMatch.groupValues[3] else first
-            val amountText = if (isAmountFirst) first else seekMatch.groupValues[2]
-            val unit = if (isAmountFirst) seekMatch.groupValues[2] else seekMatch.groupValues[3]
-            val amount = amountText.toLongOrNull()
-                ?: return "وقت کی مقدار سمجھ نہیں آئی۔"
-            val multiplier = if (unit.startsWith("min", true) || unit == "منٹ") 60L else 1L
-            if (amount > Long.MAX_VALUE / multiplier) return "وقت کی مقدار بہت زیادہ ہے۔"
-            val seconds = amount * multiplier
-            val forward = direction.equals("forward", true) ||
-                direction.equals("ahead", true) || direction == "آگے"
-            val offset = if (forward) seconds else -seconds
+        val seekOffsetSeconds = MediaSeekCommandParser.parseOffsetSeconds(command)
+        if (seekOffsetSeconds != null) {
             if (!IdraakAccessibilityService.isConnected()) return "ویڈیو کنٹرول کے لیے Idraak Accessibility فعال کریں۔"
-            return if (IdraakAccessibilityService.seekBySeconds(offset)) {
-                if (offset > 0) "ویڈیو کو $seconds سیکنڈ آگے کر دیا۔"
-                else "ویڈیو کو ${-seconds} سیکنڈ پیچھے کر دیا۔"
+            return if (IdraakAccessibilityService.seekBySeconds(seekOffsetSeconds)) {
+                if (seekOffsetSeconds > 0) "ویڈیو کو $seekOffsetSeconds سیکنڈ آگے کر دیا۔"
+                else "ویڈیو کو ${-seekOffsetSeconds} سیکنڈ پیچھے کر دیا۔"
             } else {
                 "اس ایپ نے قابلِ استعمال ویڈیو ٹائم لائن فراہم نہیں کی؛ وقت تبدیل نہیں کیا گیا۔"
             }
