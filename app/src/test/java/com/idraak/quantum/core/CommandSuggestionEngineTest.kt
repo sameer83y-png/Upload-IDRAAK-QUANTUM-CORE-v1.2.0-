@@ -36,4 +36,29 @@ class CommandSuggestionEngineTest {
         )
         assertTrue(response.contains("youtube kholo"))
     }
+
+    @Test
+    fun dashboardSuggestionsChangeWithTimeAndAccessibility() {
+        val morning = CommandSuggestionEngine.dashboardSuggestions(8, false, emptyList())
+        val night = CommandSuggestionEngine.dashboardSuggestions(23, false, emptyList())
+        val withAccessibility = CommandSuggestionEngine.dashboardSuggestions(14, true, emptyList())
+
+        assertTrue(morning.first().suggestions.first().command.contains("یاد دلانا"))
+        assertTrue(night.first().suggestions.first().command.contains("ساؤنڈ"))
+        assertTrue(withAccessibility.any { it.title == "اسکرین کنٹرول" })
+    }
+
+    @Test
+    fun dashboardIncludesOnlyConnectedAppLabelsAndLimitsTheList() {
+        val categories = CommandSuggestionEngine.dashboardSuggestions(
+            12,
+            false,
+            listOf("YouTube", "Chrome", "YouTube", "", "Maps", "Gmail", "Instagram", "Telegram")
+        )
+        val apps = categories.single { it.title == "آپ کی منسلک ایپس" }.suggestions
+
+        assertEquals(5, apps.size)
+        assertEquals("open YouTube", apps.first().command)
+        assertTrue(apps.none { it.title.isBlank() })
+    }
 }
