@@ -323,6 +323,17 @@ class IdraakCommandProcessor(
             return "اس عمل کی تصدیق درکار ہے۔ آگے بڑھنے کے لیے “ہاں” یا روکنے کے لیے “نہیں” کہیں۔"
         }
 
+        if (SelectWordCommandParser.matches(command)) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "لفظ منتخب کرنے کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.selectWordAtCursor()) {
+                "کرسر کے پاس والا لفظ منتخب کر دیا۔"
+            } else {
+                "لفظ منتخب نہیں ہوا؛ کسی عام ٹیکسٹ فیلڈ میں لفظ کے اندر یا اس کے آخر میں کرسر رکھیں۔ پاس ورڈ فیلڈ محفوظ رہے گی۔"
+            }
+        }
+
         val selectionEdge = SelectToEdgeCommandParser.parse(command)
         if (selectionEdge != null) {
             if (!IdraakAccessibilityService.isConnected()) {

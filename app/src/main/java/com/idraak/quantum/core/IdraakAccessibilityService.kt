@@ -367,7 +367,48 @@ class IdraakAccessibilityService : AccessibilityService() {
     }
 
 
-    /** Moves the cursor to an edge of the single focused, editable, non-password field. */
+    /** Selects the word at the cursor in one focused, visible, editable, non-password field. */
+    private fun selectWordAtCursor(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focusedFields = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled && node.isEditable &&
+                node.isFocused && !node.isPassword
+        }
+        if (focusedFields.size != 1) return false
+        val field = focusedFields.single()
+        val text = field.text?.toString() ?: return false
+        if (text.isEmpty()) return false
+
+        val selectionStart = field.textSelectionStart
+        val selectionEnd = field.textSelectionEnd
+        if (selectionStart < 0 || selectionEnd != selectionStart || selectionStart > text.length) {
+            return false
+        }
+
+        fun isWordChar(char: Char): Boolean {
+            val type = Character.getType(char)
+            return char.isLetterOrDigit() || char == '_' ||
+                type == Character.NON_SPACING_MARK.toInt() ||
+                type == Character.COMBINING_SPACING_MARK.toInt() ||
+                type == Character.ENCLOSING_MARK.toInt()
+        }
+
+        val probe = when {
+            selectionStart < text.length && isWordChar(text[selectionStart]) -> selectionStart
+            selectionStart > 0 && isWordChar(text[selectionStart - 1]) -> selectionStart - 1
+            else -> return false
+        }
+        var start = probe
+        var end = probe + 1
+        while (start > 0 && isWordChar(text[start - 1])) start--
+        while (end < text.length && isWordChar(text[end])) end++
+        val arguments = Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, start)
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, end)
+        }
+        return field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, arguments)
+    }
+
     private fun moveFocusedCursor(toEnd: Boolean): Boolean {
         val root = rootInActiveWindow ?: return false
         val focusedFields = allNodes(root).filter { node ->
@@ -532,6 +573,7 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun selectAllFocusedText(): Boolean = activeService?.selectAllFocusedText() == true
         fun copySelectedText(): Boolean = activeService?.copySelectedFocusedText() == true
         fun cutSelectedText(): Boolean = activeService?.cutSelectedFocusedText() == true
+        fun selectWordAtCursor(): Boolean = activeService?.selectWordAtCursor() == true
         fun moveCursorToStart(): Boolean = activeService?.moveFocusedCursor(false) == true
         fun moveCursorToEnd(): Boolean = activeService?.moveFocusedCursor(true) == true
         fun selectFromCursorToStart(): Boolean = activeService?.selectFromCursorToEdge(false) == true
