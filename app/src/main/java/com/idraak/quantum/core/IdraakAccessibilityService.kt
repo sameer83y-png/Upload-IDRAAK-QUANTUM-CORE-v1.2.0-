@@ -155,6 +155,8 @@ class IdraakAccessibilityService : AccessibilityService() {
         return output.joinToString("\\n").take(4000)
     }
 
+    private fun global(action: Int): Boolean = performGlobalAction(action)
+
     private fun swipeScreen(up: Boolean): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
         val metrics = resources.displayMetrics
