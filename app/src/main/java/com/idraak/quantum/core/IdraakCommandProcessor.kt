@@ -461,14 +461,30 @@ class IdraakCommandProcessor(
             return if (IdraakAccessibilityService.showQuickSettings()) "Quick Settings کھول دی۔"
             else "Quick Settings panel نہیں کھل سکا۔"
         }
+        val repeatedScroll = RepeatedScrollCommandParser.parse(command)
+        if (repeatedScroll != null) {
+            if (!IdraakAccessibilityService.isConnected()) return "اسکرول کے لیے Idraak Accessibility فعال کریں۔"
+            val moved = IdraakAccessibilityService.scrollByCount(
+                repeatedScroll.forward,
+                repeatedScroll.count
+            )
+            return if (moved == repeatedScroll.count) {
+                "${if (repeatedScroll.forward) "نیچے" else "اوپر"} ${moved} بار اسکرول کر دیا۔"
+            } else if (moved > 0) {
+                "صرف ${moved} بار اسکرول ہو سکا؛ اسکرین نے مزید اسکرول قبول نہیں کیا۔"
+            } else {
+                "اس اسکرین پر اسکرول نہیں ہو سکا۔"
+            }
+        }
+
         val down = lower in listOf("scroll down", "نیچے اسکرول کرو", "نیچے کرو", "swipe up", "اوپر سوائپ کرو")
         val up = lower in listOf("scroll up", "اوپر اسکرول کرو", "اوپر کرو", "swipe down", "نیچے سوائپ کرو")
         if (down || up) {
             if (!IdraakAccessibilityService.isConnected()) return "اسکرول کے لیے Idraak Accessibility فعال کریں۔"
             val moved = if (down) {
-                IdraakAccessibilityService.scrollForward() || IdraakAccessibilityService.swipeUp()
+                IdraakAccessibilityService.scrollByCount(true, 1) == 1
             } else {
-                IdraakAccessibilityService.scrollBackward() || IdraakAccessibilityService.swipeDown()
+                IdraakAccessibilityService.scrollByCount(false, 1) == 1
             }
             return if (moved) "اسکرین پر اسکرول ایکشن بھیج دیا۔" else "اس اسکرین پر اسکرول نہیں ہو سکا۔"
         }
