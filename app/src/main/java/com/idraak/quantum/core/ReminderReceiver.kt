@@ -57,7 +57,7 @@ class ReminderReceiver : BroadcastReceiver() {
             )
         }
 
-        private fun restoreAfterBoot(context: Context) {
+        fun restorePending(context: Context) {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val records = prefs.getStringSet(RECORDS, emptySet()).orEmpty().toList()
             for (record in records) {
@@ -85,13 +85,12 @@ class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            restoreAfterBoot(context)
+            restorePending(context)
             return
         }
         val id = intent.getIntExtra(EXTRA_ID, 0)
         val message = intent.getStringExtra(EXTRA_MESSAGE)?.takeIf { it.isNotBlank() }
             ?: "آپ کی یاد دہانی کا وقت ہو گیا ہے۔"
-        removeStored(context, id)
         if (Build.VERSION.SDK_INT >= 33 &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
@@ -114,6 +113,12 @@ class ReminderReceiver : BroadcastReceiver() {
             .setStyle(Notification.BigTextStyle().bigText(message))
             .setAutoCancel(true)
         if (contentIntent != null) builder.setContentIntent(contentIntent)
-        manager.notify(id, builder.build())
+        try {
+            manager.notify(id, builder.build())
+            // Remove the persisted reminder only after Android accepts its notification.
+            removeStored(context, id)
+        } catch (_: SecurityException) {
+            // Keep it persisted so it can be restored after notification permission is granted.
+        }
     }
 }

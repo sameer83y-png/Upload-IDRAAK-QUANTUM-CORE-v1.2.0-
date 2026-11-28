@@ -32,6 +32,7 @@ import com.idraak.quantum.core.GeminiBrainClient
 import com.idraak.quantum.core.GeminiKeyStore
 import com.idraak.quantum.core.LearnedCommandStore
 import com.idraak.quantum.core.CodeLearningEngine
+import com.idraak.quantum.core.ReminderReceiver
 import com.idraak.quantum.core.IdraakCommandProcessor
 import java.util.concurrent.Executors
 import java.util.Locale
@@ -536,6 +537,9 @@ class MainActivity : FragmentActivity() {
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 4202)
+        } else {
+            // Also re-arm reminders that were held while notification permission was unavailable.
+            ReminderReceiver.restorePending(this)
         }
     }
 
@@ -579,6 +583,12 @@ class MainActivity : FragmentActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 4202) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                ReminderReceiver.restorePending(this)
+            }
+            return
+        }
         if (requestCode == REQUEST_MICROPHONE) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 if (startBackgroundAfterPermission) {
