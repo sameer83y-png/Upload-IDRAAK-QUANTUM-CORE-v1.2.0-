@@ -57,7 +57,11 @@ class IdraakWakeWordService : Service() {
                 )
                 ttsReady = false
                 for (locale in supportedLocales) {
-                    val result = tts?.setLanguage(locale)
+                    val result = try {
+                        tts?.setLanguage(locale)
+                    } catch (_: Exception) {
+                        null
+                    }
                     if (result != null &&
                         result != TextToSpeech.LANG_MISSING_DATA &&
                         result != TextToSpeech.LANG_NOT_SUPPORTED
@@ -393,6 +397,7 @@ class IdraakWakeWordService : Service() {
     }
 
     private fun updateNotification(message: String) {
+        if (stopping.get()) return
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle("Idraak voice assistant")
