@@ -34,7 +34,7 @@ class OfflineCommandEngine {
         if (original.isBlank()) return CommandResult(greetingReply)
         val numericText = normalizeDigits(original)
         val text = original.lowercase(Locale.ROOT)
-            .replace(Regex("[.!?؟،,]+$"), "")
+            .replace(Regex("[.!?؟،,۔]+$"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
         if (
@@ -345,12 +345,32 @@ class OfflineCommandEngine {
             "ویب سائٹ کھول رہا ہوں۔", CommandAction.OpenUrl(openWebsite.groupValues[1])
         )
 
+        val vagueAppRequest = Regex(
+            "^(?:(?:open|launch|start|run)\\s+)?(?:another|some other|any other|different|koi|koi bhi|koi doosra|koi dusra)\\s+(?:app|application)(?:\\s+(?:open|kholo|khol do|chalao|chala do))?$",
+            RegexOption.IGNORE_CASE
+        ).matches(text) || text in setOf(
+            "کوئی ایپ کھولو", "کوئی دوسرا ایپ کھولو", "کوئی اور ایپ کھولو",
+            "دوسری ایپ کھولو", "کوئی ایپ چلا دو", "کوئی دوسری ایپ چلا دو",
+            "کوئی اور ایپ چلاؤ", "دوسری ایپ چلاؤ"
+        )
+        if (vagueAppRequest) return CommandResult("کون سی ایپ کھولوں؟ براہ کرم ایپ کا نام بتائیں۔")
+
         val genericOpen = Regex(
-            "^(?:open|launch|start|کھولو|چلاؤ)\\s+(.+?)(?:\\s+app)?$",
+            "^(?:open|launch|start|run|chalao|chala do|khol|kholo|khol do|کھولو|کھول دو|چلاؤ|چلاو|چلا دو)\\s+(.+?)(?:\\s+app)?$",
             RegexOption.IGNORE_CASE
         ).find(original)
-        val urduOpenApp = Regex("^(.+?)\\s+(?:ایپ\\s+)?کھولو$", RegexOption.IGNORE_CASE).find(original)
-        val appName = (genericOpen?.groupValues?.get(1) ?: urduOpenApp?.groupValues?.get(1))
+        val namedAppSuffix = Regex(
+            "^(.+?)\\s+(?:app\\s+)?(?:kholo|khol do|chalao|chala do|खोलो|खोल दो|चलाओ|चला दो|کھولو|کھول دو|چلاؤ|چلاو|چلا دو)$",
+            RegexOption.IGNORE_CASE
+        ).find(original)
+        val urduOpenApp = Regex("^(.+?)\\s+(?:ایپ\\s+)?(?:کھولو|کھول دو|چلاؤ|چلاو|چلا دو)$").find(original)
+        val appName = (
+            genericOpen?.groupValues?.get(1)
+                ?: urduOpenApp?.groupValues?.get(1)
+                ?: namedAppSuffix?.groupValues?.get(1)
+            )
+            ?.trim()
+            ?.removeSuffix(" app")
             ?.trim()
             ?.takeIf { it.isNotBlank() && it.length <= 40 }
         if (appName != null && !appName.startsWith("http", ignoreCase = true)) {
