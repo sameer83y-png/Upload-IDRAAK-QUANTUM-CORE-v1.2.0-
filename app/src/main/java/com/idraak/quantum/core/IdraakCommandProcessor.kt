@@ -301,6 +301,64 @@ class IdraakCommandProcessor(
     private fun handleAccessibility(raw: String): String? {
         val command = raw.trim()
         val lower = command.lowercase(Locale.ROOT)
+
+        val searchQuery = when {
+            lower.startsWith("search for ") -> command.substringAfter("search for ").trim()
+            lower.startsWith("search ") -> command.substringAfter("search ").trim()
+            lower.startsWith("تلاش کرو ") -> command.substringAfter("تلاش کرو ").trim()
+            lower.startsWith("تلاش کریں ") -> command.substringAfter("تلاش کریں ").trim()
+            lower.startsWith("یہ تلاش کرو ") -> command.substringAfter("یہ تلاش کرو ").trim()
+            else -> ""
+        }
+        if (searchQuery.isNotBlank()) {
+            if (!IdraakAccessibilityService.isConnected()) return "ایپ میں تلاش کے لیے Idraak Accessibility فعال کریں۔"
+            return if (IdraakAccessibilityService.searchCurrentApp(searchQuery)) {
+                "موجودہ ایپ میں “$searchQuery” تلاش کے لیے درج کر دیا۔"
+            } else {
+                "اس اسکرین پر واضح Search فیلڈ نہیں ملی؛ پہلے سرچ باکس کھولیں یا اسے منتخب کریں۔"
+            }
+        }
+
+        val fillMatch = Regex(
+            "^(?:type|enter|fill) (.+) in (.+)$",
+            RegexOption.IGNORE_CASE
+        ).find(command)
+        if (fillMatch != null) {
+            val value = fillMatch.groupValues[1].trim()
+            val field = fillMatch.groupValues[2].trim()
+            if (!IdraakAccessibilityService.isConnected()) return "ٹیکسٹ درج کرنے کے لیے Idraak Accessibility فعال کریں۔"
+            return if (IdraakAccessibilityService.setText(field, value)) {
+                "“$field” میں متن درج کر دیا۔"
+            } else {
+                "“$field” نام کا واضح editable فیلڈ نہیں ملا۔"
+            }
+        }
+
+        val seekMatch = Regex(
+            "^(?:(?:go|move|seek) )?(forward|backward|ahead|back) (\\d+) (seconds?|secs?|minutes?|mins?)$",
+            RegexOption.IGNORE_CASE
+        ).find(command) ?: Regex(
+            "^(\\d+) (seconds?|secs?|minutes?|mins?) (forward|backward|ahead|back)$",
+            RegexOption.IGNORE_CASE
+        ).find(command)
+        if (seekMatch != null) {
+            val first = seekMatch.groupValues[1]
+            val second = seekMatch.groupValues[2]
+            val direction = if (first.all { it.isDigit() }) seekMatch.groupValues[3] else first
+            val amount = (if (first.all { it.isDigit() }) first else second).toLongOrNull()
+                ?: return "وقت کی مقدار سمجھ نہیں آئی۔"
+            val unit = if (first.all { it.isDigit() }) second else second
+            val seconds = amount * if (unit.startsWith("min", true)) 60L else 1L
+            val offset = if (direction.equals("forward", true) || direction.equals("ahead", true)) seconds else -seconds
+            if (!IdraakAccessibilityService.isConnected()) return "ویڈیو کنٹرول کے لیے Idraak Accessibility فعال کریں۔"
+            return if (IdraakAccessibilityService.seekBySeconds(offset)) {
+                if (offset > 0) "ویڈیو کو $seconds سیکنڈ آگے کر دیا۔"
+                else "ویڈیو کو ${-seconds} سیکنڈ پیچھے کر دیا۔"
+            } else {
+                "اس ایپ نے قابلِ استعمال ویڈیو ٹائم لائن فراہم نہیں کی؛ وقت تبدیل نہیں کیا گیا۔"
+            }
+        }
+
         if (lower in listOf(
                 "read screen", "what is on screen", "screen text", "اسکرین پڑھو",
                 "اسکرین پر کیا ہے", "اسکرین پر کیا لکھا ہے", "جو اسکرین پر ہے پڑھو"
