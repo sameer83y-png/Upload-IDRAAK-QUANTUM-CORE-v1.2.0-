@@ -136,6 +136,15 @@ class OfflineCommandEngineTest {
         assertEquals("میں راستے میں ہوں", (action as CommandAction.ShareText).text)
     }
 
+
+    @Test
+    fun parsesPhotoAndVideoCameraCommandsSeparately() {
+        assertEquals(CommandAction.OpenCamera, engine.process("camera kholo").action)
+        assertEquals(CommandAction.OpenCamera, engine.process("کیمرہ کھولو").action)
+        assertEquals(CommandAction.OpenVideoCamera, engine.process("record video").action)
+        assertEquals(CommandAction.OpenVideoCamera, engine.process("ویڈیو ریکارڈ کرو").action)
+    }
+
     @Test
     fun parsesVolumeAndWifiCommands() {
         assertEquals(
