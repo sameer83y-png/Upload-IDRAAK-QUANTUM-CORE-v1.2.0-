@@ -32,11 +32,14 @@ class OfflineCommandEngineTest {
     fun parsesContactCallingCommandsWithoutDialingDirectly() {
         val english = engine.process("call Ammi").action
         val urdu = engine.process("امی کو کال کرو").action
+        val hindi = engine.process("मम्मी को कॉल करो").action
 
         assertTrue(english is CommandAction.DialContact)
         assertEquals("Ammi", (english as CommandAction.DialContact).contactName)
         assertTrue(urdu is CommandAction.DialContact)
         assertEquals("امی", (urdu as CommandAction.DialContact).contactName)
+        assertTrue(hindi is CommandAction.DialContact)
+        assertEquals("मम्मी", (hindi as CommandAction.DialContact).contactName)
     }
 
     @Test
