@@ -316,6 +316,26 @@ class IdraakAccessibilityService : AccessibilityService() {
      * Clears only the single focused, visible, editable, non-password text field.
      * It never guesses which field to change and never targets password inputs.
      */
+    /**
+     * Selects all text only in one focused, visible, editable, non-password field.
+     */
+    private fun selectAllFocusedText(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focusedFields = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled && node.isEditable &&
+                node.isFocused && !node.isPassword
+        }
+        if (focusedFields.size != 1) return false
+        val field = focusedFields.single()
+        val textLength = field.text?.length ?: return false
+        if (textLength == 0) return false
+        val arguments = Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0)
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, textLength)
+        }
+        return field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, arguments)
+    }
+
     private fun clearFocusedTextField(): Boolean {
         val root = rootInActiveWindow ?: return false
         val focusedFields = allNodes(root).filter { node ->
@@ -438,6 +458,7 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun copyScreenText(): Boolean = activeService?.copyVisibleScreenText() == true
         fun pasteClipboardText(): Boolean = activeService?.pasteClipboardText() == true
         fun clearFocusedTextField(): Boolean = activeService?.clearFocusedTextField() == true
+        fun selectAllFocusedText(): Boolean = activeService?.selectAllFocusedText() == true
         fun goHome(): Boolean = activeService?.global(GLOBAL_ACTION_HOME) == true
         fun showNotifications(): Boolean = activeService?.global(GLOBAL_ACTION_NOTIFICATIONS) == true
         fun showQuickSettings(): Boolean = activeService?.global(GLOBAL_ACTION_QUICK_SETTINGS) == true
