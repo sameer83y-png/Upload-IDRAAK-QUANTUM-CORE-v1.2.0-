@@ -241,4 +241,34 @@ class OfflineCommandEngineTest {
         assertEquals(19, (action as CommandAction.SetAlarm).hour)
         assertEquals(30, action.minute)
     }
+
+    @Test
+    fun parsesReminderUsingDevanagariDigits() {
+        val action = engine.process("मुझे १० मिनट बाद पानी पीना याद दिलाना").action
+        assertTrue(action is CommandAction.ScheduleReminder)
+        assertEquals("पानी पीना", (action as CommandAction.ScheduleReminder).message)
+    }
+
+    @Test
+    fun parsesReminderUsingArabicIndicDigits() {
+        val action = engine.process("مجھے ١٠ منٹ بعد پانی پینا یاد دلانا").action
+        assertTrue(action is CommandAction.ScheduleReminder)
+        assertEquals("پانی پینا", (action as CommandAction.ScheduleReminder).message)
+    }
+
+    @Test
+    fun parsesAlarmUsingArabicIndicDigits() {
+        val action = engine.process("الارم ١٩:٣٠ لگاؤ").action
+        assertTrue(action is CommandAction.SetAlarm)
+        assertEquals(19, (action as CommandAction.SetAlarm).hour)
+        assertEquals(30, action.minute)
+    }
+
+    @Test
+    fun parsesPhoneNumberUsingDevanagariDigits() {
+        val action = engine.process("call ९१२३४५६७८९").action
+        assertTrue(action is CommandAction.DialNumber)
+        assertEquals("9123456789", (action as CommandAction.DialNumber).number)
+    }
+
 }
