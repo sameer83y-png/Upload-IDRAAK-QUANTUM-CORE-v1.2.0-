@@ -39,6 +39,7 @@ class IdraakWakeWordService : Service() {
     @Volatile private var voiceController: OnDeviceVoiceController? = null
     private var tts: TextToSpeech? = null
     @Volatile private var ttsReady = false
+    @Volatile private var pendingSpeech: String? = null
     private val speechPending = AtomicBoolean(false)
     private val restartRequested = AtomicBoolean(false)
 
@@ -82,9 +83,13 @@ class IdraakWakeWordService : Service() {
                         finishSpeechAndResumeListening()
                     }
                 })
+                speakPendingIfReady()
             } else {
                 ttsReady = false
+                pendingSpeech = null
+                speechPending.set(false)
                 updateNotification("Text-to-speech is unavailable on this device.")
+                if (restartRequested.get()) restartWakeWordListening()
             }
         }
     }
@@ -253,15 +258,32 @@ class IdraakWakeWordService : Service() {
         controller.start()
     }
 
+    @Synchronized
     private fun speak(message: String) {
+        if (stopping.get()) return
         val engine = tts
-        if (!ttsReady || engine == null || stopping.get()) {
-            speechPending.set(false)
+        if (engine == null) {
+            pendingSpeech = message
+            speechPending.set(true)
             return
         }
+        if (!ttsReady) {
+            pendingSpeech = message
+            speechPending.set(true)
+            return
+        }
+        pendingSpeech = null
         speechPending.set(true)
         val result = engine.speak(message, TextToSpeech.QUEUE_FLUSH, null, "idraak-background-reply")
         if (result == TextToSpeech.ERROR) finishSpeechAndResumeListening()
+    }
+
+    @Synchronized
+    private fun speakPendingIfReady() {
+        if (stopping.get() || !ttsReady) return
+        val message = pendingSpeech ?: return
+        pendingSpeech = null
+        speak(message)
     }
 
     private fun finishSpeechAndResumeListening() {
@@ -286,6 +308,8 @@ class IdraakWakeWordService : Service() {
         // Stop the blocking read here, but let the worker's finally block release native
         // resources exactly once after it has exited the decode/read loop.
         try { recorder?.stop() } catch (_: Exception) { }
+        pendingSpeech = null
+        speechPending.set(false)
         tts?.stop()
         stopForeground(true)
         stopSelf()
