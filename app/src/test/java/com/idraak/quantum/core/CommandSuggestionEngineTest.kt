@@ -90,7 +90,7 @@ class CommandSuggestionEngineTest {
             false,
             listOf("YouTube", "Chrome", "YouTube", "", "Maps", "Gmail", "Instagram", "Telegram")
         )
-        val apps = categories.single { it.title == "آپ کی منسلک ایپس" }.suggestions
+        val apps = categories.single { it.title == "آپ کی انسٹال ایپس" }.suggestions
 
         assertEquals(5, apps.size)
         assertEquals("open YouTube", apps.first().command)
