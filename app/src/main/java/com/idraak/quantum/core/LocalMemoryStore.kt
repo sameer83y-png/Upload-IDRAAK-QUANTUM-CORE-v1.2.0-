@@ -103,7 +103,7 @@ class LocalMemoryStore(context: Context) :
         if (cleanCategory.isBlank() || cleanQuery.isBlank()) return emptyList()
         val escaped = cleanQuery.replace("%", "\\%").replace("_", "\\_")
         return readMemories(
-            "category = ? AND content LIKE ? ESCAPE '\\\\'",
+            "category = ? AND content LIKE ? ESCAPE '\\'",
             arrayOf(cleanCategory, "%$escaped%"),
             limit.coerceIn(1, 100)
         )
