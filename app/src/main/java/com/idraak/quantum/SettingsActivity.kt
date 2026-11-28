@@ -493,7 +493,7 @@ class SettingsActivity : Activity() {
             else -> "Not granted"
         }
         val accessibility = if (isAccessibilityEnabled()) "Enabled" else "Not enabled"
-        permissionStatus.text = "Microphone: $microphone\nNotifications: $notifications\nAccessibility control: $accessibility"
+        permissionStatus.text = "Microphone: $microphone\nContacts: $contacts\nNotifications: $notifications\nAccessibility control: $accessibility"
     }
 
     private fun isAccessibilityEnabled(): Boolean {
