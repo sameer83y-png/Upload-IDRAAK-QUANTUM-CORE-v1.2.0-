@@ -72,6 +72,54 @@ class MainActivity : Activity() {
         }
         buildDashboard()
         requestNotificationPermissionIfNeeded()
+        checkForUpdatesAutomatically()
+    }
+
+    /**
+     * Checks the official release feed once per day and downloads a verified update.
+     * Android still displays its own installer confirmation; Idraak never installs silently.
+     */
+    private fun checkForUpdatesAutomatically() {
+        val preferences = getSharedPreferences("idraak_settings", MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val lastCheck = preferences.getLong("last_auto_update_check", 0L)
+        if (now - lastCheck < 24L * 60L * 60L * 1000L) return
+        preferences.edit().putLong("last_auto_update_check", now).apply()
+
+        Thread {
+            val update = try {
+                com.idraak.quantum.core.IdraakAutoUpdater(this)
+                    .checkAndDownload(BuildConfig.VERSION_NAME)
+            } catch (_: Exception) {
+                null
+            }
+            if (update != null) {
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    AlertDialog.Builder(this)
+                        .setTitle("Idraak update ready: " + update.version)
+                        .setMessage("A new official update was downloaded and passed its SHA-256, package and signing checks. Android will ask you to approve installation.")
+                        .setNegativeButton("LATER", null)
+                        .setPositiveButton("INSTALL") { _, _ ->
+                            try {
+                                val opened = com.idraak.quantum.core.IdraakAutoUpdater(this).install(update)
+                                if (!opened) {
+                                    AlertDialog.Builder(this)
+                                        .setMessage("Allow Idraak to install apps in Android Settings, then reopen Idraak to continue.")
+                                        .setPositiveButton("OK", null)
+                                        .show()
+                                }
+                            } catch (error: Exception) {
+                                AlertDialog.Builder(this)
+                                    .setMessage(error.message ?: "Could not open Android installer.")
+                                    .setPositiveButton("OK", null)
+                                    .show()
+                            }
+                        }
+                        .show()
+                }
+            }
+        }.start()
     }
 
     private fun buildDashboard() {
