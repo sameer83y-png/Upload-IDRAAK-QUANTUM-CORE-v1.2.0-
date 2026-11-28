@@ -599,6 +599,24 @@ class MainActivity : FragmentActivity() {
             else "اسکرین پر نظر آنے والی تحریر یہ ہے:\\n$visibleText"
         }
 
+        val longPressTarget = when {
+            lower.matches(Regex("^(long press|press and hold)( on)? .+")) ->
+                command.replaceFirst(Regex("^(long press|press and hold)( on)?\\s+"), "").trim()
+            lower.matches(Regex("^.+(دبا کر پکڑو|دیر تک دباؤ)$")) ->
+                command.replace(Regex("(دبا کر پکڑو|دیر تک دباؤ)$"), "").trim()
+            else -> ""
+        }
+        if (longPressTarget.isNotBlank()) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "اسکرین کنٹرول کے لیے پہلے Settings میں جا کر Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.longPressText(longPressTarget)) {
+                "اسکرین پر '$longPressTarget' کو دیر تک دبانے کا ایکشن بھیج دیا۔"
+            } else {
+                "اسکرین پر '$longPressTarget' کے لیے long-press دستیاب نہیں ملا۔"
+            }
+        }
+
         val clickTarget = when {
             lower.matches(Regex("^(tap|click)( on)? .+")) ->
                 command.replaceFirst(Regex("^(tap|click)( on)?\\s+"), "").trim()
