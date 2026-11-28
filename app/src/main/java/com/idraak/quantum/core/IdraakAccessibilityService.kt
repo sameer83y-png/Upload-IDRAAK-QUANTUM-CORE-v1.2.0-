@@ -144,6 +144,16 @@ class IdraakAccessibilityService : AccessibilityService() {
         return false
     }
 
+    private fun scrollRepeatedly(forward: Boolean, count: Int): Int {
+        var completed = 0
+        repeat(count.coerceIn(1, 5)) {
+            val moved = scroll(forward) || swipeScreen(forward)
+            if (!moved) return completed
+            completed++
+        }
+        return completed
+    }
+
     private fun readVisibleText(): String {
         val root = rootInActiveWindow ?: return ""
         val output = LinkedHashSet<String>()
@@ -287,6 +297,8 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun longPressText(text: String): Boolean = activeService?.longPressVisibleText(text.trim()) == true
         fun scrollForward(): Boolean = activeService?.scroll(true) == true
         fun scrollBackward(): Boolean = activeService?.scroll(false) == true
+        fun scrollByCount(forward: Boolean, count: Int): Int =
+            activeService?.scrollRepeatedly(forward, count.coerceIn(1, 5)) ?: 0
         fun goBack(): Boolean = activeService?.global(GLOBAL_ACTION_BACK) == true
         fun goHome(): Boolean = activeService?.global(GLOBAL_ACTION_HOME) == true
         fun showNotifications(): Boolean = activeService?.global(GLOBAL_ACTION_NOTIFICATIONS) == true
