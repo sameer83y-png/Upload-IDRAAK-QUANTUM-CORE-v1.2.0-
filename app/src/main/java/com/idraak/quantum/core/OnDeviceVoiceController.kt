@@ -165,10 +165,9 @@ class OnDeviceVoiceController(
     fun destroy() {
         running.set(false)
         releaseRecorder()
-        if (recognizer != null) {
-            try { recognizer?.release() } catch (_: Exception) { }
-            recognizer = null
-        }
+        // Do not release the native recognizer while a worker may still be decoding.
+        // Once the worker exits, the native wrapper can be reclaimed safely.
+        recognizer = null
     }
 
     companion object {
