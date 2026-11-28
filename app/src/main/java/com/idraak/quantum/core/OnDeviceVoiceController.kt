@@ -30,10 +30,14 @@ class OnDeviceVoiceController(
     @Volatile private var audioRecord: AudioRecord? = null
     @Volatile private var recognizer: OfflineRecognizer? = null
 
-    fun start(): Boolean {
+    fun start(): Boolean = synchronized(recognizerLock) {
+        if (destroyRequested.get()) {
+            onStatus("وائس کنٹرولر بند ہو چکا ہے۔ دوبارہ شروع کرنے کے لیے نیا کنٹرولر بنائیں۔")
+            return@synchronized false
+        }
         if (!running.compareAndSet(false, true)) {
             onStatus("آواز پہلے سے سنی جا رہی ہے۔")
-            return false
+            return@synchronized false
         }
         workerActive.set(true)
         Thread({
@@ -43,8 +47,11 @@ class OnDeviceVoiceController(
                 }
                 if (!running.get()) return@Thread
 
-                val activeRecognizer = recognizer ?: createRecognizer(files).also {
-                    recognizer = it
+                val activeRecognizer = synchronized(recognizerLock) {
+                    if (!running.get() || destroyRequested.get()) return@Thread
+                    recognizer ?: createRecognizer(files).also {
+                        recognizer = it
+                    }
                 }
                 if (!running.get()) return@Thread
 
@@ -72,8 +79,10 @@ class OnDeviceVoiceController(
             } finally {
                 releaseRecorder()
                 running.set(false)
-                workerActive.set(false)
-                if (destroyRequested.get()) releaseRecognizer()
+                synchronized(recognizerLock) {
+                    workerActive.set(false)
+                    if (destroyRequested.get()) releaseRecognizerLocked()
+                }
                 try {
                     onComplete?.invoke()
                 } catch (_: Exception) {
@@ -180,23 +189,24 @@ class OnDeviceVoiceController(
     }
 
     fun destroy() {
-        destroyRequested.set(true)
-        running.set(false)
-        // Wake a blocking read; the worker's finally block remains the sole owner of release().
+        synchronized(recognizerLock) {
+            destroyRequested.set(true)
+            running.set(false)
+            // Native recognizer memory must not be released while the worker is using it.
+            if (!workerActive.get()) releaseRecognizerLocked()
+        }
+        // Wake a blocking read; the worker's finally block remains the sole owner of recorder release().
         try { audioRecord?.stop() } catch (_: Exception) { }
-        // Native recognizer memory must be released, but never while decode() is using it.
-        if (!workerActive.get()) releaseRecognizer()
     }
 
-    private fun releaseRecognizer() {
-        synchronized(recognizerLock) {
-            val active = recognizer
-            recognizer = null
-            try {
-                active?.release()
-            } catch (_: Exception) {
-                // Cleanup must not crash the activity or foreground voice service.
-            }
+    /** Must be called while holding recognizerLock. */
+    private fun releaseRecognizerLocked() {
+        val active = recognizer
+        recognizer = null
+        try {
+            active?.release()
+        } catch (_: Exception) {
+            // Cleanup must not crash the activity or foreground voice service.
         }
     }
 
