@@ -107,7 +107,7 @@ class MainActivity : Activity() {
                 val valid = try {
                     com.idraak.quantum.core.AppLockManager(this@MainActivity).verify(entered)
                 } finally {
-                    entered.fill('\\u0000')
+                    entered.fill('\u0000')
                 }
                 if (valid) {
                     initializeIdraak()
