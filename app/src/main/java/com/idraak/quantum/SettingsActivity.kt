@@ -149,6 +149,18 @@ class SettingsActivity : Activity() {
             setBackgroundColor(Color.rgb(22, 34, 54))
         }
         root.addView(geminiKeyInput, matchWrap())
+        root.addView(Button(this).apply {
+            text = "GET GEMINI API KEY — OPEN GOOGLE AI STUDIO"
+            setOnClickListener {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/app/apikey")))
+            }
+        }, matchWrap().apply { topMargin = 8 })
+        root.addView(TextView(this).apply {
+            text = "How to get your key: 1) Open Google AI Studio. 2) Sign in to your Google account. 3) Open API keys and choose Create API key. 4) Copy the key and paste it above, then tap SAVE GEMINI SETTINGS. Keep the key private. Check Google AI Studio usage and billing before using paid services."
+            textSize = 10f
+            setTextColor(Color.LTGRAY)
+            setPadding(4, 6, 4, 12)
+        }, matchWrap())
         geminiModelInput = EditText(this).apply {
             hint = "Gemini model (default: " + GeminiBrainClient.DEFAULT_MODEL + ")"
             setText(preferences.getString("gemini_model", GeminiBrainClient.DEFAULT_MODEL))
