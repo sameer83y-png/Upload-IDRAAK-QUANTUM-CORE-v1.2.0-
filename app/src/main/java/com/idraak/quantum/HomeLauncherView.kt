@@ -16,10 +16,13 @@ import kotlin.math.min
 
 /**
  * Animated command HUD for the Home Launcher.
- * Loads idraak_home_background.jpg from res/drawable and overlays a live command HUD.
+ * Loads the original home image from res/drawable-nodpi without density scaling.
  */
 class HomeLauncherView(context: Context) : View(context) {
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        isFilterBitmap = true
+        isDither = true
+    }
     private val panel = RectF()
     private var mode = "idle"
     private var detail = ""
