@@ -2,7 +2,10 @@ package com.idraak.quantum
 
 import android.Manifest
 import android.os.Build
-import android.app.Activity
+import androidx.fragment.app.FragmentActivity
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import java.util.concurrent.Executor
 import android.app.AlertDialog
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -32,7 +35,7 @@ import java.util.concurrent.Executors
 import java.util.Locale
 import java.util.Calendar
 
-class MainActivity : Activity() {
+class MainActivity : FragmentActivity() {
     companion object {
         private const val REQUEST_MICROPHONE = 4201
     }
@@ -63,6 +66,7 @@ class MainActivity : Activity() {
         val preferences = getSharedPreferences("idraak_settings", MODE_PRIVATE)
         val background = preferences.getInt("background", Color.rgb(5, 10, 23))
         val accent = preferences.getInt("accent", Color.rgb(67, 218, 255))
+        val lockManager = com.idraak.quantum.core.AppLockManager(this)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -101,23 +105,126 @@ class MainActivity : Activity() {
         }
         root.addView(status, matchWrap())
         root.addView(Button(this).apply {
-            text = "UNLOCK IDRAAK"
+            text = "UNLOCK WITH PASSWORD"
             setOnClickListener {
                 val entered = passwordInput.text.toString().toCharArray()
-                val valid = try {
-                    com.idraak.quantum.core.AppLockManager(this@MainActivity).verify(entered)
-                } finally {
-                    entered.fill('\u0000')
-                }
-                if (valid) {
-                    initializeIdraak()
-                } else {
+                val valid = try { lockManager.verify(entered) }
+                finally { entered.fill('\\u0000') }
+                if (valid) initializeIdraak()
+                else {
                     passwordInput.text.clear()
                     status.text = "پاس ورڈ درست نہیں۔ دوبارہ کوشش کریں۔"
                 }
             }
-        }, matchWrap().apply { topMargin = 14 })
+        }, matchWrap().apply { topMargin = 12 })
+
+        if (preferences.getBoolean("face_unlock_enabled", false)) {
+            root.addView(Button(this).apply {
+                text = "UNLOCK WITH FACE / DEVICE BIOMETRIC"
+                setOnClickListener {
+                    authenticateBiometric(
+                        title = "Unlock Idraak",
+                        subtitle = "Use the biometric enrolled on this phone",
+                        onSuccess = { initializeIdraak() },
+                        onError = { message -> status.text = message }
+                    )
+                }
+            }, matchWrap().apply { topMargin = 8 })
+        }
+
+        root.addView(Button(this).apply {
+            text = "FORGOT PASSWORD? VERIFY & RESET"
+            setOnClickListener {
+                if (!preferences.getBoolean("face_unlock_enabled", false)) {
+                    status.text = "پہلے Settings میں Face / Biometric Unlock فعال کریں۔"
+                } else {
+                    authenticateBiometric(
+                        title = "Verify to reset password",
+                        subtitle = "After successful biometric verification, create a new password",
+                        onSuccess = { showPasswordResetDialog() },
+                        onError = { message -> status.text = message }
+                    )
+                }
+            }
+        }, matchWrap().apply { topMargin = 8 })
         setContentView(root)
+    }
+
+    private fun authenticateBiometric(
+        title: String,
+        subtitle: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val biometricManager = BiometricManager.from(this)
+        val availability = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+        if (availability != BiometricManager.BIOMETRIC_SUCCESS) {
+            onError("इस फोन में compatible biometric उपलब्ध/enrolled नहीं है। Password से unlock करें या फोन की biometric settings जाँचें।")
+            return
+        }
+        val executor: Executor = mainExecutor
+        val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                onSuccess()
+            }
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                onError(errString.toString())
+            }
+            override fun onAuthenticationFailed() {
+                onError("Biometric match नहीं हुआ। दोबारा कोशिश करें।")
+            }
+        })
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(title)
+            .setSubtitle(subtitle)
+            .setNegativeButtonText("USE PASSWORD")
+            .build()
+        prompt.authenticate(promptInfo)
+    }
+
+    private fun showPasswordResetDialog() {
+        val manager = com.idraak.quantum.core.AppLockManager(this)
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 12, 24, 4)
+        }
+        val first = EditText(this).apply {
+            hint = "New password (6–64 characters)"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val second = EditText(this).apply {
+            hint = "Confirm new password"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        layout.addView(first, matchWrap())
+        layout.addView(second, matchWrap().apply { topMargin = 8 })
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("RESET IDRAAK PASSWORD")
+            .setMessage("Biometric verified. Your old password cannot be recovered or displayed. Set a new one.")
+            .setView(layout)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("SAVE NEW PASSWORD", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val one = first.text.toString()
+                val two = second.text.toString()
+                when {
+                    one.length !in 6..64 -> first.error = "Use 6–64 characters"
+                    one != two -> second.error = "Passwords do not match"
+                    else -> {
+                        val chars = one.toCharArray()
+                        val saved = manager.setPassword(chars)
+                        chars.fill('\\u0000')
+                        if (saved) {
+                            dialog.dismiss()
+                            initializeIdraak()
+                        } else first.error = "Could not save password"
+                    }
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun initializeIdraak() {
