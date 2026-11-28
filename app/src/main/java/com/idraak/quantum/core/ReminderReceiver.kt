@@ -22,6 +22,7 @@ class ReminderReceiver : BroadcastReceiver() {
         private const val RECORDS = "scheduled"
         private const val MAX_REMINDER_LENGTH = 500
 
+        @Synchronized
         fun schedule(context: Context, triggerAtMillis: Long, message: String) {
             val cleanMessage = message.trim()
             require(cleanMessage.isNotEmpty()) { "Reminder text cannot be empty." }
@@ -31,11 +32,15 @@ class ReminderReceiver : BroadcastReceiver() {
             require(!LocalMemoryStore.containsCredentialMaterial(cleanMessage)) {
                 "Passwords, PINs, one-time codes, API keys, and access tokens cannot be saved in reminders."
             }
-            val id = (System.currentTimeMillis() and 0x7fffffff).toInt()
-            val encoded = Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(cleanMessage.toByteArray(Charsets.UTF_8))
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val records = prefs.getStringSet(RECORDS, emptySet()).orEmpty().toMutableSet()
+            // PendingIntent identity is based on its request code, not its extras.
+            // A millisecond timestamp can collide when two reminders are created quickly.
+            val id = ReminderIdPolicy.nextId(records) {
+                java.util.UUID.randomUUID().hashCode() and Int.MAX_VALUE
+            }
+            val encoded = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(cleanMessage.toByteArray(Charsets.UTF_8))
             records.add("$id|$triggerAtMillis|$encoded")
             prefs.edit().putStringSet(RECORDS, records).apply()
             scheduleStored(context, id, triggerAtMillis, cleanMessage)
