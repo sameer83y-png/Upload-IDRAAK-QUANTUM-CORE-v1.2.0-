@@ -12,10 +12,30 @@ object AppPluginRegistry {
     private const val PREFS_NAME = "idraak_plugin_registry"
     private const val KEY_CONNECTED_PACKAGES = "connected_packages"
 
-    fun connectedPackages(context: Context): Set<String> =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getStringSet(KEY_CONNECTED_PACKAGES, emptySet())
+    fun connectedPackages(context: Context): Set<String> {
+        val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val saved = preferences.getStringSet(KEY_CONNECTED_PACKAGES, emptySet())
             ?.toSet() ?: emptySet()
+        if (saved.isEmpty()) return emptySet()
+
+        // A removed app must not silently regain its old connection if it is
+        // installed again later. Keep only packages currently installed.
+        val installed = saved.filterTo(mutableSetOf()) { packageName ->
+            try {
+                context.packageManager.getApplicationInfo(packageName, 0)
+                true
+            } catch (_: PackageManager.NameNotFoundException) {
+                false
+            } catch (_: Exception) {
+                false
+            }
+        }
+        val valid = ConnectedPackagePolicy.retainInstalled(saved, installed)
+        if (valid != saved) {
+            preferences.edit().putStringSet(KEY_CONNECTED_PACKAGES, valid).apply()
+        }
+        return valid
+    }
 
     fun isConnected(context: Context, packageName: String): Boolean =
         connectedPackages(context).contains(packageName)
