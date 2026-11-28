@@ -54,6 +54,19 @@ class CommandSuggestionEngineTest {
     }
 
     @Test
+    fun dashboardAddsBatterySettingsSuggestionOnlyWhenBatteryIsLow() {
+        val lowBattery = CommandSuggestionEngine.dashboardSuggestions(14, false, emptyList(), 15)
+        val normalBattery = CommandSuggestionEngine.dashboardSuggestions(14, false, emptyList(), 45)
+
+        assertTrue(lowBattery.any { it.title == "بیٹری کم ہے" })
+        assertEquals(
+            "بیٹری سیٹنگز کھولو",
+            lowBattery.single { it.title == "بیٹری کم ہے" }.suggestions.single().command
+        )
+        assertTrue(normalBattery.none { it.title == "بیٹری کم ہے" })
+    }
+
+    @Test
     fun dashboardIncludesOnlyConnectedAppLabelsAndLimitsTheList() {
         val categories = CommandSuggestionEngine.dashboardSuggestions(
             12,
