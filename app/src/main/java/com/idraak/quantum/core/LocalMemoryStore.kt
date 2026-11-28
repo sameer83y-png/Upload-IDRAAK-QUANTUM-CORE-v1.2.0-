@@ -64,7 +64,7 @@ class LocalMemoryStore(context: Context) :
         require(clean.length <= MAX_CONTENT_LENGTH) { "Memory is too long." }
         val now = System.currentTimeMillis()
         val values = ContentValues().apply {
-            put("category", category.trim().ifBlank { "general" }.take(40))
+            put("category", category.trim().lowercase().ifBlank { "general" }.take(40))
             put("content", clean)
             put("source", source.take(40))
             put("created_at", now)
@@ -86,6 +86,16 @@ class LocalMemoryStore(context: Context) :
 
     fun all(limit: Int = 50): List<MemoryRecord> =
         readMemories(null, null, limit.coerceIn(1, 100))
+
+    fun byCategory(category: String, limit: Int = 50): List<MemoryRecord> {
+        val clean = category.trim().lowercase().take(40)
+        if (clean.isBlank()) return emptyList()
+        return readMemories(
+            "category = ?",
+            arrayOf(clean),
+            limit.coerceIn(1, 100)
+        )
+    }
 
     fun forgetMatching(query: String): Int {
         val clean = query.trim()
