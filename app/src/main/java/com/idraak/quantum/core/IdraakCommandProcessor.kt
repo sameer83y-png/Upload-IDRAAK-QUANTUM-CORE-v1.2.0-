@@ -463,6 +463,15 @@ class IdraakCommandProcessor(
             else "اسکرین پر اس نام کا قابلِ رسائی کنٹرول نہیں ملا۔"
         }
 
+        if (RecentAppsCommandParser.matches(command)) {
+            if (!IdraakAccessibilityService.isConnected()) return "Recent Apps کھولنے کے لیے Idraak Accessibility فعال کریں۔"
+            return if (IdraakAccessibilityService.showRecentApps()) {
+                "Recent Apps کھول دیے؛ اب مطلوبہ ایپ منتخب کریں۔"
+            } else {
+                "اس فون پر Recent Apps ایکشن دستیاب نہیں ہوا۔"
+            }
+        }
+
         if (lower in listOf("home", "go home", "ہوم پر جاؤ", "ہوم کھولو", "گھر واپس جاؤ")) {
             if (!IdraakAccessibilityService.isConnected()) return "Home کنٹرول کے لیے Idraak Accessibility فعال کریں۔"
             return if (IdraakAccessibilityService.goHome()) "Home screen کھول دی۔" else "Home screen ایکشن دستیاب نہیں۔"
