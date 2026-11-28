@@ -25,6 +25,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.biometric.BiometricManager
 import com.idraak.quantum.core.IdraakAccessibilityService
+import com.idraak.quantum.core.ReminderPermissionRecovery
 
 class SettingsActivity : Activity() {
     private val preferences by lazy { getSharedPreferences("idraak_settings", MODE_PRIVATE) }
@@ -491,6 +492,7 @@ class SettingsActivity : Activity() {
             requested.add(Manifest.permission.POST_NOTIFICATIONS)
         }
         if (requested.isEmpty()) {
+            ReminderPermissionRecovery.restorePendingIfAllowed(this)
             updatePermissionStatus()
             return
         }
@@ -512,7 +514,10 @@ class SettingsActivity : Activity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_REQUIRED_PERMISSIONS || requestCode == REQUEST_CONTACTS_PERMISSION) updatePermissionStatus()
+        if (requestCode == REQUEST_REQUIRED_PERMISSIONS || requestCode == REQUEST_CONTACTS_PERMISSION) {
+            ReminderPermissionRecovery.restorePendingIfAllowed(this)
+            updatePermissionStatus()
+        }
     }
 
     private fun updatePermissionStatus() {
