@@ -27,6 +27,7 @@ import com.idraak.quantum.core.ActionRecoveryPolicy
 import com.idraak.quantum.core.GeminiBrainClient
 import com.idraak.quantum.core.GeminiKeyStore
 import com.idraak.quantum.core.LearnedCommandStore
+import com.idraak.quantum.core.CodeLearningEngine
 import java.util.concurrent.Executors
 import java.util.Locale
 import java.util.Calendar
@@ -40,6 +41,7 @@ class MainActivity : Activity() {
     private val memoryStore by lazy { LocalMemoryStore(applicationContext) }
     private val historyStore by lazy { ConversationHistoryStore(applicationContext) }
     private val learnedCommandStore by lazy { LearnedCommandStore(applicationContext) }
+    private val codingEngine by lazy { CodeLearningEngine() }
     private val geminiExecutor = Executors.newSingleThreadExecutor()
     private lateinit var actionExecutor: AndroidActionExecutor
     private lateinit var responseView: TextView
@@ -255,7 +257,8 @@ class MainActivity : Activity() {
         val accessibilityResponse = handleDirectAccessibilityCommand(command)
         val memoryResponse = if (accessibilityResponse == null) handleMemoryCommand(command) else null
         val learningResponse = if (accessibilityResponse == null && memoryResponse == null) handleLearningCommand(command) else null
-        val response = accessibilityResponse ?: memoryResponse ?: learningResponse ?: run {
+        val codingResponse = if (accessibilityResponse == null && memoryResponse == null && learningResponse == null) codingEngine.handle(command) else null
+        val response = accessibilityResponse ?: memoryResponse ?: learningResponse ?: codingResponse ?: run {
             val effectiveCommand = learnedCommandStore.resolve(command) ?: command
             val result = commandEngine.process(effectiveCommand)
             if (result.action == com.idraak.quantum.core.CommandAction.None) {
