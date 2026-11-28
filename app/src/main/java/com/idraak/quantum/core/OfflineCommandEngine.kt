@@ -122,6 +122,21 @@ class OfflineCommandEngine {
             )
         }
 
+        // Composite commands: open YouTube and search in one natural-language request.
+        val compositeYoutubePatterns = listOf(
+            Regex("^(?:open|launch)\\s+youtube\\s+and\\s+search(?:\\s+youtube)?\\s+for\\s+(.+)$", RegexOption.IGNORE_CASE),
+            Regex("^youtube\\s+(?:kholo|open)\\s+aur\\s+(.+?)\\s+(?:search|talaash)\\s+(?:karo|kar do)$", RegexOption.IGNORE_CASE),
+            Regex("^یوٹیوب\\s+کھولو\\s+اور\\s+(.+?)\\s+(?:تلاش\\s+کرو|سرچ\\s+کرو|ڈھونڈو)$"),
+            Regex("^یوٹیوب\\s+کھول\\s+کر\\s+(.+?)\\s+(?:تلاش\\s+کرو|سرچ\\s+کرو)$")
+        )
+        val compositeYoutubeQuery = compositeYoutubePatterns.firstNotNullOfOrNull { it.find(original)?.groupValues?.get(1)?.trim() }
+        if (!compositeYoutubeQuery.isNullOrBlank()) {
+            return CommandResult(
+                "یوٹیوب پر تلاش کھول رہا ہوں: $compositeYoutubeQuery",
+                CommandAction.OpenUrl("https://www.youtube.com/results?search_query=" + encode(compositeYoutubeQuery))
+            )
+        }
+
         val youtubeMarkers = listOf("search youtube for", "youtube par", "youtube pe", "یوتیوب پر", "یوٹیوب پر", "یوٹیوب میں", "یوٹیوب پہ", "یوٹیوب پر تلاش کرو", "یوٹیوب پر سرچ کرو")
         val youtubeMarker = youtubeMarkers.firstOrNull { text.contains(it) }
         if (youtubeMarker != null) {
