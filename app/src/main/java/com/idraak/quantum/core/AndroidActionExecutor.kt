@@ -10,7 +10,6 @@ import android.provider.ContactsContract
 import android.media.AudioManager
 import android.net.Uri
 import android.provider.AlarmClock
-import android.provider.MediaStore
 import android.provider.Settings
 
 class AndroidActionExecutor(private val context: Context) {
@@ -102,11 +101,8 @@ class AndroidActionExecutor(private val context: Context) {
             CommandAction.OpenDisplaySettings -> openSettingsPage(Settings.ACTION_DISPLAY_SETTINGS, "ڈسپلے سیٹنگز")
             CommandAction.OpenSoundSettings -> openSettingsPage(Settings.ACTION_SOUND_SETTINGS, "ساؤنڈ سیٹنگز")
             CommandAction.OpenBatterySettings -> openSettingsPage(Settings.ACTION_BATTERY_SAVER_SETTINGS, "بیٹری سیٹنگز")
-            CommandAction.OpenCamera -> {
-                context.startActivity(Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                "کیمرہ کھول دیا گیا۔"
-            }
+            CommandAction.OpenCamera -> CameraController(context).openPhotoCamera()
+            CommandAction.OpenVideoCamera -> CameraController(context).openVideoCamera()
         }
     } catch (_: ActivityNotFoundException) {
         "اس کام کے لیے کوئی compatible ایپ نہیں ملی۔"
