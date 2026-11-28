@@ -263,7 +263,7 @@ class MainActivity : Activity() {
         val content = if (entries.isEmpty()) {
             "ابھی کوئی گفتگو محفوظ نہیں ہے۔"
         } else {
-            entries.asReversed().joinToString("\\n\\n") { entry ->
+            entries.asReversed().joinToString("\n\n") { entry ->
                 val speaker = if (entry.role == "user") "آپ" else "Idraak"
                 "$speaker: ${entry.message}"
             }
