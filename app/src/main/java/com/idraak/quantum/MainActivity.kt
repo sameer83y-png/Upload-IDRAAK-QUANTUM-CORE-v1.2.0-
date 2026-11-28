@@ -10,6 +10,7 @@ import android.app.AlertDialog
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
@@ -426,10 +427,23 @@ class MainActivity : FragmentActivity() {
         } catch (_: Exception) {
             emptyList()
         }
+        val batteryIntent = try {
+            registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        } catch (_: Exception) {
+            null
+        }
+        val batteryLevel = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val batteryScale = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val batteryPercent = if (batteryLevel >= 0 && batteryScale > 0) {
+            (batteryLevel * 100) / batteryScale
+        } else {
+            null
+        }
         val suggestionCategories = com.idraak.quantum.core.CommandSuggestionEngine.dashboardSuggestions(
             hour,
             IdraakAccessibilityService.isConnected(),
-            connectedLabels
+            connectedLabels,
+            batteryPercent
         )
         suggestionCategories.forEach { category ->
             root.addView(TextView(this).apply {
