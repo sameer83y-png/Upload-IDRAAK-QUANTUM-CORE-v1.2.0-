@@ -37,7 +37,11 @@ An offline-first Android assistant foundation with Urdu-first command handling, 
 Memory is stored locally and only changes through explicit commands. Do not save passwords, authentication codes, or other credentials.
 
 ## Voice input
-The current strict Android speech-recognition path requires Android 12+ and a compatible offline Urdu speech pack. It does not silently switch to online recognition. On Android 9 devices, that built-in path is unavailable; a dedicated downloadable offline Urdu model is being evaluated for broader compatibility. Urdu speech output depends on the device's installed TTS voices.
+- Urdu and Hindi voice input use a multilingual Whisper tiny model through sherpa-onnx.
+- On first use, Idraak downloads the model archive (about 116 MB) while connected to the internet. After the model is installed, speech recognition runs locally without sending audio to a server or requiring an internet connection.
+- The model is initialized for automatic language detection and can recognize Urdu and Hindi. Recognition speed and accuracy depend on the phone's processor, microphone, and speaking conditions.
+- The voice engine uses Android AudioRecord and is designed for Android 8.0+ (API 26+).
+- Urdu text-to-speech output still depends on the device's installed TTS voices.
 
 ## Android boundaries
 Android controls app visibility, microphone access, notifications, background execution, and third-party UI access. Idraak uses supported Android intents and permissions; it does not silently send messages, place calls, or bypass system security. Reminder delivery can be delayed by Android battery-management policies, and notifications must be allowed.
