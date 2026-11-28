@@ -405,6 +405,16 @@ class IdraakCommandProcessor(
             else "اسکرین پر نظر آنے والی تحریر یہ ہے:\n$visible"
         }
 
+        val zoomIn = ZoomCommandParser.parse(command)
+        if (zoomIn != null) {
+            if (!IdraakAccessibilityService.isConnected()) return "زوم کنٹرول کے لیے Idraak Accessibility فعال کریں۔"
+            return if (IdraakAccessibilityService.pinchZoom(zoomIn)) {
+                if (zoomIn) "اسکرین کو زوم اِن کر دیا۔" else "اسکرین کو زوم آؤٹ کر دیا۔"
+            } else {
+                "اس ایپ میں pinch zoom gesture دستیاب نہیں ہو سکا۔"
+            }
+        }
+
         val doubleTapTarget = DoubleTapCommandParser.parse(command)
         if (doubleTapTarget != null) {
             if (!IdraakAccessibilityService.isConnected()) return "ڈبل ٹیپ کے لیے Idraak Accessibility فعال کریں۔"

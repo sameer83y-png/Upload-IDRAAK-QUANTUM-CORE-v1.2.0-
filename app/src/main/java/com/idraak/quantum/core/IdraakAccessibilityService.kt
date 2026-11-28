@@ -322,6 +322,38 @@ class IdraakAccessibilityService : AccessibilityService() {
         return dispatchGesture(gesture, null, null)
     }
 
+
+    /**
+     * Performs an explicit two-finger pinch around the screen center.
+     */
+    private fun pinchZoom(zoomIn: Boolean): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+        val metrics = resources.displayMetrics
+        val centerX = metrics.widthPixels / 2f
+        val centerY = metrics.heightPixels / 2f
+        val innerX = metrics.widthPixels * 0.035f
+        val outerX = metrics.widthPixels * 0.16f
+        val innerY = metrics.heightPixels * 0.0175f
+        val outerY = metrics.heightPixels * 0.08f
+        val startX = if (zoomIn) innerX else outerX
+        val endX = if (zoomIn) outerX else innerX
+        val startY = if (zoomIn) innerY else outerY
+        val endY = if (zoomIn) outerY else innerY
+        val firstPath = Path().apply {
+            moveTo(centerX - startX, centerY - startY)
+            lineTo(centerX - endX, centerY - endY)
+        }
+        val secondPath = Path().apply {
+            moveTo(centerX + startX, centerY + startY)
+            lineTo(centerX + endX, centerY + endY)
+        }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(firstPath, 0, 450))
+            .addStroke(GestureDescription.StrokeDescription(secondPath, 0, 450))
+            .build()
+        return dispatchGesture(gesture, null, null)
+    }
+
     companion object {
         @Volatile private var activeService: IdraakAccessibilityService? = null
 
@@ -350,5 +382,6 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun swipeDown(): Boolean = activeService?.swipeScreen(false) == true
         fun swipeLeft(): Boolean = activeService?.swipeHorizontal(true) == true
         fun swipeRight(): Boolean = activeService?.swipeHorizontal(false) == true
+        fun pinchZoom(zoomIn: Boolean): Boolean = activeService?.pinchZoom(zoomIn) == true
     }
 }
