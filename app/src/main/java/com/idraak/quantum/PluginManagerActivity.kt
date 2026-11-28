@@ -111,14 +111,16 @@ class PluginManagerActivity : Activity() {
                     setPadding(0, 3, 0, 5)
                 }, matchWrap())
                 val canShareText = AppPluginRegistry.supportsTextShare(this, appPackage)
+                val canOpenWebLinks = AppPluginRegistry.supportsWebLinks(this, appPackage)
                 card.addView(TextView(this).apply {
                     text = buildString {
                         append("ANDROID CAPABILITIES: LAUNCH")
                         if (canShareText) append(" • TEXT SHARE")
-                        if (!canShareText) append(" • NO EXTRA INTENT FOUND")
+                        if (canOpenWebLinks) append(" • WEB LINKS")
+                        if (!canShareText && !canOpenWebLinks) append(" • NO EXTRA INTENT FOUND")
                     }
                     textSize = 10f
-                    setTextColor(if (canShareText) accent else Color.LTGRAY)
+                    setTextColor(if (canShareText || canOpenWebLinks) accent else Color.LTGRAY)
                     setPadding(0, 3, 0, 7)
                 }, matchWrap())
                 card.addView(Button(this).apply {
