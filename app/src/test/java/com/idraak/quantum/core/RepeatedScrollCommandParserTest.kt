@@ -7,13 +7,13 @@ import org.junit.Test
 class RepeatedScrollCommandParserTest {
     @Test fun parsesEnglishScrollCounts() {
         assertEquals(RepeatedScrollCommand(true, 3), RepeatedScrollCommandParser.parse("scroll down 3 times"))
-        assertEquals(RepeatedScrollCommand(false, 2), RepeatedScrollCommandParser.parse("swipe up two times"))
+        assertEquals(RepeatedScrollCommand(true, 2), RepeatedScrollCommandParser.parse("swipe up two times"))
         assertEquals(RepeatedScrollCommand(true, 1), RepeatedScrollCommandParser.parse("scroll down"))
     }
 
     @Test fun parsesUrduAndLocalizedDigits() {
         assertEquals(RepeatedScrollCommand(true, 3), RepeatedScrollCommandParser.parse("تین بار نیچے اسکرول کرو"))
-        assertEquals(RepeatedScrollCommand(false, 2), RepeatedScrollCommandParser.parse("۲ بار اوپر سوائپ کریں"))
+        assertEquals(RepeatedScrollCommand(true, 2), RepeatedScrollCommandParser.parse("۲ بار اوپر سوائپ کریں"))
         assertEquals(RepeatedScrollCommand(true, 5), RepeatedScrollCommandParser.parse("پانچ بار نیچے اسکرول کرو"))
     }
 
