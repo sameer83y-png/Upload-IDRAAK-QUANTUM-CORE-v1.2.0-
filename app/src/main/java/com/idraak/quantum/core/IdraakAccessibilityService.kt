@@ -292,6 +292,11 @@ class IdraakAccessibilityService : AccessibilityService() {
 
     private fun showRecentApps(): Boolean = global(GLOBAL_ACTION_RECENTS)
 
+    private fun takeSystemScreenshot(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false
+        return global(GLOBAL_ACTION_TAKE_SCREENSHOT)
+    }
+
     private fun swipeScreen(up: Boolean): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
         val metrics = resources.displayMetrics
@@ -378,6 +383,7 @@ class IdraakAccessibilityService : AccessibilityService() {
             activeService?.scrollRepeatedly(forward, count.coerceIn(1, 5)) ?: 0
         fun goBack(): Boolean = activeService?.global(GLOBAL_ACTION_BACK) == true
         fun showRecentApps(): Boolean = activeService?.showRecentApps() == true
+        fun takeScreenshot(): Boolean = activeService?.takeSystemScreenshot() == true
         fun goHome(): Boolean = activeService?.global(GLOBAL_ACTION_HOME) == true
         fun showNotifications(): Boolean = activeService?.global(GLOBAL_ACTION_NOTIFICATIONS) == true
         fun showQuickSettings(): Boolean = activeService?.global(GLOBAL_ACTION_QUICK_SETTINGS) == true

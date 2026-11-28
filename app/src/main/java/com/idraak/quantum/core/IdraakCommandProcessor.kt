@@ -395,6 +395,17 @@ class IdraakCommandProcessor(
             }
         }
 
+        if (ScreenshotCommandParser.matches(command)) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "اسکرین شاٹ لینے کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.takeScreenshot()) {
+                "اسکرین شاٹ لینے کی درخواست بھیج دی؛ Android اسے محفوظ کرے گا۔"
+            } else {
+                "اس فون کے Android ورژن یا موجودہ سسٹم میں اسکرین شاٹ ایکشن دستیاب نہیں ہوا۔"
+            }
+        }
+
         if (lower in listOf(
                 "read screen", "what is on screen", "screen text", "اسکرین پڑھو",
                 "اسکرین پر کیا ہے", "اسکرین پر کیا لکھا ہے", "جو اسکرین پر ہے پڑھو"
