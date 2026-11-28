@@ -21,6 +21,7 @@ import com.idraak.quantum.core.GeminiBrainClient
 import com.idraak.quantum.core.IdraakAutoUpdater
 import com.idraak.quantum.core.DownloadedIdraakUpdate
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.biometric.BiometricManager
 import com.idraak.quantum.core.IdraakAccessibilityService
@@ -63,9 +64,20 @@ class SettingsActivity : Activity() {
             setPadding(0, 0, 0, 26)
         }, matchWrap())
 
+        root.addView(TextView(this).apply {
+            text = "CHOOSE YOUR CORE THEME"
+            textSize = 13f
+            setTextColor(Color.LTGRAY)
+            setPadding(0, 8, 0, 4)
+        }, matchWrap())
         addThemeButton(root, "QUANTUM CYAN", Color.rgb(67, 218, 255), Color.rgb(5, 10, 23))
         addThemeButton(root, "NEBULA VIOLET", Color.rgb(183, 132, 255), Color.rgb(12, 8, 27))
         addThemeButton(root, "EMERALD CORE", Color.rgb(91, 235, 170), Color.rgb(4, 18, 17))
+        addThemeButton(root, "SOLAR GOLD", Color.rgb(255, 202, 92), Color.rgb(24, 17, 5))
+        addThemeButton(root, "CRIMSON PULSE", Color.rgb(255, 105, 125), Color.rgb(25, 6, 13))
+        addThemeButton(root, "ARCTIC BLUE", Color.rgb(145, 205, 255), Color.rgb(5, 15, 29))
+        addThemeButton(root, "ROSE QUARTZ", Color.rgb(255, 164, 205), Color.rgb(27, 10, 20))
+        addThemeButton(root, "OBSIDIAN LIME", Color.rgb(190, 240, 92), Color.rgb(10, 15, 5))
 
         root.addView(Button(this).apply {
             text = "CHECK & INSTALL IDRAAK UPDATES"
@@ -263,7 +275,11 @@ class SettingsActivity : Activity() {
             text = "BACK TO IDRAAK"
             setOnClickListener { finish() }
         }, matchWrap().apply { topMargin = 12 })
-        setContentView(root)
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(root)
+        }
+        setContentView(scroll)
     }
 
     private fun addAppLockSection(root: LinearLayout) {
