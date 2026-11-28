@@ -31,6 +31,18 @@
         android:label="Idraak Quantum"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
+        <service
+            android:name=".core.IdraakAccessibilityService"
+            android:label="Idraak Accessibility"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/idraak_accessibility_service" />
+        </service>
         <receiver
             android:name=".core.ReminderReceiver"
             android:enabled="true"
