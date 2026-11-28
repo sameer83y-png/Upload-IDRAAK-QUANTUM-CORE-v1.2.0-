@@ -110,6 +110,26 @@ class OfflineCommandEngineTest {
     }
 
     @Test
+    fun parsesTargetedShareToAnyNamedApp() {
+        val english = engine.process("send hello from Idraak to Signal").action
+        val romanUrdu = engine.process("signal par mera paigham bhejo").action
+        val urduMessageFirst = engine.process("میرا پیغام signal پر بھیجو").action
+        val urduAppFirst = engine.process("signal پر میرا پیغام بھیجو").action
+
+        assertTrue(english is CommandAction.ShareTextToApp)
+        assertEquals("Signal", (english as CommandAction.ShareTextToApp).appName)
+        assertEquals("hello from Idraak", english.text)
+        assertTrue(romanUrdu is CommandAction.ShareTextToApp)
+        assertEquals("signal", (romanUrdu as CommandAction.ShareTextToApp).appName)
+        assertTrue(urduMessageFirst is CommandAction.ShareTextToApp)
+        assertEquals("میرا پیغام", (urduMessageFirst as CommandAction.ShareTextToApp).text)
+        assertEquals("signal", urduMessageFirst.appName)
+        assertTrue(urduAppFirst is CommandAction.ShareTextToApp)
+        assertEquals("میرا پیغام", (urduAppFirst as CommandAction.ShareTextToApp).text)
+        assertEquals("signal", urduAppFirst.appName)
+    }
+
+    @Test
     fun parsesGenericShareCommand() {
         val action = engine.process("یہ پیغام بھیجو میں راستے میں ہوں").action
         assertTrue(action is CommandAction.ShareText)
