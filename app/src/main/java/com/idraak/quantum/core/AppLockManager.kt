@@ -30,11 +30,18 @@ class AppLockManager(context: Context) {
     }
 
     fun verify(password: CharArray): Boolean {
+        // Reject oversized or malformed input before running the deliberately
+        // expensive PBKDF2 derivation on the caller's thread.
+        if (password.size !in MIN_PASSWORD_LENGTH..MAX_PASSWORD_LENGTH) return false
+
         val saltText = preferences.getString(KEY_SALT, null) ?: return false
         val hashText = preferences.getString(KEY_HASH, null) ?: return false
         return try {
             val salt = Base64.decode(saltText, Base64.NO_WRAP)
             val expected = Base64.decode(hashText, Base64.NO_WRAP)
+            if (salt.size != SALT_BYTES || expected.size != HASH_BITS / 8) {
+                return false
+            }
             val actual = derive(password, salt)
             MessageDigest.isEqual(expected, actual)
         } catch (_: Exception) {
