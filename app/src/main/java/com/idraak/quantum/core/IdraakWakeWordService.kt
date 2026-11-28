@@ -230,22 +230,7 @@ class IdraakWakeWordService : Service() {
         val controller = OnDeviceVoiceController(
             this,
             onText = { text ->
-                if (text.isNotBlank() && !stopping.get()) {
-                    val processor = IdraakCommandProcessor(applicationContext)
-                    val processed = try {
-                        processor.process(text)
-                    } catch (error: Exception) {
-                        IdraakProcessingResult(
-                            false,
-                            "کمانڈ پروسیس نہیں ہو سکی: " + (error.localizedMessage ?: "unknown error")
-                        )
-                    }
-                    val reply = processed.response
-                    if (!processed.handled) processor.recordExchange(text, reply)
-                    processor.close()
-                    speak(reply)
-                    updateNotification("Command processed. Listening for 'Idraak' again.")
-                }
+                processRecognizedCommand(text)
             },
             onStatus = { status ->
                 if (!stopping.get()) updateNotification(status)
@@ -264,6 +249,52 @@ class IdraakWakeWordService : Service() {
     }
 
     @Synchronized
+    /**
+     * Keep command processing failures from escaping the recognizer callback.
+     * History/storage cleanup is guaranteed, and a usable Urdu reply is still spoken.
+     */
+    private fun processRecognizedCommand(text: String) {
+        if (text.isBlank() || stopping.get()) return
+
+        val processor = try {
+            IdraakCommandProcessor(applicationContext)
+        } catch (error: Exception) {
+            if (!stopping.get()) {
+                speak("کمانڈ سسٹم شروع نہیں ہو سکا۔ براہ کرم دوبارہ کوشش کریں۔")
+                updateNotification("Command processor could not be initialized.")
+            }
+            return
+        }
+
+        val processed = try {
+            processor.process(text)
+        } catch (error: Exception) {
+            IdraakProcessingResult(
+                false,
+                "کمانڈ پروسیس نہیں ہو سکی: " +
+                    (error.localizedMessage ?: "نامعلوم خرابی")
+            )
+        }
+
+        val reply = processed.response
+        try {
+            if (!processed.handled) processor.recordExchange(text, reply)
+        } catch (_: Exception) {
+            // Conversation history is optional; it must not suppress the spoken reply.
+        } finally {
+            try {
+                processor.close()
+            } catch (_: Exception) {
+                // Store cleanup must not prevent the service from speaking/resuming.
+            }
+        }
+
+        if (!stopping.get()) {
+            speak(reply)
+            updateNotification("Command processed. Listening for 'Idraak' again.")
+        }
+    }
+
     private fun speak(message: String) {
         if (stopping.get()) return
         val engine = tts
