@@ -213,6 +213,26 @@ class OfflineCommandEngineTest {
     }
 
     @Test
+    fun parsesNaturalLanguageLaunchForAnyNamedApp() {
+        val romanUrdu = engine.process("calculator chala do").action
+        val hindi = engine.process("कैलकुलेटर चलाओ").action
+        val urdu = engine.process("کیلکولیٹر چلا دو").action
+        val english = engine.process("launch Signal app").action
+
+        assertEquals(CommandAction.OpenApp("calculator"), romanUrdu)
+        assertEquals(CommandAction.OpenApp("कैलकुलेटर"), hindi)
+        assertEquals(CommandAction.OpenApp("کیلکولیٹر"), urdu)
+        assertEquals(CommandAction.OpenApp("Signal"), english)
+    }
+
+    @Test
+    fun asksForNameWhenAnotherAppIsRequestedWithoutNamingIt() {
+        val result = engine.process("koi dusra app kholo")
+        assertEquals(CommandAction.None, result.action)
+        assertTrue(result.response.contains("کون سی ایپ"))
+    }
+
+    @Test
     fun parsesReminderUsingUrduDigits() {
         val action = engine.process("مجھے ۱۰ منٹ بعد پانی پینا یاد دلانا").action
         assertTrue(action is CommandAction.ScheduleReminder)
