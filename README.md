@@ -3,12 +3,12 @@
 An offline-first Android assistant foundation with Urdu-first command handling, local memory, Android actions, reminders, and a customizable dashboard.
 
 ## App capabilities
-- Futuristic Idraak dashboard with three saved color themes and context-aware quick suggestions.
+- Futuristic Idraak dashboard with eight saved color themes and context-aware quick suggestions.
 - Opens common installed apps: YouTube, Chrome, ChatGPT, Gemini, WhatsApp, Instagram, Facebook, Telegram, Maps, and Gmail.
 - Opens phone, Wi-Fi, Bluetooth, display, sound, and battery settings.
 - Searches YouTube and Google from Urdu or English commands.
 - Opens the dialer for a supplied number; the user reviews and places the call.
-- Sends text to Android's generic share chooser so the user can choose a supported messaging app and review the message before sending.
+- Shares text through Android's generic chooser, or opens a connected compatible app's share flow; the user reviews and sends the message.
 - Sets clock alarms by sending the time to the installed Clock app.
 - Schedules local reminder notifications. Supported reminders are persisted and restored after device reboot.
 - Raises, lowers, or mutes media volume through Android audio controls.
