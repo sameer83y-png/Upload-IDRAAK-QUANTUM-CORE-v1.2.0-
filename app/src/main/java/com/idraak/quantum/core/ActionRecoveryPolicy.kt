@@ -11,6 +11,8 @@ object ActionRecoveryPolicy {
     private const val UNKNOWN_COMMAND =
         "یہ حکم ابھی میرے آف لائن کمانڈز میں شامل نہیں۔ براہ کرم اسے دوسرے الفاظ میں بتائیں۔"
 
+    fun isUnknownCommand(engineMessage: String): Boolean = engineMessage == UNKNOWN_COMMAND
+
     fun responseForUnknownCommand(rawCommand: String, engineMessage: String): String {
         if (engineMessage != UNKNOWN_COMMAND) return engineMessage
 
