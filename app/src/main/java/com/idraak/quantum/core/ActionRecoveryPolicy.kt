@@ -16,6 +16,9 @@ object ActionRecoveryPolicy {
 
         val command = rawCommand.trim()
         val normalized = command.lowercase(Locale.ROOT)
+        val suggestions = CommandSuggestionEngine.suggestionsFor(command)
+        if (suggestions != null) return suggestions
+
         return when {
             normalized.matches(Regex("^(open|launch|start|کھولو|چلاؤ)\\s*$")) ->
                 "کون سی ایپ یا چیز کھولنی ہے؟ اس کا نام بتا دیں۔"
