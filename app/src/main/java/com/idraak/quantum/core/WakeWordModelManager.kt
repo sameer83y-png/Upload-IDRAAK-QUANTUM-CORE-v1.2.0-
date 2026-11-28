@@ -80,7 +80,7 @@ class WakeWordModelManager(context: Context) {
                         while (true) {
                             val entry = tar.nextTarEntry ?: break
                             if (!entry.isFile) continue
-                            val relative = entry.name.replace('\\\\', '/')
+                            val relative = entry.name
                             if (relative.startsWith("/") || relative.split('/').any { it == ".." }) {
                                 throw IllegalStateException("Unsafe path in wake-word archive.")
                             }
