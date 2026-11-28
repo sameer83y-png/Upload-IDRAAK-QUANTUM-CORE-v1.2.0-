@@ -9,6 +9,7 @@ sealed interface CommandAction {
     data class OpenUrl(val url: String) : CommandAction
     data class OpenApp(val appName: String) : CommandAction
     data class ShareText(val text: String) : CommandAction
+    data class ShareTextToApp(val text: String, val appName: String) : CommandAction
     data class DialNumber(val number: String) : CommandAction
     data class SetAlarm(val hour: Int, val minute: Int, val label: String = "Idraak alarm") : CommandAction
     data class AdjustVolume(val direction: VolumeDirection) : CommandAction
