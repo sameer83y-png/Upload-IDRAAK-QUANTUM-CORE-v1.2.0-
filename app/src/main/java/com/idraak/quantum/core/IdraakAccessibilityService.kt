@@ -366,6 +366,25 @@ class IdraakAccessibilityService : AccessibilityService() {
         return field.performAction(AccessibilityNodeInfo.ACTION_CUT)
     }
 
+
+    /** Moves the cursor to an edge of the single focused, editable, non-password field. */
+    private fun moveFocusedCursor(toEnd: Boolean): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focusedFields = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled && node.isEditable &&
+                node.isFocused && !node.isPassword
+        }
+        if (focusedFields.size != 1) return false
+        val field = focusedFields.single()
+        val textLength = field.text?.length ?: return false
+        val position = if (toEnd) textLength else 0
+        val arguments = Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, position)
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, position)
+        }
+        return field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, arguments)
+    }
+
     private fun clearFocusedTextField(): Boolean {
         val root = rootInActiveWindow ?: return false
         val focusedFields = allNodes(root).filter { node ->
@@ -491,6 +510,8 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun selectAllFocusedText(): Boolean = activeService?.selectAllFocusedText() == true
         fun copySelectedText(): Boolean = activeService?.copySelectedFocusedText() == true
         fun cutSelectedText(): Boolean = activeService?.cutSelectedFocusedText() == true
+        fun moveCursorToStart(): Boolean = activeService?.moveFocusedCursor(false) == true
+        fun moveCursorToEnd(): Boolean = activeService?.moveFocusedCursor(true) == true
         fun goHome(): Boolean = activeService?.global(GLOBAL_ACTION_HOME) == true
         fun showNotifications(): Boolean = activeService?.global(GLOBAL_ACTION_NOTIFICATIONS) == true
         fun showQuickSettings(): Boolean = activeService?.global(GLOBAL_ACTION_QUICK_SETTINGS) == true
