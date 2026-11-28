@@ -286,7 +286,13 @@ class IdraakWakeWordService : Service() {
         }
         pendingSpeech = null
         speechPending.set(true)
-        val result = engine.speak(message, TextToSpeech.QUEUE_FLUSH, null, "idraak-background-reply")
+        val result = try {
+            engine.speak(message, TextToSpeech.QUEUE_FLUSH, null, "idraak-background-reply")
+        } catch (_: Exception) {
+            TextToSpeech.ERROR
+        }
+        // A TTS provider can throw as well as return ERROR. Always release the
+        // pending-speech state so the wake-word listener cannot remain paused.
         if (result == TextToSpeech.ERROR) finishSpeechAndResumeListening()
     }
 
