@@ -459,6 +459,9 @@ class SettingsActivity : Activity() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requested.add(Manifest.permission.RECORD_AUDIO)
         }
+        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+            requested.add(Manifest.permission.READ_CONTACTS)
+        }
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -483,6 +486,7 @@ class SettingsActivity : Activity() {
     private fun updatePermissionStatus() {
         if (!::permissionStatus.isInitialized) return
         val microphone = if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) "Granted" else "Not granted"
+        val contacts = if (checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) "Granted" else "Not granted"
         val notifications = when {
             Build.VERSION.SDK_INT < 33 -> "Managed by Android (no runtime prompt on this version)"
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED -> "Granted"
