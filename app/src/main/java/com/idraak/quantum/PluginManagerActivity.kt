@@ -105,7 +105,7 @@ class PluginManagerActivity : Activity() {
                     setTextColor(Color.WHITE)
                 }, matchWrap())
                 card.addView(TextView(this).apply {
-                    text = appPackage + if (isConnected) "\\nCONNECTED" else "\\nNot connected"
+                    text = appPackage + if (isConnected) "\nCONNECTED" else "\nNot connected"
                     textSize = 10f
                     setTextColor(if (isConnected) accent else Color.LTGRAY)
                     setPadding(0, 3, 0, 5)
