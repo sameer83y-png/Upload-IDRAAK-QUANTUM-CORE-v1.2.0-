@@ -70,13 +70,15 @@ class MainActivity : FragmentActivity() {
 
     override fun onStop() {
         super.onStop()
+        // One-shot voice input belongs to the visible activity. Never leave its
+        // microphone capture running after the user backgrounds Idraak.
+        voiceController?.destroy()
+        voiceController = null
+
         if (!isFinishing && com.idraak.quantum.core.AppLockManager(this).isEnabled()) {
-            // Lock the command surface immediately and stop foreground mic capture
-            // before the unlock screen is shown on return.
+            // Lock the command surface immediately before the unlock screen is shown on return.
             lockOnReturn = true
             isLocked = true
-            voiceController?.destroy()
-            voiceController = null
             speechOutput?.stop()
             speechOutput?.shutdown()
             speechOutput = null
@@ -261,10 +263,8 @@ class MainActivity : FragmentActivity() {
         dialog.show()
     }
 
-    private fun initializeIdraak() {
-        isLocked = false
-        actionExecutor = AndroidActionExecutor(this)
-        voiceController = OnDeviceVoiceController(
+    private fun createVoiceController(): OnDeviceVoiceController =
+        OnDeviceVoiceController(
             this,
             onText = { spoken ->
                 runOnUiThread {
@@ -276,10 +276,15 @@ class MainActivity : FragmentActivity() {
             },
             onStatus = { status ->
                 runOnUiThread {
-                    if (::responseView.isInitialized) responseView.text = status
+                    if (!isLocked && ::responseView.isInitialized) responseView.text = status
                 }
             }
         )
+
+    private fun initializeIdraak() {
+        isLocked = false
+        actionExecutor = AndroidActionExecutor(this)
+        voiceController = createVoiceController()
         speechOutput = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 val result = speechOutput?.setLanguage(Locale("ur", "PK"))
@@ -912,7 +917,10 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (!isLocked && ::responseView.isInitialized) buildDashboard()
+        if (!isLocked && ::responseView.isInitialized) {
+            if (voiceController == null) voiceController = createVoiceController()
+            buildDashboard()
+        }
     }
 
     override fun onDestroy() {
