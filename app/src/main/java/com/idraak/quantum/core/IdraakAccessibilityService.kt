@@ -128,19 +128,6 @@ class IdraakAccessibilityService : AccessibilityService() {
         return false
     }
 
-    private fun setTextOnFocusedField(value: String): Boolean {
-        if (value.isBlank()) return false
-        val root = rootInActiveWindow ?: return false
-        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-        val target = if (focused != null && focused.isEditable) focused
-            else allNodes(root).firstOrNull { it.isVisibleToUser && it.isEnabled && it.isEditable && it.isFocused }
-        if (target == null || !target.isEnabled) return false
-        val arguments = android.os.Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value)
-        }
-        return target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
-    }
-
     private fun scroll(forward: Boolean): Boolean {
         val root = rootInActiveWindow ?: return false
         val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
@@ -192,7 +179,6 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun isConnected(): Boolean = activeService != null
         fun readScreenText(): String = activeService?.readVisibleText().orEmpty()
         fun clickText(text: String): Boolean = activeService?.clickVisibleText(text.trim()) == true
-        fun typeIntoFocusedField(text: String): Boolean = activeService?.setTextOnFocusedField(text) == true
         fun longPressText(text: String): Boolean = activeService?.longPressVisibleText(text.trim()) == true
         fun scrollForward(): Boolean = activeService?.scroll(true) == true
         fun scrollBackward(): Boolean = activeService?.scroll(false) == true
