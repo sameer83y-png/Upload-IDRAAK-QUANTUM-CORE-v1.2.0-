@@ -45,6 +45,20 @@ class OfflineCommandEngineTest {
     }
 
     @Test
+    fun parsesGenericEnglishAppLaunch() {
+        val action = engine.process("open calculator").action
+        assertTrue(action is CommandAction.OpenApp)
+        assertEquals("calculator", (action as CommandAction.OpenApp).appName)
+    }
+
+    @Test
+    fun parsesGenericUrduAppLaunch() {
+        val action = engine.process("کیلکولیٹر کھولو").action
+        assertTrue(action is CommandAction.OpenApp)
+        assertEquals("کیلکولیٹر", (action as CommandAction.OpenApp).appName)
+    }
+
+    @Test
     fun parsesAlarmTime() {
         val action = engine.process("الارم 19:30 لگاؤ").action
         assertTrue(action is CommandAction.SetAlarm)
