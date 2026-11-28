@@ -39,6 +39,7 @@ class IdraakWakeWordService : Service() {
     @Volatile private var voiceController: OnDeviceVoiceController? = null
     private var tts: TextToSpeech? = null
     @Volatile private var ttsReady = false
+    @Volatile private var ttsInitialized = false
     @Volatile private var pendingSpeech: String? = null
     private val speechPending = AtomicBoolean(false)
     private val restartRequested = AtomicBoolean(false)
@@ -47,6 +48,7 @@ class IdraakWakeWordService : Service() {
         super.onCreate()
         createChannel()
         tts = TextToSpeech(applicationContext) { status ->
+            ttsInitialized = true
             if (status == TextToSpeech.SUCCESS) {
                 val supportedLocales = listOf(
                     Locale("ur", "PK"),
@@ -65,7 +67,10 @@ class IdraakWakeWordService : Service() {
                     }
                 }
                 if (!ttsReady) {
+                    pendingSpeech = null
+                    speechPending.set(false)
                     updateNotification("Speech voice unavailable. Install a supported Urdu, Hindi, or English TTS voice.")
+                    if (restartRequested.get()) restartWakeWordListening()
                 }
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) = Unit
@@ -267,9 +272,16 @@ class IdraakWakeWordService : Service() {
             speechPending.set(true)
             return
         }
-        if (!ttsReady) {
+        if (!ttsInitialized) {
             pendingSpeech = message
             speechPending.set(true)
+            return
+        }
+        if (!ttsReady) {
+            pendingSpeech = null
+            speechPending.set(false)
+            updateNotification("Reply is ready, but no supported text-to-speech voice is installed.")
+            if (restartRequested.get()) restartWakeWordListening()
             return
         }
         pendingSpeech = null
