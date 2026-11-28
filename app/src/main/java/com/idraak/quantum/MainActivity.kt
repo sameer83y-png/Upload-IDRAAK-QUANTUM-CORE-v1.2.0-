@@ -281,6 +281,15 @@ class MainActivity : Activity() {
         val command = raw.trim()
         val lower = command.lowercase(Locale.ROOT)
 
+        if (lower in listOf("read screen", "what is on screen", "screen text", "اسکرین پڑھو", "اسکرین پر کیا ہے", "اسکرین پر کیا لکھا ہے", "جو اسکرین پر ہے پڑھو")) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "اسکرین پڑھنے کے لیے Settings میں Idraak Accessibility فعال کریں۔"
+            }
+            val visibleText = IdraakAccessibilityService.readScreenText()
+            return if (visibleText.isBlank()) "اسکرین پر پڑھنے کے قابل تحریر نہیں ملی۔"
+            else "اسکرین پر نظر آنے والی تحریر یہ ہے:\\n$visibleText"
+        }
+
         val clickTarget = when {
             lower.matches(Regex("^(tap|click)( on)? .+")) ->
                 command.replaceFirst(Regex("^(tap|click)( on)?\\s+"), "").trim()
