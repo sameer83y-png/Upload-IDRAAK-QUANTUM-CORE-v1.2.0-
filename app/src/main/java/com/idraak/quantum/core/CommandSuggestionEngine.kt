@@ -105,7 +105,7 @@ object CommandSuggestionEngine {
             .take(5)
             .map { label -> DashboardSuggestion(label, "open $label") }
         if (appSuggestions.isNotEmpty()) {
-            categories += DashboardSuggestionCategory("آپ کی منسلک ایپس", appSuggestions)
+            categories += DashboardSuggestionCategory("آپ کی انسٹال ایپس", appSuggestions)
         }
         return categories
     }
