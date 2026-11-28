@@ -308,6 +308,24 @@ class IdraakAccessibilityService : AccessibilityService() {
         return true
     }
 
+    /**
+     * Pastes clipboard content only into the single currently focused, editable,
+     * non-password field. It never reads or speaks clipboard contents.
+     */
+    private fun pasteClipboardText(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focusedFields = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled && node.isEditable &&
+                node.isFocused && !node.isPassword
+        }
+        if (focusedFields.size != 1) return false
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return false
+        if (!clipboard.hasPrimaryClip()) return false
+        val description = clipboard.primaryClipDescription ?: return false
+        if (!description.hasMimeType("text/*")) return false
+        return focusedFields.single().performAction(AccessibilityNodeInfo.ACTION_PASTE)
+    }
+
     private fun swipeScreen(up: Boolean): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
         val metrics = resources.displayMetrics
@@ -396,6 +414,7 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun showRecentApps(): Boolean = activeService?.showRecentApps() == true
         fun takeScreenshot(): Boolean = activeService?.takeSystemScreenshot() == true
         fun copyScreenText(): Boolean = activeService?.copyVisibleScreenText() == true
+        fun pasteClipboardText(): Boolean = activeService?.pasteClipboardText() == true
         fun goHome(): Boolean = activeService?.global(GLOBAL_ACTION_HOME) == true
         fun showNotifications(): Boolean = activeService?.global(GLOBAL_ACTION_NOTIFICATIONS) == true
         fun showQuickSettings(): Boolean = activeService?.global(GLOBAL_ACTION_QUICK_SETTINGS) == true

@@ -406,6 +406,17 @@ class IdraakCommandProcessor(
             }
         }
 
+        if (PasteClipboardCommandParser.matches(command)) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "کلپ بورڈ سے پیسٹ کرنے کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.pasteClipboardText()) {
+                "کلپ بورڈ کا متن موجودہ منتخب ٹیکسٹ فیلڈ میں پیسٹ کر دیا۔"
+            } else {
+                "پیسٹ نہیں ہو سکا؛ ایک عام ٹیکسٹ فیلڈ منتخب کریں اور کلپ بورڈ میں ٹیکسٹ کاپی کریں۔ پاس ورڈ فیلڈ میں پیسٹ نہیں کیا جائے گا۔"
+            }
+        }
+
         if (CopyScreenTextCommandParser.matches(command)) {
             if (!IdraakAccessibilityService.isConnected()) {
                 return "اسکرین کا متن کاپی کرنے کے لیے Idraak Accessibility فعال کریں۔"
