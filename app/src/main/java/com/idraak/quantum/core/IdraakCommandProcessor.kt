@@ -304,7 +304,11 @@ class IdraakCommandProcessor(
 
         val searchQuery = when {
             lower.startsWith("search for ") -> command.substringAfter("search for ").trim()
-            lower.startsWith("search ") -> command.substringAfter("search ").trim()
+            lower.startsWith("search ") && !lower.startsWith("search memory ") &&
+                !lower.startsWith("search preference memory ") &&
+                !lower.startsWith("search project memory ") &&
+                !lower.startsWith("search person memory ") &&
+                !lower.startsWith("search fact memory ") -> command.substringAfter("search ").trim()
             lower.startsWith("تلاش کرو ") -> command.substringAfter("تلاش کرو ").trim()
             lower.startsWith("تلاش کریں ") -> command.substringAfter("تلاش کریں ").trim()
             lower.startsWith("یہ تلاش کرو ") -> command.substringAfter("یہ تلاش کرو ").trim()
