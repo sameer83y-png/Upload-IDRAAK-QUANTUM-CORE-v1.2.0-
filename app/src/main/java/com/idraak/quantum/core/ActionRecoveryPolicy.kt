@@ -38,6 +38,27 @@ object ActionRecoveryPolicy {
         }
     }
 
+    /**
+     * Executor outcomes are localized strings today, so classify known failure
+     * phrases in one place instead of letting the processor report them as success.
+     */
+    fun isExecutionFailure(executorMessage: String): Boolean {
+        val message = executorMessage.lowercase(Locale.ROOT)
+        return listOf(
+            "compatible",
+            "ایپ نہیں ملی",
+            "android نے مطلوبہ اجازت",
+            "permission",
+            "رابطے تلاش نہیں ہو سکے",
+            "رابطے تلاش کرنے کے لیے",
+            "رابطہ نہیں ملا",
+            "ایک سے زیادہ نمبر",
+            "یہ کام مکمل نہیں ہو سکا",
+            "connected نہیں",
+            "سپورٹ نہیں کرتی"
+        ).any(message::contains)
+    }
+
     fun responseForExecutionFailure(rawCommand: String, executorMessage: String): String {
         val message = executorMessage.lowercase(Locale.ROOT)
         return when {

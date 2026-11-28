@@ -68,14 +68,7 @@ class IdraakCommandProcessor(context: Context) {
                 ActionRecoveryPolicy.responseForExecutionFailure(command, failure)
             )
         }
-        val failed = execution.contains("compatible") ||
-            execution.contains("ایپ نہیں ملی") ||
-            execution.contains("Android نے مطلوبہ اجازت") ||
-            execution.contains("permission", ignoreCase = true) ||
-            execution.contains("رابطے تلاش نہیں ہو سکے") ||
-            execution.contains("رابطے تلاش کرنے کے لیے") ||
-            execution.contains("رابطہ نہیں ملا") ||
-            execution.contains("یہ کام مکمل نہیں ہو سکا")
+        val failed = ActionRecoveryPolicy.isExecutionFailure(execution)
         if (failed) errorStore.record(command, execution)
         val response = if (failed) {
             ActionRecoveryPolicy.responseForExecutionFailure(command, execution)
