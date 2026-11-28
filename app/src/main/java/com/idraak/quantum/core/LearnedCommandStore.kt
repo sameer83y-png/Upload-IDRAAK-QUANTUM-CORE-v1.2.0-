@@ -11,8 +11,7 @@ class LearnedCommandStore(context: Context) {
     fun remember(phrase: String, supportedCommand: String) {
         val key = normalize(phrase)
         val target = supportedCommand.trim()
-        require(key.length in 2..100) { "Command phrase must contain 2 to 100 characters." }
-        require(target.length in 2..120) { "Target command must contain 2 to 120 characters." }
+        LearnedCommandPolicy.validate(key, target)
         val commands = readAll()
         commands[key] = target
         while (commands.size > MAX_RULES) commands.remove(commands.keys.first())
