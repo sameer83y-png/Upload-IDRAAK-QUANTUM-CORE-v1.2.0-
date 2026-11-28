@@ -86,13 +86,28 @@ class IdraakCommandProcessor(context: Context) {
     }
 
     fun recordExchange(command: String, response: String) {
-        historyStore.add("user", command)
-        historyStore.add("assistant", response)
+        // Conversation history is optional; a storage error must not suppress
+        // an otherwise successful command response or crash the voice callback.
+        try {
+            historyStore.add("user", command)
+            historyStore.add("assistant", response)
+        } catch (_: Exception) {
+            // The command result remains usable even when history cannot be saved.
+        }
     }
 
     fun close() {
-        memoryStore.close()
-        historyStore.close()
+        // Close each store independently so one cleanup failure cannot leak the other.
+        try {
+            memoryStore.close()
+        } catch (_: Exception) {
+            // Best-effort cleanup.
+        }
+        try {
+            historyStore.close()
+        } catch (_: Exception) {
+            // Best-effort cleanup.
+        }
     }
 
     private fun completed(command: String, response: String): IdraakProcessingResult {
