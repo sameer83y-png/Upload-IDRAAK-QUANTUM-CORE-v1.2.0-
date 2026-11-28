@@ -461,6 +461,18 @@ class IdraakCommandProcessor(
             return if (IdraakAccessibilityService.showQuickSettings()) "Quick Settings کھول دی۔"
             else "Quick Settings panel نہیں کھل سکا۔"
         }
+        val horizontalSwipe = HorizontalSwipeCommandParser.parse(command)
+        if (horizontalSwipe != null) {
+            if (!IdraakAccessibilityService.isConnected()) return "سوائپ کے لیے Idraak Accessibility فعال کریں۔"
+            val moved = if (horizontalSwipe) {
+                IdraakAccessibilityService.swipeLeft()
+            } else {
+                IdraakAccessibilityService.swipeRight()
+            }
+            return if (moved) "اسکرین پر ${if (horizontalSwipe) "بائیں" else "دائیں"} سوائپ کر دیا۔"
+            else "اس اسکرین پر سوائپ نہیں ہو سکا۔"
+        }
+
         val repeatedScroll = RepeatedScrollCommandParser.parse(command)
         if (repeatedScroll != null) {
             if (!IdraakAccessibilityService.isConnected()) return "اسکرول کے لیے Idraak Accessibility فعال کریں۔"
