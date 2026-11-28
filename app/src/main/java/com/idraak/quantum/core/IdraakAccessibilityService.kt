@@ -62,6 +62,27 @@ class IdraakAccessibilityService : AccessibilityService() {
         return false
     }
 
+    private fun readVisibleText(): String {
+        val root = rootInActiveWindow ?: return ""
+        val output = StringBuilder()
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var checked = 0
+        while (queue.isNotEmpty() && checked < 300 && output.length < 4000) {
+            val node = queue.removeFirst()
+            checked++
+            val label = (node.text ?: node.contentDescription)?.toString()?.trim().orEmpty()
+            if (label.isNotBlank() && !output.contains(label)) {
+                if (output.isNotEmpty()) output.append('\n')
+                output.append(label)
+            }
+            for (index in 0 until node.childCount) {
+                node.getChild(index)?.let(queue::addLast)
+            }
+        }
+        return output.toString()
+    }
+
     private fun swipeScreen(up: Boolean): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
         val metrics = resources.displayMetrics
@@ -84,6 +105,8 @@ class IdraakAccessibilityService : AccessibilityService() {
         @Volatile private var activeService: IdraakAccessibilityService? = null
 
         fun isConnected(): Boolean = activeService != null
+
+        fun readScreenText(): String = activeService?.readVisibleText().orEmpty()
 
         fun clickText(text: String): Boolean =
             activeService?.clickVisibleText(text.trim()) == true
