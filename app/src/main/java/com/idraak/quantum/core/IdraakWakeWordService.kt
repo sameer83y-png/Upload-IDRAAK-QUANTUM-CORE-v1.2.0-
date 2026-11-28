@@ -215,12 +215,16 @@ class IdraakWakeWordService : Service() {
                     speak(reply)
                     updateNotification("Command processed. Listening for 'Idraak' again.")
                 }
-                voiceController?.destroy()
-                voiceController = null
-                if (!stopping.get()) Thread({ listenForWakeWord() }, "idraak-wake-restart").start()
             },
             onStatus = { status ->
                 if (!stopping.get()) updateNotification(status)
+            },
+            onComplete = {
+                voiceController?.destroy()
+                voiceController = null
+                if (!stopping.get()) {
+                    Thread({ listenForWakeWord() }, "idraak-wake-restart").start()
+                }
             }
         )
         voiceController = controller
