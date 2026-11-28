@@ -220,29 +220,32 @@ class AndroidActionExecutor(private val context: Context) {
         if (target.contains("settings") || target.contains("سیٹنگ")) return execute(CommandAction.OpenSettings)
         val packageManager = context.packageManager
         val knownIntent = candidates.firstNotNullOfOrNull { packageManager.getLaunchIntentForPackage(it) }
-        val launchIntent = knownIntent ?: findInstalledLauncherApp(target)
-            ?: return "یہ ایپ نہیں ملی۔ ایپ کا پورا نام بتائیں یا پہلے اسے انسٹال کریں۔"
+        val launcherMatches = if (knownIntent == null) findInstalledLauncherApps(target) else emptyList()
+        val launchIntent = knownIntent ?: when (launcherMatches.size) {
+            0 -> return "یہ ایپ نہیں ملی۔ ایپ کا نام دوبارہ بتائیں یا پہلے اسے انسٹال کریں۔"
+            1 -> launcherMatches.first().second
+            else -> return "ایک سے زیادہ ایپس ملیں: ${launcherMatches.joinToString("، ") { it.first }}۔ براہ کرم ایپ کا پورا نام بتائیں۔"
+        }
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(launchIntent)
         return "ایپ کھول دی گئی۔"
     }
 
     /**
-     * Finds user-visible launcher apps without requesting QUERY_ALL_PACKAGES.
-     * If more than one app matches a partial name, asks for a clearer app name.
+     * Finds visible launcher apps without requesting QUERY_ALL_PACKAGES.
+     * Returns every matching app so ambiguous names can be clarified to the user.
      */
-    private fun findInstalledLauncherApp(requestedName: String): Intent? {
+    private fun findInstalledLauncherApps(requestedName: String): List<Pair<String, Intent>> {
         val launcherQuery = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        // Launcher activities are identified by CATEGORY_LAUNCHER, not necessarily
-        // CATEGORY_DEFAULT. MATCH_DEFAULT_ONLY can therefore hide valid installed apps.
-        val matches = context.packageManager.queryIntentActivities(
-            launcherQuery,
-            0
-        ).mapNotNull { resolveInfo ->
-            val label = resolveInfo.loadLabel(context.packageManager)?.toString()?.trim().orEmpty()
+        // CATEGORY_LAUNCHER is not necessarily CATEGORY_DEFAULT, so do not use
+        // MATCH_DEFAULT_ONLY here.
+        val packageManager = context.packageManager
+        val matches = packageManager.queryIntentActivities(launcherQuery, 0).mapNotNull { resolveInfo ->
+            val label = resolveInfo.loadLabel(packageManager)?.toString()?.trim().orEmpty()
             if (label.isBlank()) null else label to resolveInfo
         }
         val normalized = requestedName.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
+        if (normalized.isBlank()) return emptyList()
         val exact = matches.filter {
             it.first.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "") == normalized
         }
@@ -250,8 +253,8 @@ class AndroidActionExecutor(private val context: Context) {
             val label = it.first.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
             label.startsWith(normalized) || normalized.startsWith(label)
         }
-        if (candidates.size != 1) return null
-        val info = candidates.first().second
-        return context.packageManager.getLaunchIntentForPackage(info.activityInfo.packageName)
+        return candidates.mapNotNull { (label, info) ->
+            packageManager.getLaunchIntentForPackage(info.activityInfo.packageName)?.let { label to it }
+        }.distinctBy { it.second.component?.packageName }
     }
 }
