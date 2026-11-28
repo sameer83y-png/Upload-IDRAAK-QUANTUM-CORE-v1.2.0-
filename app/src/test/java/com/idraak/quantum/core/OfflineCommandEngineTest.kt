@@ -16,6 +16,20 @@ class OfflineCommandEngineTest {
     }
 
     @Test
+    fun greetingPrefixDoesNotSwallowAnUrduYoutubeCommand() {
+        val result = engine.process("السلام علیکم، یوٹیوب پر آج کی خبریں تلاش کرو")
+        assertTrue(result.action is CommandAction.OpenUrl)
+        assertTrue((result.action as CommandAction.OpenUrl).url.contains("youtube.com/results"))
+    }
+
+    @Test
+    fun greetingPrefixDoesNotSwallowAnEnglishYoutubeCommand() {
+        val result = engine.process("Hello, open youtube and search for quantum computing")
+        assertTrue(result.action is CommandAction.OpenUrl)
+        assertTrue((result.action as CommandAction.OpenUrl).url.contains("quantum+computing"))
+    }
+
+    @Test
     fun genuinelyUnsupportedCommandRemainsEligibleForFallback() {
         val result = engine.process("do something impossible")
         assertEquals(CommandAction.None, result.action)

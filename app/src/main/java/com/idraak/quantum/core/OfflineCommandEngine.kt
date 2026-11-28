@@ -10,14 +10,29 @@ import java.util.Locale
  */
 class OfflineCommandEngine {
     fun process(rawText: String): CommandResult {
-        val original = rawText.trim()
-        val text = original.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
-        if (text.isBlank()) return CommandResult("براہ کرم اپنا حکم بتائیں۔")
+        val rawOriginal = rawText.trim()
+        if (rawOriginal.isBlank()) return CommandResult("براہ کرم اپنا حکم بتائیں۔")
 
-        val englishGreeting = Regex("^(hello|hi|hey|salam|assalam)(\\s|$)", RegexOption.IGNORE_CASE)
-        if (englishGreeting.containsMatchIn(text) || text == "سلام" || text == "السلام" || text.contains("السلام علیکم") || text.contains("وعلیکم السلام")) {
-            return CommandResult("وعلیکم السلام۔ ادراک حاضر ہے۔")
-        }
+        val normalizedGreeting = rawOriginal.lowercase(Locale.ROOT)
+            .replace(Regex("[.!?؟،,]+"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        val greetingReply = "وعلیکم السلام۔ ادراک حاضر ہے۔"
+        val greetingOnly = normalizedGreeting in setOf(
+            "hello", "hi", "hey", "salam", "assalam", "assalamualaikum",
+            "assalamu alaikum", "سلام", "السلام", "السلام علیکم", "وعلیکم السلام"
+        )
+        if (greetingOnly) return CommandResult(greetingReply)
+
+        // Strip a leading greeting so a combined greeting + command still reaches
+        // the offline command rules instead of being mistaken for a greeting-only turn.
+        val greetingPrefix = Regex(
+            "^(?:السلام علیکم|وعلیکم السلام|assalamu\\s+alaikum|assalamualaikum|assalam|salam|hello|hi|hey)[\\s،,!.؟?]+",
+            RegexOption.IGNORE_CASE
+        )
+        val original = greetingPrefix.replaceFirst(rawOriginal, "").trim()
+        if (original.isBlank()) return CommandResult(greetingReply)
+        val text = original.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
         if (
             text == "open settings" || text == "phone settings" || text == "settings kholo" ||
             text == "سیٹنگ کھولو" || text == "سیٹنگز کھولو" || text == "فون کی سیٹنگ" ||
