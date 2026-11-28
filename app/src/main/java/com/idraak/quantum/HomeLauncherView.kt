@@ -92,19 +92,23 @@ class HomeLauncherView(context: Context) : View(context) {
         val bottom = h * 0.79f
         panel.set(left, top, right, bottom)
 
-        paint.color = 0xB900241C.toInt()
+        paint.color = 0xC0061830.toInt()
         canvas.drawRoundRect(panel, 16f, 16f, paint)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 2f
-        paint.color = 0xFF28FF9A.toInt()
+        paint.color = 0xFF20CFFF.toInt()
+        paint.setShadowLayer(10f, 0f, 0f, 0xFF087DFF.toInt())
         canvas.drawRoundRect(panel, 16f, 16f, paint)
+        paint.clearShadowLayer()
         paint.style = Paint.Style.FILL
 
         val titleSize = min(w * 0.042f, 17f)
         paint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
         paint.textSize = titleSize
-        paint.color = 0xFF75FFC0.toInt()
+        paint.color = 0xFF8DEBFF.toInt()
+        paint.setShadowLayer(5f, 0f, 0f, 0xFF087DFF.toInt())
         canvas.drawText("IDRAAK  //  QUANTUM CORE", left + 15f, top + 27f, paint)
+        paint.clearShadowLayer()
 
         val label = when (mode) {
             "listening" -> "LISTENING  •  VOICE INPUT"
@@ -119,12 +123,12 @@ class HomeLauncherView(context: Context) : View(context) {
         paint.textSize = min(w * 0.035f, 14f)
         canvas.drawText(label, left + 15f, top + 51f, paint)
 
-        paint.color = 0xFFB9FFD9.toInt()
+        paint.color = 0xFFD8F7FF.toInt()
         paint.textSize = min(w * 0.031f, 12f)
         val safeDetail = detail.replace('\n', ' ').take(52)
         if (safeDetail.isNotBlank()) canvas.drawText(safeDetail, left + 15f, top + 73f, paint)
 
-        paint.color = 0xFF37FFAA.toInt()
+        paint.color = 0xFF39DFFF.toInt()
         paint.textSize = min(w * 0.027f, 10f)
         val bits = buildString {
             repeat(34) { i -> append(if (((i * 7 + (phase * 100).toInt()) % 3) == 0) '1' else '0') }
@@ -132,14 +136,14 @@ class HomeLauncherView(context: Context) : View(context) {
         canvas.drawText(bits, left + 15f, bottom - 13f, paint)
 
         val scanY = top + 5f + (bottom - top - 10f) * phase
-        paint.color = 0x773AFFB0
+        paint.color = 0x7752DFFF
         canvas.drawRect(left + 4f, scanY, right - 4f, scanY + 2f, paint)
         paint.color = when (mode) {
             "error" -> 0xFFFF6B72.toInt()
             "confirming" -> 0xFFFFD166.toInt()
             "processing", "executing" -> 0xFF55C8FF.toInt()
             "speaking", "explaining" -> 0xFFB88CFF.toInt()
-            else -> 0xFF36FFAA.toInt()
+            else -> 0xFF38DFFF.toInt()
         }
         canvas.drawCircle(right - 18f, top + 20f, 4f + (phase * 3f), paint)
     }
