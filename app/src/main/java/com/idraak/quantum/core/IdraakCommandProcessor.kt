@@ -77,6 +77,8 @@ class IdraakCommandProcessor(
         if (failed) {
             onExecutionState?.invoke("error", command)
             errorStore.record(command, execution)
+        } else {
+            onExecutionState?.invoke("completed", command)
         }
         val response = if (failed) {
             ActionRecoveryPolicy.responseForExecutionFailure(command, execution)
