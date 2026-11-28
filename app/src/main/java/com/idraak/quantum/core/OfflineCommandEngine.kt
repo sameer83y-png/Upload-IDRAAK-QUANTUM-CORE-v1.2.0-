@@ -117,7 +117,7 @@ class OfflineCommandEngine {
             return CommandResult("الارم کھول رہا ہوں۔", CommandAction.OpenAlarm)
         }
 
-        if (containsAny(text, "set alarm", "add alarm", "create alarm", "alarm lagao", "الارم لگاؤ", "الارم لگاو", "الارم سیٹ کرو", "الارم لگا دو", "الارم")) {
+        if (containsAny(text, "set alarm", "add alarm", "create alarm", "alarm lagao", "अलार्म लगाओ", "अलार्म लगाओ", "अलार्म", "الارم لگاؤ", "الارم لگاو", "الارم سیٹ کرو", "الارم لگا دو", "الارم")) {
             val time = Regex("(?<!\\d)(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?", RegexOption.IGNORE_CASE).find(numericText)
             if (time == null) return CommandResult("کس وقت کا الارم لگاؤں؟ مثال: 7:30 AM یا 19:30۔")
             var hour = time.groupValues[1].toIntOrNull() ?: return CommandResult("وقت واضح نہیں۔ مثال: 7:30 AM یا 19:30۔")
