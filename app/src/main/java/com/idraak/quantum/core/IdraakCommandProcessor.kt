@@ -175,9 +175,7 @@ class IdraakCommandProcessor(context: Context) {
         if (categorySearch != null) {
             val category = categorySearch.groupValues[1].lowercase(Locale.ROOT)
             val query = categorySearch.groupValues[2].trim()
-            val matches = memoryStore.byCategory(category).filter {
-                it.content.contains(query, ignoreCase = true)
-            }
+            val matches = memoryStore.searchInCategory(category, query)
             return if (matches.isEmpty()) "اس قسم میں اس عبارت سے ملتی میموری نہیں ملی۔"
             else matches.joinToString("\n\n") { "• ${it.content}" }
         }
