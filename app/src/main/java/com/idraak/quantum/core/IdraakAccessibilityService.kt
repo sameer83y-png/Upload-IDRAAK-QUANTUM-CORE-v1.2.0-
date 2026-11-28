@@ -217,10 +217,10 @@ class IdraakAccessibilityService : AccessibilityService() {
 
     private fun controlMedia(action: String): Boolean {
         val labels = when (action) {
-            "play" -> listOf("play", "resume", "پلے", "چلائیں", "ویڈیو چلاؤ")
-            "pause" -> listOf("pause", "پاز", "روکیں", "ویڈیو روکیں")
-            "next" -> listOf("next", "next video", "اگلا", "اگلی ویڈیو")
-            "previous" -> listOf("previous", "previous video", "پچھلا", "پچھلی ویڈیو")
+            "play" -> listOf("play", "play video", "resume", "پلے", "چلائیں", "چلاؤ", "ویڈیو چلاؤ", "ویڈیو چلائیں")
+            "pause" -> listOf("pause", "pause video", "پاز", "روکیں", "روکو", "ویڈیو روکیں", "ویڈیو روک دو")
+            "next" -> listOf("next", "next video", "skip", "اگلا", "اگلی", "اگلی ویڈیو", "اگلا ویڈیو")
+            "previous" -> listOf("previous", "previous video", "پچھلا", "پچھلی", "پچھلی ویڈیو", "پچھلا ویڈیو")
             else -> emptyList()
         }
         return labels.any { label -> clickVisibleText(label) }
