@@ -23,4 +23,5 @@ sealed interface CommandAction {
     data object OpenSoundSettings : CommandAction
     data object OpenBatterySettings : CommandAction
     data object OpenCamera : CommandAction
+    data object OpenVideoCamera : CommandAction
 }
