@@ -1,22 +1,35 @@
 package com.idraak.quantum
 
+import android.Manifest
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.idraak.quantum.core.IdraakAccessibilityService
 
 class SettingsActivity : Activity() {
     private val preferences by lazy { getSharedPreferences("idraak_settings", MODE_PRIVATE) }
+    private lateinit var permissionStatus: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         render()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::permissionStatus.isInitialized) updatePermissionStatus()
     }
 
     private fun render() {
@@ -46,24 +59,103 @@ class SettingsActivity : Activity() {
         addThemeButton(root, "EMERALD CORE", Color.rgb(91, 235, 170), Color.rgb(4, 18, 17))
 
         root.addView(TextView(this).apply {
-            text = "DEVICE PERMISSIONS"
-            textSize = 12f
-            setTextColor(Color.LTGRAY)
-            setPadding(0, 28, 0, 8)
+            text = "IDRAAK PERMISSION MANAGER"
+            textSize = 15f
+            setTextColor(preferences.getInt("accent", Color.rgb(67, 218, 255)))
+            setPadding(0, 30, 0, 8)
         }, matchWrap())
+
+        permissionStatus = TextView(this).apply {
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            setPadding(12, 12, 12, 12)
+            setBackgroundColor(Color.rgb(22, 34, 54))
+        }
+        root.addView(permissionStatus, matchWrap())
+        updatePermissionStatus()
+
         root.addView(Button(this).apply {
-            text = "OPEN APP PERMISSIONS"
+            text = "REQUEST REQUIRED APP PERMISSIONS"
+            setOnClickListener { requestRuntimePermissions() }
+        }, matchWrap().apply { topMargin = 10 })
+        root.addView(Button(this).apply {
+            text = "ENABLE ACCESSIBILITY CONTROL"
+            setOnClickListener {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+        }, matchWrap().apply { topMargin = 8 })
+        root.addView(Button(this).apply {
+            text = "OPEN IDRAAK SYSTEM PERMISSIONS"
             setOnClickListener {
                 startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = android.net.Uri.parse("package:$packageName")
+                    data = Uri.parse("package:$packageName")
                 })
             }
+        }, matchWrap().apply { topMargin = 8 })
+        root.addView(Button(this).apply {
+            text = "CHECK PERMISSION STATUS"
+            setOnClickListener { updatePermissionStatus() }
+        }, matchWrap().apply { topMargin = 8 })
+        root.addView(TextView(this).apply {
+            text = "Android keeps control of sensitive permissions. Idraak only requests permissions needed for its features; Accessibility must be enabled by you in Android Settings."
+            textSize = 10f
+            setTextColor(Color.LTGRAY)
+            setPadding(4, 12, 4, 12)
         }, matchWrap())
         root.addView(Button(this).apply {
             text = "BACK TO IDRAAK"
             setOnClickListener { finish() }
         }, matchWrap().apply { topMargin = 12 })
         setContentView(root)
+    }
+
+    private fun requestRuntimePermissions() {
+        val requested = mutableListOf<String>()
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requested.add(Manifest.permission.RECORD_AUDIO)
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requested.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        if (requested.isEmpty()) {
+            updatePermissionStatus()
+            return
+        }
+        requestPermissions(requested.toTypedArray(), REQUEST_REQUIRED_PERMISSIONS)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_REQUIRED_PERMISSIONS) updatePermissionStatus()
+    }
+
+    private fun updatePermissionStatus() {
+        if (!::permissionStatus.isInitialized) return
+        val microphone = if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) "Granted" else "Not granted"
+        val notifications = when {
+            Build.VERSION.SDK_INT < 33 -> "Managed by Android (no runtime prompt on this version)"
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED -> "Granted"
+            else -> "Not granted"
+        }
+        val accessibility = if (isAccessibilityEnabled()) "Enabled" else "Not enabled"
+        permissionStatus.text = "Microphone: $microphone\nNotifications: $notifications\nAccessibility control: $accessibility"
+    }
+
+    private fun isAccessibilityEnabled(): Boolean {
+        val expected = ComponentName(this, IdraakAccessibilityService::class.java).flattenToString()
+        val enabled = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        val splitter = TextUtils.SimpleStringSplitter(':')
+        splitter.setString(enabled)
+        return splitter.any { it.equals(expected, ignoreCase = true) }
     }
 
     private fun addThemeButton(root: LinearLayout, label: String, accent: Int, background: Int) {
@@ -84,4 +176,8 @@ class SettingsActivity : Activity() {
     private fun matchWrap() = LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
     )
+
+    companion object {
+        private const val REQUEST_REQUIRED_PERMISSIONS = 4301
+    }
 }
