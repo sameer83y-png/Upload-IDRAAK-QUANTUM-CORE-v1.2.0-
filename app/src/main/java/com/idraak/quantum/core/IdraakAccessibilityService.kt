@@ -79,15 +79,15 @@ class IdraakAccessibilityService : AccessibilityService() {
             activeService?.scroll(false) == true
 
         fun goBack(): Boolean =
-            activeService?.global(GLOBAL_ACTION_BACK) == true
+            activeService?.global(AccessibilityService.GLOBAL_ACTION_BACK) == true
 
         fun goHome(): Boolean =
-            activeService?.global(GLOBAL_ACTION_HOME) == true
+            activeService?.global(AccessibilityService.GLOBAL_ACTION_HOME) == true
 
         fun showNotifications(): Boolean =
-            activeService?.global(GLOBAL_ACTION_NOTIFICATIONS) == true
+            activeService?.global(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS) == true
 
         fun showQuickSettings(): Boolean =
-            activeService?.global(GLOBAL_ACTION_QUICK_SETTINGS) == true
+            activeService?.global(AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS) == true
     }
 }
