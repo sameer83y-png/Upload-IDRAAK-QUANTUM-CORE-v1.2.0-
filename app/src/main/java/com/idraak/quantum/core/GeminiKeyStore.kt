@@ -20,6 +20,9 @@ class GeminiKeyStore(context: Context) {
             clear()
             return
         }
+        require(clean.length <= MAX_API_KEY_LENGTH && clean.none(Char::isWhitespace)) {
+            "Gemini API key must be 512 characters or fewer and contain no spaces."
+        }
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val encrypted = cipher.doFinal(clean.toByteArray(Charsets.UTF_8))
@@ -65,5 +68,6 @@ class GeminiKeyStore(context: Context) {
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val KEY_IV = "gemini_key_iv"
         private const val KEY_DATA = "gemini_key_data"
+        private const val MAX_API_KEY_LENGTH = 512
     }
 }
