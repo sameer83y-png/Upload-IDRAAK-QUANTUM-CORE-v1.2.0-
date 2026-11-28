@@ -129,10 +129,38 @@ class AndroidActionExecutor(private val context: Context) {
             else -> emptyList()
         }
         if (target.contains("settings") || target.contains("سیٹنگ")) return execute(CommandAction.OpenSettings)
-        val launchIntent = candidates.firstNotNullOfOrNull { context.packageManager.getLaunchIntentForPackage(it) }
-            ?: return "یہ ایپ انسٹال نہیں یا اس کا لانچر دستیاب نہیں۔"
+        val packageManager = context.packageManager
+        val knownIntent = candidates.firstNotNullOfOrNull { packageManager.getLaunchIntentForPackage(it) }
+        val launchIntent = knownIntent ?: findInstalledLauncherApp(target)
+            ?: return "یہ ایپ نہیں ملی۔ ایپ کا پورا نام بتائیں یا پہلے اسے انسٹال کریں۔"
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(launchIntent)
         return "ایپ کھول دی گئی۔"
+    }
+
+    /**
+     * Finds user-visible launcher apps without requesting QUERY_ALL_PACKAGES.
+     * If more than one app matches a partial name, asks for a clearer app name.
+     */
+    private fun findInstalledLauncherApp(requestedName: String): Intent? {
+        val launcherQuery = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val matches = context.packageManager.queryIntentActivities(
+            launcherQuery,
+            android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+        ).mapNotNull { resolveInfo ->
+            val label = resolveInfo.loadLabel(context.packageManager)?.toString()?.trim().orEmpty()
+            if (label.isBlank()) null else label to resolveInfo
+        }
+        val normalized = requestedName.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
+        val exact = matches.filter {
+            it.first.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "") == normalized
+        }
+        val candidates = if (exact.isNotEmpty()) exact else matches.filter {
+            val label = it.first.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
+            label.startsWith(normalized) || normalized.startsWith(label)
+        }
+        if (candidates.size != 1) return null
+        val info = candidates.first().second
+        return context.packageManager.getLaunchIntentForPackage(info.activityInfo.packageName)
     }
 }
