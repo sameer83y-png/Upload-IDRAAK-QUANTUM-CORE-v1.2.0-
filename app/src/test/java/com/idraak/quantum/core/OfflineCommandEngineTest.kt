@@ -51,6 +51,27 @@ class OfflineCommandEngineTest {
     }
 
     @Test
+    fun parsesRomanUrduGoogleSearch() {
+        val action = engine.process("google par latest android news search karo").action
+        assertTrue(action is CommandAction.OpenUrl)
+        assertTrue((action as CommandAction.OpenUrl).url.contains("latest+android+news"))
+    }
+
+    @Test
+    fun parsesRomanUrduSearchWithQueryFirst() {
+        val action = engine.process("weather tomorrow internet par dhundo").action
+        assertTrue(action is CommandAction.OpenUrl)
+        assertTrue((action as CommandAction.OpenUrl).url.contains("weather+tomorrow"))
+    }
+
+    @Test
+    fun parsesUrduGoogleSearch() {
+        val action = engine.process("گوگل پر نئی ٹیکنالوجی تلاش کرو").action
+        assertTrue(action is CommandAction.OpenUrl)
+        assertTrue((action as CommandAction.OpenUrl).url.contains("google.com/search"))
+    }
+
+    @Test
     fun parsesGenericShareCommand() {
         val action = engine.process("یہ پیغام بھیجو میں راستے میں ہوں").action
         assertTrue(action is CommandAction.ShareText)
