@@ -280,6 +280,22 @@ class IdraakAccessibilityService : AccessibilityService() {
         return dispatchGesture(gesture, null, null)
     }
 
+    private fun swipeHorizontal(left: Boolean): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+        val metrics = resources.displayMetrics
+        val centerY = metrics.heightPixels * 0.5f
+        val startX = if (left) metrics.widthPixels * 0.82f else metrics.widthPixels * 0.18f
+        val endX = if (left) metrics.widthPixels * 0.18f else metrics.widthPixels * 0.82f
+        val path = Path().apply {
+            moveTo(startX, centerY)
+            lineTo(endX, centerY)
+        }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 350))
+            .build()
+        return dispatchGesture(gesture, null, null)
+    }
+
     companion object {
         @Volatile private var activeService: IdraakAccessibilityService? = null
 
@@ -305,5 +321,7 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun showQuickSettings(): Boolean = activeService?.global(GLOBAL_ACTION_QUICK_SETTINGS) == true
         fun swipeUp(): Boolean = activeService?.swipeScreen(true) == true
         fun swipeDown(): Boolean = activeService?.swipeScreen(false) == true
+        fun swipeLeft(): Boolean = activeService?.swipeHorizontal(true) == true
+        fun swipeRight(): Boolean = activeService?.swipeHorizontal(false) == true
     }
 }
