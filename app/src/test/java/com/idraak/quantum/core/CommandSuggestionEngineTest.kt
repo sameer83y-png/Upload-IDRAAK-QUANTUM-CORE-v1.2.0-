@@ -42,10 +42,14 @@ class CommandSuggestionEngineTest {
     fun dashboardSuggestionsChangeWithTimeAndAccessibility() {
         val morning = CommandSuggestionEngine.dashboardSuggestions(8, false, emptyList())
         val night = CommandSuggestionEngine.dashboardSuggestions(23, false, emptyList())
+        val earlyEvening = CommandSuggestionEngine.dashboardSuggestions(17, false, emptyList())
+        val lateEvening = CommandSuggestionEngine.dashboardSuggestions(21, false, emptyList())
         val withAccessibility = CommandSuggestionEngine.dashboardSuggestions(14, true, emptyList())
 
         assertTrue(morning.first().suggestions.first().command.contains("یاد دلانا"))
         assertTrue(night.first().suggestions.first().command.contains("ساؤنڈ"))
+        assertEquals("الارم 19:30 لگاؤ", earlyEvening.first().suggestions.first().command)
+        assertEquals("الارم 22:00 لگاؤ", lateEvening.first().suggestions.first().command)
         assertTrue(withAccessibility.any { it.title == "اسکرین کنٹرول" })
     }
 
