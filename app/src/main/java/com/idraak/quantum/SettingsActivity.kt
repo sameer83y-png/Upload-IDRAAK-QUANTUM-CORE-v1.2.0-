@@ -211,7 +211,12 @@ class SettingsActivity : Activity() {
                     return@setOnClickListener
                 }
                 try {
-                    GeminiKeyStore(this@SettingsActivity).save(geminiKeyInput.text.toString())
+                    val enteredKey = geminiKeyInput.text.toString()
+                    // The key field is intentionally blank on screen; blank means keep the
+                    // existing encrypted key. Use the explicit Remove button to delete it.
+                    if (enteredKey.isNotBlank()) {
+                        GeminiKeyStore(this@SettingsActivity).save(enteredKey)
+                    }
                     preferences.edit().putString("gemini_model", model).apply()
                     android.widget.Toast.makeText(
                         this@SettingsActivity,
