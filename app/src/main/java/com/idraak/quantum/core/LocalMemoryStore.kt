@@ -138,6 +138,15 @@ class LocalMemoryStore(context: Context) :
                 put("created_at", now)
             }
             db.insertOrThrow("corrections", null, correction)
+            val correctionCount = db.rawQuery("SELECT COUNT(*) FROM corrections", null).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getInt(0) else 0
+            }
+            if (MemoryRetentionPolicy.shouldPrune(correctionCount)) {
+                db.execSQL(
+                    "DELETE FROM corrections WHERE id NOT IN " +
+                        "(SELECT id FROM corrections ORDER BY id DESC LIMIT ${MemoryRetentionPolicy.MAX_CORRECTIONS})"
+                )
+            }
 
             val update = ContentValues().apply {
                 put("content", corrected)
