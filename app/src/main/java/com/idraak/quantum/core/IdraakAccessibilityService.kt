@@ -50,13 +50,20 @@ class IdraakAccessibilityService : AccessibilityService() {
         return result
     }
 
-    private fun nodeMatches(node: AccessibilityNodeInfo, query: String): Boolean {
-        val wanted = normalized(query)
-        if (wanted.isBlank()) return false
-        return listOf(node.text, node.contentDescription, node.hintText).any { label ->
-            val actual = normalized(label)
-            actual == wanted || (actual.length >= 2 && actual.contains(wanted))
+    private fun uniqueMatchingNode(
+        root: AccessibilityNodeInfo,
+        query: String
+    ): AccessibilityNodeInfo? {
+        val visibleNodes = allNodes(root).filter { it.isVisibleToUser }
+        val labels = visibleNodes.map { node ->
+            listOfNotNull(
+                node.text?.toString(),
+                node.contentDescription?.toString(),
+                node.hintText?.toString()
+            )
         }
+        val index = AccessibilityMatchPolicy.findUniqueMatchIndex(labels, query) ?: return null
+        return visibleNodes.getOrNull(index)
     }
 
     private fun performClick(node: AccessibilityNodeInfo): Boolean {
@@ -85,47 +92,37 @@ class IdraakAccessibilityService : AccessibilityService() {
 
     private fun clickVisibleText(query: String): Boolean {
         val root = rootInActiveWindow ?: return false
-        val matches = allNodes(root).filter { it.isVisibleToUser && nodeMatches(it, query) }
-        for (node in matches) {
-            if (performClick(node)) return true
-        }
+        // Never guess when several visible controls have the same or similar label.
+        val node = uniqueMatchingNode(root, query) ?: return false
+        if (performClick(node)) return true
         // Some apps expose a label but omit the clickable parent from the node tree.
-        for (node in matches) {
-            val bounds = Rect()
-            node.getBoundsInScreen(bounds)
-            if (node.isEnabled && bounds.width() > 0 && bounds.height() > 0 &&
-                bounds.width() < resources.displayMetrics.widthPixels * 0.95f &&
-                bounds.height() < resources.displayMetrics.heightPixels * 0.45f &&
-                dispatchTap(bounds)
-            ) return true
-        }
-        return false
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        return node.isEnabled && bounds.width() > 0 && bounds.height() > 0 &&
+            bounds.width() < resources.displayMetrics.widthPixels * 0.95f &&
+            bounds.height() < resources.displayMetrics.heightPixels * 0.45f &&
+            dispatchTap(bounds)
     }
 
     private fun longPressVisibleText(query: String): Boolean {
         val root = rootInActiveWindow ?: return false
-        val matches = allNodes(root).filter { it.isVisibleToUser && nodeMatches(it, query) }
-        for (node in matches) {
-            var candidate: AccessibilityNodeInfo? = node
-            var depth = 0
-            while (candidate != null && depth < 10) {
-                if (candidate.isEnabled &&
-                    candidate.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
-                ) return true
-                candidate = candidate.parent
-                depth++
-            }
-        }
-        for (node in matches) {
-            val bounds = Rect()
-            node.getBoundsInScreen(bounds)
-            if (node.isEnabled && bounds.width() > 0 && bounds.height() > 0 &&
-                bounds.width() < resources.displayMetrics.widthPixels * 0.95f &&
-                bounds.height() < resources.displayMetrics.heightPixels * 0.45f &&
-                dispatchTap(bounds, 900L)
+        // Ambiguous labels are rejected rather than long-pressing an arbitrary control.
+        val node = uniqueMatchingNode(root, query) ?: return false
+        var candidate: AccessibilityNodeInfo? = node
+        var depth = 0
+        while (candidate != null && depth < 10) {
+            if (candidate.isEnabled &&
+                candidate.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
             ) return true
+            candidate = candidate.parent
+            depth++
         }
-        return false
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        return node.isEnabled && bounds.width() > 0 && bounds.height() > 0 &&
+            bounds.width() < resources.displayMetrics.widthPixels * 0.95f &&
+            bounds.height() < resources.displayMetrics.heightPixels * 0.45f &&
+            dispatchTap(bounds, 900L)
     }
 
     private fun scroll(forward: Boolean): Boolean {
