@@ -119,6 +119,7 @@ class HomeLauncherView(context: Context) : View(context) {
             "confirming" -> "WAITING  •  CONFIRMATION"
             "explaining" -> "RESPONSE  •  EXPLAINING"
             "error" -> "ATTENTION  •  ACTION NEEDS HELP"
+            "completed" -> "COMMAND COMPLETE  •  READY"
             else -> "SYSTEM ONLINE  •  READY"
         }
         paint.textSize = min(w * 0.035f, 14f)
@@ -132,6 +133,7 @@ class HomeLauncherView(context: Context) : View(context) {
         val stateColor = when (mode) {
             "error" -> 0xFFFF6B72.toInt()
             "confirming" -> 0xFFFFD166.toInt()
+            "completed" -> 0xFF70F0B0.toInt()
             "processing", "executing" -> 0xFF55C8FF.toInt()
             "speaking", "explaining" -> 0xFFB88CFF.toInt()
             else -> 0xFF38DFFF.toInt()
