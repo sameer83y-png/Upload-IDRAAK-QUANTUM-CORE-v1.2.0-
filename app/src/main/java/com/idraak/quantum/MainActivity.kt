@@ -301,6 +301,30 @@ class MainActivity : Activity() {
             }
         }
 
+        if (lower in listOf("home", "go home", "ہوم پر جاؤ", "ہوم کھولو", "گھر واپس جاؤ")) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "Home کنٹرول کے لیے Settings میں Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.goHome()) "Home screen کھولنے کا حکم دے دیا۔"
+            else "Home screen ایکشن اس وقت دستیاب نہیں۔"
+        }
+
+        if (lower in listOf("show notifications", "open notifications", "نوٹیفکیشن دکھاؤ", "نوٹیفکیشن کھولو")) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "Notifications کنٹرول کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.showNotifications()) "Notifications panel کھول دیا۔"
+            else "Notifications panel نہیں کھل سکا۔"
+        }
+
+        if (lower in listOf("quick settings", "open quick settings", "کھول فوری سیٹنگز", "فوری سیٹنگز کھولو", "کوئک سیٹنگز کھولو")) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "Quick Settings کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.showQuickSettings()) "Quick Settings panel کھول دیا۔"
+            else "Quick Settings panel نہیں کھل سکا۔"
+        }
+
         val isBack = lower in listOf("back", "go back", "واپس جاؤ", "پیچھے جاؤ", "واپس")
         if (isBack) {
             if (!IdraakAccessibilityService.isConnected()) {
@@ -310,16 +334,19 @@ class MainActivity : Activity() {
             else "اس وقت Back ایکشن دستیاب نہیں۔"
         }
 
-        val isScrollDown = lower in listOf("scroll down", "نیچے اسکرول کرو", "نیچے کرو")
-        val isScrollUp = lower in listOf("scroll up", "اوپر اسکرول کرو", "اوپر کرو")
+        val isScrollDown = lower in listOf("scroll down", "نیچے اسکرول کرو", "نیچے کرو", "swipe up", "اوپر سوائپ کرو")
+        val isScrollUp = lower in listOf("scroll up", "اوپر اسکرول کرو", "اوپر کرو", "swipe down", "نیچے سوائپ کرو")
         if (isScrollDown || isScrollUp) {
             if (!IdraakAccessibilityService.isConnected()) {
                 return "اسکرول کنٹرول کے لیے Idraak Accessibility فعال کریں۔"
             }
-            val moved = if (isScrollDown) IdraakAccessibilityService.scrollForward()
-                else IdraakAccessibilityService.scrollBackward()
-            return if (moved) "اسکرین اسکرول کر دی۔"
-            else "اس اسکرین پر اسکرول ہونے والا حصہ نہیں ملا۔"
+            val moved = if (isScrollDown) {
+                IdraakAccessibilityService.scrollForward() || IdraakAccessibilityService.swipeUp()
+            } else {
+                IdraakAccessibilityService.scrollBackward() || IdraakAccessibilityService.swipeDown()
+            }
+            return if (moved) "اسکرین پر اسکرول/سوائپ ایکشن بھیج دیا۔"
+            else "اس اسکرین پر اسکرول یا سوائپ ایکشن نہیں ہو سکا۔"
         }
         return null
     }
