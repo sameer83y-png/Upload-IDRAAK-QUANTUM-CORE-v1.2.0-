@@ -54,6 +54,23 @@ class CommandSuggestionEngineTest {
     }
 
     @Test
+    fun dashboardSuggestsWifiSettingsWhenNetworkIsUnavailable() {
+        val disconnected = CommandSuggestionEngine.dashboardSuggestions(
+            14, false, emptyList(), networkConnected = false
+        )
+        val connected = CommandSuggestionEngine.dashboardSuggestions(
+            14, false, emptyList(), networkConnected = true
+        )
+
+        assertTrue(disconnected.any { it.title == "انٹرنیٹ کنکشن" })
+        assertEquals(
+            "open wifi",
+            disconnected.single { it.title == "انٹرنیٹ کنکشن" }.suggestions.single().command
+        )
+        assertTrue(connected.none { it.title == "انٹرنیٹ کنکشن" })
+    }
+
+    @Test
     fun dashboardAddsBatterySettingsSuggestionOnlyWhenBatteryIsLow() {
         val lowBattery = CommandSuggestionEngine.dashboardSuggestions(14, false, emptyList(), 15)
         val normalBattery = CommandSuggestionEngine.dashboardSuggestions(14, false, emptyList(), 45)
