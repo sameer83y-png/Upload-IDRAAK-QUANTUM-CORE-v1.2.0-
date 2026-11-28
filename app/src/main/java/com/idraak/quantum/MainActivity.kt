@@ -376,7 +376,7 @@ class MainActivity : FragmentActivity() {
         }, matchWrap().apply { topMargin = 12 })
 
         root.addView(Button(this).apply {
-            text = "🎙  اردو میں بولیں  •  ON-DEVICE VOICE"
+            text = "🎙  OFFLINE VOICE  •  اردو + हिन्दी"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.rgb(25, 54, 82))
             setOnClickListener { startVoiceInput() }
