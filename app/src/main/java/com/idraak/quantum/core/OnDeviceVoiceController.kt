@@ -137,7 +137,12 @@ class OnDeviceVoiceController(
         try {
             while (running.get() && totalSamples < SAMPLE_RATE * MAX_RECORD_SECONDS) {
                 val count = recorder.read(buffer, 0, buffer.size)
-                if (count <= 0) throw IllegalStateException("مائیکروفون سے آواز نہیں مل رہی۔")
+                when (AudioReadPolicy.classify(count)) {
+                    AudioReadPolicy.Outcome.FAILURE ->
+                        throw IllegalStateException("مائیکروفون سے آواز پڑھنے میں خرابی ہوئی۔")
+                    AudioReadPolicy.Outcome.RETRY -> continue
+                    AudioReadPolicy.Outcome.PROCESS -> Unit
+                }
 
                 var energy = 0.0
                 for (index in 0 until count) {
