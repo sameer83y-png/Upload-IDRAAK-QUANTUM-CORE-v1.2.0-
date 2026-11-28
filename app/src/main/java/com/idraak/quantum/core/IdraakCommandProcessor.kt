@@ -13,7 +13,10 @@ data class IdraakProcessingResult(
  * Memory is stored only on explicit remember/correct requests; learned rules are aliases
  * to commands already supported by OfflineCommandEngine.
  */
-class IdraakCommandProcessor(context: Context) {
+class IdraakCommandProcessor(
+    context: Context,
+    private val onExecutionState: ((String, String) -> Unit)? = null
+) {
     private val appContext = context.applicationContext
     private val commandEngine = OfflineCommandEngine()
     private val memoryStore = LocalMemoryStore(appContext)
@@ -57,9 +60,11 @@ class IdraakCommandProcessor(context: Context) {
             )
         }
 
+        onExecutionState?.invoke("executing", command)
         val execution = try {
             actionExecutor.execute(result.action)
         } catch (error: Exception) {
+            onExecutionState?.invoke("error", command)
             val failure = "یہ کام مکمل نہیں ہو سکا: " +
                 (error.localizedMessage ?: "نامعلوم خرابی")
             errorStore.record(command, failure)
@@ -69,7 +74,10 @@ class IdraakCommandProcessor(context: Context) {
             )
         }
         val failed = ActionRecoveryPolicy.isExecutionFailure(execution)
-        if (failed) errorStore.record(command, execution)
+        if (failed) {
+            onExecutionState?.invoke("error", command)
+            errorStore.record(command, execution)
+        }
         val response = if (failed) {
             ActionRecoveryPolicy.responseForExecutionFailure(command, execution)
         } else {
