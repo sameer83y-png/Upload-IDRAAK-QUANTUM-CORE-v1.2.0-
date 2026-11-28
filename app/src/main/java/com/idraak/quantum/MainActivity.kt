@@ -24,6 +24,9 @@ import com.idraak.quantum.core.OfflineCommandEngine
 import com.idraak.quantum.core.OnDeviceVoiceController
 import com.idraak.quantum.core.IdraakAccessibilityService
 import com.idraak.quantum.core.ActionRecoveryPolicy
+import com.idraak.quantum.core.GeminiBrainClient
+import com.idraak.quantum.core.GeminiKeyStore
+import java.util.concurrent.Executors
 import java.util.Locale
 import java.util.Calendar
 
@@ -35,6 +38,7 @@ class MainActivity : Activity() {
     private val commandEngine = OfflineCommandEngine()
     private val memoryStore by lazy { LocalMemoryStore(applicationContext) }
     private val historyStore by lazy { ConversationHistoryStore(applicationContext) }
+    private val geminiExecutor = Executors.newSingleThreadExecutor()
     private lateinit var actionExecutor: AndroidActionExecutor
     private lateinit var responseView: TextView
     private lateinit var commandInput: EditText
@@ -253,6 +257,30 @@ class MainActivity : Activity() {
         } else {
             val result = commandEngine.process(command)
             if (result.action == com.idraak.quantum.core.CommandAction.None) {
+                val apiKey = GeminiKeyStore(this).read()
+                if (!apiKey.isNullOrBlank()) {
+                    responseView.text = "Gemini سے جواب حاصل کر رہا ہوں…"
+                    historyStore.add("user", command)
+                    val model = getSharedPreferences("idraak_settings", MODE_PRIVATE)
+                        .getString("gemini_model", GeminiBrainClient.DEFAULT_MODEL)
+                        ?: GeminiBrainClient.DEFAULT_MODEL
+                    geminiExecutor.execute {
+                        val reply = try {
+                            GeminiBrainClient(apiKey, model).reply(command)
+                        } catch (error: Exception) {
+                            "Gemini سے جواب نہیں ملا: " + (error.message ?: "network یا API کی خرابی") +
+                                "\n\n" + ActionRecoveryPolicy.responseForUnknownCommand(command, result.message)
+                        }
+                        runOnUiThread {
+                            if (!isFinishing && !isDestroyed) {
+                                responseView.text = reply
+                                historyStore.add("assistant", reply)
+                                speakUrdu(reply)
+                            }
+                        }
+                    }
+                    return
+                }
                 ActionRecoveryPolicy.responseForUnknownCommand(command, result.message)
             } else {
                 val execution = actionExecutor.execute(result.action)
