@@ -181,6 +181,21 @@ class OfflineCommandEngine {
             "ویب سائٹ کھول رہا ہوں۔", CommandAction.OpenUrl(openWebsite.groupValues[1])
         )
 
+        val genericOpen = Regex(
+            "^(?:open|launch|start|کھولو|چلاؤ)\\s+(.+?)(?:\\s+app)?$",
+            RegexOption.IGNORE_CASE
+        ).find(original)
+        val urduOpenApp = Regex("^(.+?)\\s+(?:ایپ\\s+)?کھولو$", RegexOption.IGNORE_CASE).find(original)
+        val appName = (genericOpen?.groupValues?.get(1) ?: urduOpenApp?.groupValues?.get(1))
+            ?.trim()
+            ?.takeIf { it.isNotBlank() && it.length <= 40 }
+        if (appName != null && !appName.startsWith("http", ignoreCase = true)) {
+            return CommandResult(
+                "آپ کی مطلوبہ ایپ تلاش کر رہا ہوں: $appName",
+                CommandAction.OpenApp(appName)
+            )
+        }
+
         return CommandResult("یہ حکم ابھی میرے آف لائن کمانڈز میں شامل نہیں۔ براہ کرم اسے دوسرے الفاظ میں بتائیں۔")
     }
 
