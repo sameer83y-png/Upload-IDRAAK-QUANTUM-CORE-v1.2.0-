@@ -201,7 +201,7 @@ class OfflineCommandEngine {
         }
 
         val urduMessageFirst = Regex(
-            "^(.+?)\\s+(?:کو\\s+)?(.+?)\\s+(?:پر|میں)\\s+(?:بھیجو|شیئر کرو)$"
+            "^(.+)\\s+([^\\s]+)\\s+(?:پر|میں)\\s+(?:بھیجو|شیئر کرو)$"
         ).find(original)
         if (urduMessageFirst != null) {
             val message = urduMessageFirst.groupValues[1].trim()
