@@ -5,6 +5,7 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Build
+import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import java.util.Locale
@@ -157,6 +158,83 @@ class IdraakAccessibilityService : AccessibilityService() {
         return output.joinToString("\n").take(4000)
     }
 
+
+    private fun setTextInField(fieldLabel: String, value: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val node = uniqueMatchingNode(root, fieldLabel) ?: return false
+        if (!node.isVisibleToUser || !node.isEnabled || !node.isEditable) return false
+        val arguments = Bundle().apply {
+            putCharSequence(
+                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                value
+            )
+        }
+        return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+    }
+
+    private fun searchVisibleApp(query: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val editableFields = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled && node.isEditable
+        }
+        val searchTerms = listOf("search", "find", "تلاش", "کھوج", "buscar")
+        val searchFields = editableFields.filter { node ->
+            val label = normalized(node.hintText).ifBlank {
+                normalized(node.contentDescription).ifBlank { normalized(node.text) }
+            }
+            searchTerms.any { label.contains(it) }
+        }
+        val target = when {
+            searchFields.size == 1 -> searchFields.single()
+            searchFields.size > 1 -> return false
+            editableFields.count { it.isFocused } == 1 -> editableFields.single { it.isFocused }
+            else -> return false
+        }
+        val arguments = Bundle().apply {
+            putCharSequence(
+                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                query
+            )
+        }
+        if (!target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)) return false
+
+        val searchButtons = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled && node.isClickable &&
+                !node.isEditable && searchTerms.any { term ->
+                    normalized(node.text).contains(term) ||
+                        normalized(node.contentDescription).contains(term)
+                }
+        }
+        if (searchButtons.size == 1) performClick(searchButtons.single())
+        return true
+    }
+
+    private fun seekBySeconds(offsetSeconds: Long): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val seekBars = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled &&
+                (node.rangeInfo != null ||
+                    node.className?.toString()?.contains("SeekBar", ignoreCase = true) == true)
+        }
+        if (seekBars.size != 1) return false
+        val node = seekBars.single()
+        val range = node.rangeInfo ?: return false
+        // Media timelines commonly expose milliseconds. Do not guess when the
+        // range is a percentage or an unknown scale.
+        if (range.type != AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT ||
+            range.max < 1000f || range.max <= range.min
+        ) return false
+        val target = (range.current + offsetSeconds * 1000f)
+            .coerceIn(range.min, range.max)
+        val arguments = Bundle().apply {
+            putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, target)
+        }
+        return node.performAction(
+            AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id,
+            arguments
+        )
+    }
+
     private fun global(action: Int): Boolean = performGlobalAction(action)
 
     private fun swipeScreen(up: Boolean): Boolean {
@@ -181,6 +259,12 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun isConnected(): Boolean = activeService != null
         fun readScreenText(): String = activeService?.readVisibleText().orEmpty()
         fun clickText(text: String): Boolean = activeService?.clickVisibleText(text.trim()) == true
+        fun setText(fieldLabel: String, value: String): Boolean =
+            activeService?.setTextInField(fieldLabel.trim(), value) == true
+        fun searchCurrentApp(query: String): Boolean =
+            activeService?.searchVisibleApp(query.trim()) == true
+        fun seekBySeconds(offsetSeconds: Long): Boolean =
+            activeService?.seekBySeconds(offsetSeconds) == true
         fun longPressText(text: String): Boolean = activeService?.longPressVisibleText(text.trim()) == true
         fun scrollForward(): Boolean = activeService?.scroll(true) == true
         fun scrollBackward(): Boolean = activeService?.scroll(false) == true
