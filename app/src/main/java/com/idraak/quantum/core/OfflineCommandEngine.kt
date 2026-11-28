@@ -41,7 +41,15 @@ class OfflineCommandEngine {
             return CommandResult("بیٹری سیٹنگز کھول رہا ہوں۔", CommandAction.OpenBatterySettings)
         }
 
-        if (containsAny(text, "open camera", "camera kholo", "کیمرہ کھولو", "کیمرا کھولو")) {
+        if (containsAny(
+                text,
+                "record video", "open video camera", "video camera kholo",
+                "ویڈیو ریکارڈ کرو", "ویڈیو بناؤ", "ویڈیو کیمرہ کھولو",
+                "ویڈیو کیمرہ چلاؤ", "ویڈیو بنانا شروع کرو"
+            )) {
+            return CommandResult("ویڈیو کیمرہ کھول رہا ہوں۔", CommandAction.OpenVideoCamera)
+        }
+        if (containsAny(text, "open camera", "camera kholo", "کیمرہ کھولو", "کیمرا کھولو", "تصویر لینے کے لیے کیمرہ کھولو")) {
             return CommandResult("کیمرہ کھول رہا ہوں۔", CommandAction.OpenCamera)
         }
 
