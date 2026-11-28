@@ -72,6 +72,30 @@ class OfflineCommandEngineTest {
     }
 
     @Test
+    fun parsesEnglishTargetedAppShare() {
+        val action = engine.process("share hello from Idraak on whatsapp").action
+        assertTrue(action is CommandAction.ShareTextToApp)
+        assertEquals("hello from Idraak", (action as CommandAction.ShareTextToApp).text)
+        assertEquals("whatsapp", action.appName)
+    }
+
+    @Test
+    fun parsesUrduTargetedAppShare() {
+        val action = engine.process("میرا پیغام whatsapp پر بھیجو").action
+        assertTrue(action is CommandAction.ShareTextToApp)
+        assertEquals("میرا پیغام", (action as CommandAction.ShareTextToApp).text)
+        assertEquals("whatsapp", action.appName)
+    }
+
+    @Test
+    fun parsesAppFirstUrduTargetedShare() {
+        val action = engine.process("whatsapp پر میرا پیغام بھیجو").action
+        assertTrue(action is CommandAction.ShareTextToApp)
+        assertEquals("میرا پیغام", (action as CommandAction.ShareTextToApp).text)
+        assertEquals("whatsapp", action.appName)
+    }
+
+    @Test
     fun parsesGenericShareCommand() {
         val action = engine.process("یہ پیغام بھیجو میں راستے میں ہوں").action
         assertTrue(action is CommandAction.ShareText)
