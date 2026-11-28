@@ -61,7 +61,9 @@ class LocalMemoryStore(context: Context) :
     fun remember(content: String, category: String = "general", source: String = "user") : Long {
         val clean = content.trim()
         require(clean.isNotEmpty()) { "Memory cannot be empty." }
-        require(clean.length <= MAX_CONTENT_LENGTH) { "Memory is too long." }
+        require(MemoryInputPolicy.isValidContentLength(clean.length)) {
+            "Memory must be $MAX_CONTENT_LENGTH characters or fewer."
+        }
         require(!containsCredentialMaterial(clean)) {
             "Passwords, PINs, one-time codes, API keys, and access tokens must not be stored in memory."
         }
@@ -122,7 +124,12 @@ class LocalMemoryStore(context: Context) :
         val previous = previousValue.trim()
         val corrected = correctedValue.trim()
         require(previous.isNotEmpty() && corrected.isNotEmpty()) { "Both values are required." }
-        require(corrected.length <= MAX_CONTENT_LENGTH) { "Corrected memory is too long." }
+        require(MemoryInputPolicy.isValidContentLength(previous.length)) {
+            "Previous memory must be $MAX_CONTENT_LENGTH characters or fewer."
+        }
+        require(MemoryInputPolicy.isValidContentLength(corrected.length)) {
+            "Corrected memory must be $MAX_CONTENT_LENGTH characters or fewer."
+        }
         require(!containsCredentialMaterial(previous) && !containsCredentialMaterial(corrected)) {
             "Credentials and authentication codes must not be stored in correction history."
         }
