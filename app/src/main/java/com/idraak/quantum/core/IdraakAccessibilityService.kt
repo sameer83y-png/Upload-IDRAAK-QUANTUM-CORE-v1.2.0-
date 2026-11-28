@@ -432,6 +432,34 @@ class IdraakAccessibilityService : AccessibilityService() {
         return field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, arguments)
     }
 
+    /** Deletes one Unicode code point beside a collapsed cursor; never deletes a selection. */
+    private fun deleteFocusedCharacter(forward: Boolean): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focusedFields = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled && node.isEditable &&
+                node.isFocused && !node.isPassword
+        }
+        if (focusedFields.size != 1) return false
+        val field = focusedFields.single()
+        val text = field.text?.toString() ?: return false
+        val cursor = field.textSelectionStart
+        if (cursor < 0 || field.textSelectionEnd != cursor || cursor > text.length) return false
+        if (forward && cursor == text.length || !forward && cursor == 0) return false
+        val deleteStart = if (forward) cursor else Character.offsetByCodePoints(text, cursor, -1)
+        val deleteEnd = if (forward) Character.offsetByCodePoints(text, cursor, 1) else cursor
+        val updatedText = text.removeRange(deleteStart, deleteEnd)
+        val setTextArguments = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, updatedText)
+        }
+        if (!field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, setTextArguments)) return false
+        val selectionArguments = Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, deleteStart)
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, deleteStart)
+        }
+        field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selectionArguments)
+        return true
+    }
+
     private fun moveFocusedCursor(toEnd: Boolean): Boolean {
         val root = rootInActiveWindow ?: return false
         val focusedFields = allNodes(root).filter { node ->
@@ -599,6 +627,8 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun selectWordAtCursor(): Boolean = activeService?.selectWordAtCursor() == true
         fun moveCursorByCharacter(forward: Boolean): Boolean =
             activeService?.moveFocusedCursorByCharacter(forward) == true
+        fun deleteCharacter(forward: Boolean): Boolean =
+            activeService?.deleteFocusedCharacter(forward) == true
         fun moveCursorToStart(): Boolean = activeService?.moveFocusedCursor(false) == true
         fun moveCursorToEnd(): Boolean = activeService?.moveFocusedCursor(true) == true
         fun selectFromCursorToStart(): Boolean = activeService?.selectFromCursorToEdge(false) == true

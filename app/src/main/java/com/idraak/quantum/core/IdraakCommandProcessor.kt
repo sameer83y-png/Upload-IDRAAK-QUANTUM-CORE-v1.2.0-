@@ -347,6 +347,19 @@ class IdraakCommandProcessor(
             }
         }
 
+        val deleteDirection = DeleteCharacterCommandParser.parse(command)
+        if (deleteDirection != null) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "حرف حذف کرنے کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.deleteCharacter(deleteDirection == DeleteDirection.FORWARD)) {
+                if (deleteDirection == DeleteDirection.FORWARD) "کرسر کے آگے والا ایک حرف حذف کر دیا۔"
+                else "کرسر کے پیچھے والا ایک حرف حذف کر دیا۔"
+            } else {
+                "حرف حذف نہیں ہوا؛ عام ٹیکسٹ فیلڈ میں غیر منتخب کرسر رکھیں۔ پاس ورڈ فیلڈ اور پہلے سے منتخب متن محفوظ رہیں گے۔"
+            }
+        }
+
         val selectionEdge = SelectToEdgeCommandParser.parse(command)
         if (selectionEdge != null) {
             if (!IdraakAccessibilityService.isConnected()) {
