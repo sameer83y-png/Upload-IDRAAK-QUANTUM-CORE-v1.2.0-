@@ -113,6 +113,9 @@ class WakeWordModelManager(context: Context) {
             archive.delete()
         } catch (error: Exception) {
             staging.deleteRecursively()
+            // A corrupt or incomplete archive must not block the next retry.
+            archive.delete()
+            partial.delete()
             throw error
         }
     }
