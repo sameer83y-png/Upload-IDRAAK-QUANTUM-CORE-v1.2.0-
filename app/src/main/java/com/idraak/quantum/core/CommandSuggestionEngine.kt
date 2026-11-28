@@ -67,7 +67,8 @@ object CommandSuggestionEngine {
         val timeSuggestions = when (hourOfDay.coerceIn(0, 23)) {
             in 5..10 -> listOf(DashboardSuggestion("دن کی منصوبہ بندی", "مجھے 30 منٹ بعد اپنا دن پلان کرنا یاد دلانا"))
             in 11..16 -> listOf(DashboardSuggestion("آج کی ٹیک خبریں", "یوٹیوب پر آج کی ٹیک خبریں تلاش کرو"))
-            in 17..21 -> listOf(DashboardSuggestion("شام کا الارم", "الارم 19:30 لگاؤ"))
+            in 17..18 -> listOf(DashboardSuggestion("شام کا الارم", "الارم 19:30 لگاؤ"))
+            in 19..21 -> listOf(DashboardSuggestion("رات کا الارم", "الارم 22:00 لگاؤ"))
             else -> listOf(DashboardSuggestion("ساؤنڈ سیٹنگز", "ساؤنڈ سیٹنگز کھولو"))
         }
         val categories = mutableListOf(
