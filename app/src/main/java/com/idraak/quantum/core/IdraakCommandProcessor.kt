@@ -57,7 +57,17 @@ class IdraakCommandProcessor(context: Context) {
             )
         }
 
-        val execution = actionExecutor.execute(result.action)
+        val execution = try {
+            actionExecutor.execute(result.action)
+        } catch (error: Exception) {
+            val failure = "یہ کام مکمل نہیں ہو سکا: " +
+                (error.localizedMessage ?: "نامعلوم خرابی")
+            errorStore.record(command, failure)
+            return completed(
+                command,
+                ActionRecoveryPolicy.responseForExecutionFailure(command, failure)
+            )
+        }
         val failed = execution.contains("compatible") ||
             execution.contains("ایپ نہیں ملی") ||
             execution.contains("Android نے مطلوبہ اجازت") ||
