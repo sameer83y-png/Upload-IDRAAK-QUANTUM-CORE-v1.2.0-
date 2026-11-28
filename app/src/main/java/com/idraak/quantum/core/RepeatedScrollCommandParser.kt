@@ -23,16 +23,18 @@ object RepeatedScrollCommandParser {
             val countToken = english.groupValues[2]
             val count = if (countToken.isBlank()) 1 else countToken.toIntOrNull() ?: counts[countToken] ?: return null
             if (count !in 1..5) return null
-            return RepeatedScrollCommand(english.groupValues[1] == "down", count)
+            val forward = if (english.groupValues[0].startsWith("swipe")) english.groupValues[1] == "up" else english.groupValues[1] == "down"
+            return RepeatedScrollCommand(forward, count)
         }
 
-        val urdu = Regex("^(?:(\\S+) بار )?(نیچے|اوپر) (?:اسکرول|سوائپ) (?:کرو|کریں)$")
+        val urdu = Regex("^(?:(\\S+) بار )?(نیچے|اوپر) (اسکرول|سوائپ) (?:کرو|کریں)$")
             .matchEntire(text)
         if (urdu != null) {
             val countToken = urdu.groupValues[1]
             val count = if (countToken.isBlank()) 1 else countToken.toIntOrNull() ?: counts[countToken] ?: return null
             if (count !in 1..5) return null
-            return RepeatedScrollCommand(urdu.groupValues[2] == "نیچے", count)
+            val forward = if (urdu.groupValues[3] == "سوائپ") urdu.groupValues[2] == "اوپر" else urdu.groupValues[2] == "نیچے"
+            return RepeatedScrollCommand(forward, count)
         }
         return null
     }
