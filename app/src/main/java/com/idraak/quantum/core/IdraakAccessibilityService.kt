@@ -81,8 +81,13 @@ class IdraakAccessibilityService : AccessibilityService() {
 
     private fun dispatchTap(bounds: Rect, durationMs: Long = 90L): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || bounds.isEmpty) return false
+        val centerX = bounds.centerX().toFloat()
+        val centerY = bounds.centerY().toFloat()
+        // GestureDescription needs a path with non-zero length; moveTo() alone
+        // creates a zero-length path and can make fallback taps/long-presses fail.
         val path = Path().apply {
-            moveTo(bounds.centerX().toFloat(), bounds.centerY().toFloat())
+            moveTo(centerX, centerY)
+            lineTo(centerX + 1f, centerY)
         }
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))
