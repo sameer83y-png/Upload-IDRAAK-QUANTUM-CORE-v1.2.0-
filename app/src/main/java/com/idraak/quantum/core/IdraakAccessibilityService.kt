@@ -133,13 +133,5 @@ class IdraakAccessibilityService : AccessibilityService() {
 
         fun swipeDown(): Boolean = activeService?.swipeScreen(false) == true
 
-        fun goHome(): Boolean =
-            activeService?.global(AccessibilityService.GLOBAL_ACTION_HOME) == true
-
-        fun showNotifications(): Boolean =
-            activeService?.global(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS) == true
-
-        fun showQuickSettings(): Boolean =
-            activeService?.global(AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS) == true
     }
 }
