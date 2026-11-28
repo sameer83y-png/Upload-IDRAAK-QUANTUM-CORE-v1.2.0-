@@ -296,6 +296,27 @@ class OfflineCommandEngineTest {
     }
 
     @Test
+    fun parsesNaturalUrduAndRomanUrduYoutubeLaunchPhrases() {
+        val phrases = listOf(
+            "یوٹیوب چلا دو",
+            "یوٹیوب کھول دو",
+            "youtube chalao",
+            "youtube chala do",
+            "यूट्यूब चलाओ",
+            "یوٹیوب چلاؤ۔"
+        )
+        phrases.forEach { phrase ->
+            assertEquals("Failed phrase: $phrase", CommandAction.OpenApp("youtube"), engine.process(phrase).action)
+        }
+    }
+
+    @Test
+    fun trailingVoicePunctuationDoesNotBreakAppLaunch() {
+        assertEquals(CommandAction.OpenApp("whatsapp"), engine.process("واٹس ایپ کھولو؟").action)
+        assertEquals(CommandAction.OpenApp("chrome"), engine.process("chrome chalao!").action)
+    }
+
+    @Test
     fun parsesHindiYoutubeOpenCommand() {
         assertEquals(CommandAction.OpenApp("youtube"), engine.process("यूट्यूब खोलो").action)
     }
