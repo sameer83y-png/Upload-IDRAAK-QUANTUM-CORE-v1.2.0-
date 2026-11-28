@@ -22,7 +22,11 @@ class CommandErrorStore(context: Context) {
     fun record(command: String, error: String) {
         val cleanCommand = command.trim().take(MAX_TEXT)
         val cleanError = error.trim().take(MAX_TEXT)
-        if (cleanCommand.isBlank() || cleanError.isBlank()) return
+        if (
+            cleanCommand.isBlank() || cleanError.isBlank() ||
+            LocalMemoryStore.containsCredentialMaterial(cleanCommand) ||
+            LocalMemoryStore.containsCredentialMaterial(cleanError)
+        ) return
 
         val entries = readArray()
         entries.put(
