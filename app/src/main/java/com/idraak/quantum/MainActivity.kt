@@ -459,7 +459,7 @@ class MainActivity : FragmentActivity() {
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         val connectedLabels = try {
             val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-            packageManager.queryIntentActivities(launcherIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            packageManager.queryIntentActivities(launcherIntent, 0)
                 .filter { it.activityInfo.packageName in com.idraak.quantum.core.AppPluginRegistry.connectedPackages(this) }
                 .map { it.loadLabel(packageManager).toString() }
         } catch (_: Exception) {

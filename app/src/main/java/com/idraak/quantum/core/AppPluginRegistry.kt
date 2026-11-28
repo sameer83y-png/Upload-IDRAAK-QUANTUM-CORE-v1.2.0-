@@ -60,8 +60,9 @@ object AppPluginRegistry {
         if (wanted.isBlank()) return null
         val pm = context.packageManager
         val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        // CATEGORY_LAUNCHER does not imply CATEGORY_DEFAULT; query all matching launcher activities.
         val matches = try {
-            pm.queryIntentActivities(launcher, PackageManager.MATCH_DEFAULT_ONLY)
+            pm.queryIntentActivities(launcher, 0)
         } catch (_: Exception) {
             emptyList()
         }
