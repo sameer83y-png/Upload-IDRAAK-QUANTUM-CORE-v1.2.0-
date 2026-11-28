@@ -406,6 +406,17 @@ class IdraakCommandProcessor(
             }
         }
 
+        if (CopyScreenTextCommandParser.matches(command)) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "اسکرین کا متن کاپی کرنے کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.copyScreenText()) {
+                "اسکرین پر نظر آنے والا متن کلپ بورڈ میں کاپی کر دیا؛ اب آپ اسے پیسٹ کر سکتے ہیں۔"
+            } else {
+                "اسکرین پر کاپی کرنے کے قابل متن نہیں ملا۔"
+            }
+        }
+
         if (lower in listOf(
                 "read screen", "what is on screen", "screen text", "اسکرین پڑھو",
                 "اسکرین پر کیا ہے", "اسکرین پر کیا لکھا ہے", "جو اسکرین پر ہے پڑھو"
