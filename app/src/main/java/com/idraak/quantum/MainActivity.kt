@@ -26,6 +26,7 @@ import com.idraak.quantum.core.IdraakAccessibilityService
 import com.idraak.quantum.core.ActionRecoveryPolicy
 import com.idraak.quantum.core.GeminiBrainClient
 import com.idraak.quantum.core.GeminiKeyStore
+import com.idraak.quantum.core.LearnedCommandStore
 import java.util.concurrent.Executors
 import java.util.Locale
 import java.util.Calendar
@@ -38,6 +39,7 @@ class MainActivity : Activity() {
     private val commandEngine = OfflineCommandEngine()
     private val memoryStore by lazy { LocalMemoryStore(applicationContext) }
     private val historyStore by lazy { ConversationHistoryStore(applicationContext) }
+    private val learnedCommandStore by lazy { LearnedCommandStore(applicationContext) }
     private val geminiExecutor = Executors.newSingleThreadExecutor()
     private lateinit var actionExecutor: AndroidActionExecutor
     private lateinit var responseView: TextView
@@ -252,10 +254,10 @@ class MainActivity : Activity() {
         }
         val accessibilityResponse = handleDirectAccessibilityCommand(command)
         val memoryResponse = if (accessibilityResponse == null) handleMemoryCommand(command) else null
-        val response = accessibilityResponse ?: if (memoryResponse != null) {
-            memoryResponse
-        } else {
-            val result = commandEngine.process(command)
+        val learningResponse = if (accessibilityResponse == null && memoryResponse == null) handleLearningCommand(command) else null
+        val response = accessibilityResponse ?: memoryResponse ?: learningResponse ?: run {
+            val effectiveCommand = learnedCommandStore.resolve(command) ?: command
+            val result = commandEngine.process(effectiveCommand)
             if (result.action == com.idraak.quantum.core.CommandAction.None) {
                 val apiKey = GeminiKeyStore(this).read()
                 if (!apiKey.isNullOrBlank()) {
@@ -299,6 +301,52 @@ class MainActivity : Activity() {
         historyStore.add("user", command)
         historyStore.add("assistant", response)
         speakUrdu(response)
+    }
+
+    /** Learns only explicit aliases that point to a command already supported offline. */
+    private fun handleLearningCommand(raw: String): String? {
+        val command = raw.trim()
+        val normalized = command.lowercase(Locale.ROOT)
+        val prefixes = listOf(
+            "teach command:", "learn command:", "سیکھو:", "کمانڈ سکھاؤ:", "یہ کمانڈ یاد رکھو:"
+        )
+        val prefix = prefixes.firstOrNull { normalized.startsWith(it) }
+        if (prefix != null) {
+            val parts = command.drop(prefix.length).split("->", limit = 2)
+            if (parts.size != 2) {
+                return "اس طرح سکھائیں: teach command: youtube chalao -> youtube kholo"
+            }
+            val phrase = parts[0].trim()
+            val supportedCommand = parts[1].trim()
+            if (phrase.isBlank() || supportedCommand.isBlank()) {
+                return "غلط بولے گئے جملے اور درست کمانڈ، دونوں بتائیں۔"
+            }
+            if (commandEngine.process(supportedCommand).action == com.idraak.quantum.core.CommandAction.None) {
+                return "یہ درست کمانڈ ابھی آف لائن انجن میں موجود نہیں۔ پہلے کوئی چلنے والی کمانڈ دیں، مثلاً: youtube kholo"
+            }
+            return try {
+                learnedCommandStore.remember(phrase, supportedCommand)
+                "ٹھیک ہے، میں نے یہ جملہ اپنے آف لائن کمانڈ رولز میں محفوظ کر لیا۔ آئندہ “$phrase” کو “$supportedCommand” سمجھوں گا۔"
+            } catch (error: Exception) {
+                "یہ کمانڈ محفوظ نہیں ہو سکی: " + (error.message ?: "storage error")
+            }
+        }
+
+        if (normalized in listOf("show learned commands", "سیکھی ہوئی کمانڈز دکھاؤ", "میرے سیکھے ہوئے کمانڈ دکھاؤ")) {
+            val learned = learnedCommandStore.all()
+            return if (learned.isEmpty()) "ابھی کوئی نئی کمانڈ نہیں سکھائی گئی۔"
+            else learned.entries.joinToString("\n") { "• “\${it.key}” → “\${it.value}”" }
+        }
+
+        val removePrefix = listOf("forget learned command:", "سیکھی کمانڈ بھول جاؤ:").firstOrNull {
+            normalized.startsWith(it)
+        }
+        if (removePrefix != null) {
+            val phrase = command.drop(removePrefix.length).trim()
+            return if (learnedCommandStore.clear(phrase)) "یہ سیکھا ہوا کمانڈ رول ہٹا دیا۔"
+            else "اس جملے کا کوئی محفوظ شدہ رول نہیں ملا۔"
+        }
+        return null
     }
 
     /**
