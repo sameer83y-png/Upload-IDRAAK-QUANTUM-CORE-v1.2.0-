@@ -18,7 +18,8 @@ import android.widget.EditText
 import android.text.InputType
 import com.idraak.quantum.core.GeminiKeyStore
 import com.idraak.quantum.core.GeminiBrainClient
-import com.idraak.quantum.core.IdraakUpdateChecker
+import com.idraak.quantum.core.IdraakAutoUpdater
+import com.idraak.quantum.core.DownloadedIdraakUpdate
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.idraak.quantum.core.IdraakAccessibilityService
@@ -66,37 +67,61 @@ class SettingsActivity : Activity() {
         addThemeButton(root, "EMERALD CORE", Color.rgb(91, 235, 170), Color.rgb(4, 18, 17))
 
         root.addView(Button(this).apply {
-            text = "CHECK FOR IDRAAK UPDATES"
+            text = "CHECK & INSTALL IDRAAK UPDATES"
             setOnClickListener {
-                android.widget.Toast.makeText(this@SettingsActivity, "Checking official GitHub releases…", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(
+                    this@SettingsActivity,
+                    "Checking official release and verifying APK…",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                val updater = IdraakAutoUpdater(this@SettingsActivity)
                 Thread {
-                    val outcome = try {
-                        IdraakUpdateChecker(BuildConfig.VERSION_NAME).check()
+                    val outcome: Any? = try {
+                        updater.checkAndDownload(BuildConfig.VERSION_NAME)
                     } catch (error: Exception) {
-                        null to (error.message ?: "Update check failed.")
+                        error
                     }
                     runOnUiThread {
                         if (isFinishing || isDestroyed) return@runOnUiThread
-                        if (outcome is Pair<*, *>) {
-                            android.app.AlertDialog.Builder(this@SettingsActivity)
+                        when (outcome) {
+                            null -> android.widget.Toast.makeText(
+                                this@SettingsActivity,
+                                "Idraak is up to date.",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                            is Exception -> android.app.AlertDialog.Builder(this@SettingsActivity)
                                 .setTitle("IDRAAK UPDATE")
-                                .setMessage(outcome.second.toString())
+                                .setMessage(outcome.message ?: "Update verification failed. No changes were made.")
                                 .setPositiveButton("OK", null)
                                 .show()
-                        } else {
-                            val info = outcome as com.idraak.quantum.core.IdraakUpdateInfo
-                            if (info.updateAvailable) {
-                                android.app.AlertDialog.Builder(this@SettingsActivity)
-                                    .setTitle("New Idraak version: " + info.latestVersion)
-                                    .setMessage("A newer release is available. Android will ask you to review and approve installation. The APK must be signed with the same app signing key.")
-                                    .setNegativeButton("LATER", null)
-                                    .setPositiveButton("OPEN RELEASE") { _, _ ->
-                                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.releasePage)))
+                            is DownloadedIdraakUpdate -> android.app.AlertDialog.Builder(this@SettingsActivity)
+                                .setTitle("Verified update: " + outcome.version)
+                                .setMessage("The official APK was downloaded. Its SHA-256, package name and signing identity passed verification. Android will show its own installation screen.")
+                                .setNegativeButton("LATER", null)
+                                .setPositiveButton("INSTALL") { _, _ ->
+                                    try {
+                                        val opened = updater.install(outcome)
+                                        if (!opened) {
+                                            android.widget.Toast.makeText(
+                                                this@SettingsActivity,
+                                                "Allow Idraak to install apps on the next Android screen, then check for updates again.",
+                                                android.widget.Toast.LENGTH_LONG
+                                            ).show()
+                                        }
+                                    } catch (error: Exception) {
+                                        android.widget.Toast.makeText(
+                                            this@SettingsActivity,
+                                            error.message ?: "Could not open Android installer.",
+                                            android.widget.Toast.LENGTH_LONG
+                                        ).show()
                                     }
-                                    .show()
-                            } else {
-                                android.widget.Toast.makeText(this@SettingsActivity, "Idraak is up to date. Installed version: " + BuildConfig.VERSION_NAME, android.widget.Toast.LENGTH_LONG).show()
-                            }
+                                }
+                                .show()
+                            else -> android.widget.Toast.makeText(
+                                this@SettingsActivity,
+                                "Update result was not recognized. Nothing was installed.",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
                         }
                     }
                 }.start()
