@@ -135,13 +135,25 @@ class OfflineCommandEngine {
             )
         }
 
-        val phoneMatch = Regex("(?:call|dial|phone|کال کرو|فون کرو|نمبر ملاؤ)\\s*([+0-9][+0-9() -]{5,})").find(original)
+        val phoneMatch = Regex("(?:call|dial|phone|کال کرو|فون کرو|نمبر ملاؤ)\\s*([+0-9][+0-9() -]{5,})", RegexOption.IGNORE_CASE).find(original)
         if (phoneMatch != null) {
             val number = phoneMatch.groupValues[1].filter { it.isDigit() || it == '+' }
             if (number.count(Char::isDigit) in 6..15) return CommandResult(
                 "ڈائلر کھول رہا ہوں۔ نمبر چیک کرکے خود کال کریں۔", CommandAction.DialNumber(number)
             )
         }
+
+        val contactName = listOf(
+            Regex("^(?:call|dial|phone)\\s+(.+)$", RegexOption.IGNORE_CASE),
+            Regex("^(.+?)\\s+(?:ko\\s+)?(?:call|phone)\\s+karo$", RegexOption.IGNORE_CASE),
+            Regex("^(?:کال کرو|فون کرو|رابطہ کرو)\\s+(.+)$"),
+            Regex("^(.+?)\\s+(?:کو\\s+)?(?:کال کرو|فون کرو)$")
+        ).firstNotNullOfOrNull { it.find(original)?.groupValues?.get(1)?.trim() }
+            ?.takeIf { it.isNotBlank() && it.length <= 80 && it.any { char -> char.isLetter() } }
+        if (contactName != null) return CommandResult(
+            "رابطہ تلاش کرکے ڈائلر کھول رہا ہوں۔ کال کرنے سے پہلے نمبر چیک کریں۔",
+            CommandAction.DialContact(contactName)
+        )
 
         // Composite commands: open YouTube and search in one natural-language request.
         val compositeYoutubePatterns = listOf(
