@@ -32,7 +32,7 @@ class ConversationHistoryStore(context: Context) :
 
     fun add(role: String, message: String) {
         val clean = message.trim()
-        if (clean.isEmpty()) return
+        if (clean.isEmpty() || LocalMemoryStore.containsCredentialMaterial(clean)) return
         val values = ContentValues().apply {
             put("role", role.take(20))
             put("message", clean.take(8000))
