@@ -195,6 +195,9 @@ class IdraakWakeWordService : Service() {
                         stopWakeRecorder(audio, activeStream, activeSpotter)
                         recorder = null
                         wakeStream = null
+                        // These local references are also released in the worker's finally block.
+                        // Clear them here after the handoff so native Sherpa resources are released
+                        // exactly once rather than being released again during stack unwinding.
                         stream = null
                         spotter = null
                         activeSpotter.release()
