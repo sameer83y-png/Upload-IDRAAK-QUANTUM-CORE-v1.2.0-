@@ -270,7 +270,7 @@ class MainActivity : Activity() {
 
         val clickTarget = when {
             lower.matches(Regex("^(tap|click)( on)? .+")) ->
-                command.replaceFirst(Regex("^(?i)(tap|click)( on)?\\s+"), "").trim()
+                command.replaceFirst(Regex("^(tap|click)( on)?\\s+"), "").trim()
             lower.matches(Regex("^.+(ٹیپ کرو|کلک کرو)$")) ->
                 command.replace(Regex("(ٹیپ کرو|کلک کرو)$"), "")
                     .replace(Regex("^(اسکرین پر|screen)\\s*"), "")
