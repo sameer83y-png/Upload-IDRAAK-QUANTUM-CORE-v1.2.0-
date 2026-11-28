@@ -18,6 +18,7 @@ import android.widget.EditText
 import android.text.InputType
 import com.idraak.quantum.core.GeminiKeyStore
 import com.idraak.quantum.core.GeminiBrainClient
+import com.idraak.quantum.core.IdraakUpdateChecker
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.idraak.quantum.core.IdraakAccessibilityService
@@ -63,6 +64,45 @@ class SettingsActivity : Activity() {
         addThemeButton(root, "QUANTUM CYAN", Color.rgb(67, 218, 255), Color.rgb(5, 10, 23))
         addThemeButton(root, "NEBULA VIOLET", Color.rgb(183, 132, 255), Color.rgb(12, 8, 27))
         addThemeButton(root, "EMERALD CORE", Color.rgb(91, 235, 170), Color.rgb(4, 18, 17))
+
+        root.addView(Button(this).apply {
+            text = "CHECK FOR IDRAAK UPDATES"
+            setOnClickListener {
+                android.widget.Toast.makeText(this@SettingsActivity, "Checking official GitHub releases…", android.widget.Toast.LENGTH_SHORT).show()
+                Thread {
+                    val outcome = try {
+                        IdraakUpdateChecker(BuildConfig.VERSION_NAME).check()
+                    } catch (error: Exception) {
+                        null to (error.message ?: "Update check failed.")
+                    }
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        if (outcome is Pair<*, *>) {
+                            android.app.AlertDialog.Builder(this@SettingsActivity)
+                                .setTitle("IDRAAK UPDATE")
+                                .setMessage(outcome.second.toString())
+                                .setPositiveButton("OK", null)
+                                .show()
+                        } else {
+                            val info = outcome as com.idraak.quantum.core.IdraakUpdateInfo
+                            if (info.updateAvailable) {
+                                android.app.AlertDialog.Builder(this@SettingsActivity)
+                                    .setTitle("New Idraak version: " + info.latestVersion)
+                                    .setMessage("A newer release is available. Android will ask you to review and approve installation. The APK must be signed with the same app signing key.")
+                                    .setNegativeButton("LATER", null)
+                                    .setPositiveButton("OPEN RELEASE") { _, _ ->
+                                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.releasePage)))
+                                    }
+                                    .show()
+                            } else {
+                                android.widget.Toast.makeText(this@SettingsActivity, "Idraak is up to date. Installed version: " + BuildConfig.VERSION_NAME, android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                }.start()
+            }
+        }, matchWrap().apply { topMargin = 16 })
+
 
         root.addView(TextView(this).apply {
             text = "GEMINI BRAIN (OPTIONAL)"
