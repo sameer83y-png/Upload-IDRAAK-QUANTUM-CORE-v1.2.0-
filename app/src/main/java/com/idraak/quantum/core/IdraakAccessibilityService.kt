@@ -385,6 +385,28 @@ class IdraakAccessibilityService : AccessibilityService() {
         return field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, arguments)
     }
 
+    /** Selects from the collapsed cursor to one edge; existing selections are left untouched. */
+    private fun selectFromCursorToEdge(toEnd: Boolean): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focusedFields = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled && node.isEditable &&
+                node.isFocused && !node.isPassword
+        }
+        if (focusedFields.size != 1) return false
+        val field = focusedFields.single()
+        val textLength = field.text?.length ?: return false
+        val start = field.textSelectionStart
+        val end = field.textSelectionEnd
+        if (textLength == 0 || start < 0 || end != start || start > textLength) return false
+        val edge = if (toEnd) textLength else 0
+        if (edge == start) return false
+        val arguments = Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, minOf(start, edge))
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, maxOf(start, edge))
+        }
+        return field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, arguments)
+    }
+
     private fun clearFocusedTextField(): Boolean {
         val root = rootInActiveWindow ?: return false
         val focusedFields = allNodes(root).filter { node ->
@@ -512,6 +534,8 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun cutSelectedText(): Boolean = activeService?.cutSelectedFocusedText() == true
         fun moveCursorToStart(): Boolean = activeService?.moveFocusedCursor(false) == true
         fun moveCursorToEnd(): Boolean = activeService?.moveFocusedCursor(true) == true
+        fun selectFromCursorToStart(): Boolean = activeService?.selectFromCursorToEdge(false) == true
+        fun selectFromCursorToEnd(): Boolean = activeService?.selectFromCursorToEdge(true) == true
         fun goHome(): Boolean = activeService?.global(GLOBAL_ACTION_HOME) == true
         fun showNotifications(): Boolean = activeService?.global(GLOBAL_ACTION_NOTIFICATIONS) == true
         fun showQuickSettings(): Boolean = activeService?.global(GLOBAL_ACTION_QUICK_SETTINGS) == true

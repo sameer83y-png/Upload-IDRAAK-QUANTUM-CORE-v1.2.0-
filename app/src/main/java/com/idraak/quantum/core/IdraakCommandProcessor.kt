@@ -323,6 +323,27 @@ class IdraakCommandProcessor(
             return "اس عمل کی تصدیق درکار ہے۔ آگے بڑھنے کے لیے “ہاں” یا روکنے کے لیے “نہیں” کہیں۔"
         }
 
+        val selectionEdge = SelectToEdgeCommandParser.parse(command)
+        if (selectionEdge != null) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "متن منتخب کرنے کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            val selected = if (selectionEdge == SelectionEdge.START) {
+                IdraakAccessibilityService.selectFromCursorToStart()
+            } else {
+                IdraakAccessibilityService.selectFromCursorToEnd()
+            }
+            return if (selected) {
+                if (selectionEdge == SelectionEdge.START) {
+                    "کرسر سے متن کے شروع تک عبارت منتخب کر دی۔"
+                } else {
+                    "کرسر سے متن کے آخر تک عبارت منتخب کر دی۔"
+                }
+            } else {
+                "متن منتخب نہیں ہوا؛ ایک عام ٹیکسٹ فیلڈ میں کرسر رکھیں، پہلے سے کوئی عبارت منتخب نہ ہو۔ پاس ورڈ فیلڈ محفوظ رہے گی۔"
+            }
+        }
+
         val cursorPosition = MoveCursorCommandParser.parse(command)
         if (cursorPosition != null) {
             if (!IdraakAccessibilityService.isConnected()) {
