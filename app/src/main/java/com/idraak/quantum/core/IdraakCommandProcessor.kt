@@ -79,6 +79,28 @@ class IdraakCommandProcessor(context: Context) {
     private fun handleMemory(raw: String): String? {
         val command = raw.trim()
         val normalized = command.lowercase(Locale.ROOT)
+        val categoryPrefixes = listOf(
+            "remember preference:" to "preference",
+            "remember project:" to "project",
+            "remember person:" to "person",
+            "remember fact:" to "fact",
+            "ترجیح یاد رکھو:" to "preference",
+            "منصوبہ یاد رکھو:" to "project",
+            "شخص یاد رکھو:" to "person",
+            "حقیقت یاد رکھو:" to "fact"
+        )
+        val categoryPrefix = categoryPrefixes.firstOrNull { normalized.startsWith(it.first) }
+        if (categoryPrefix != null) {
+            val fact = command.drop(categoryPrefix.first.length).trim()
+            if (fact.isBlank()) return "کیا محفوظ کرنا ہے؟"
+            return try {
+                memoryStore.remember(fact, category = categoryPrefix.second, source = "user")
+                "یہ بات ${categoryPrefix.second} کی قسم میں آف لائن میموری میں محفوظ کر دی گئی۔"
+            } catch (error: Exception) {
+                "میموری محفوظ نہیں ہو سکی: " + (error.localizedMessage ?: "storage error")
+            }
+        }
+
         val rememberPrefix = listOf(
             "remember that ", "remember ", "یاد رکھو ", "یاد رکھنا ",
             "یہ یاد رکھو ", "یہ بات یاد رکھو ", "याद रखो ", "याद रखना "
@@ -101,6 +123,37 @@ class IdraakCommandProcessor(context: Context) {
             val memories = memoryStore.all()
             return if (memories.isEmpty()) "آپ کی مقامی میموری خالی ہے۔"
             else memories.joinToString("\n\n") { "• [${it.category}] ${it.content}" }
+        }
+
+        val categoryViews = mapOf(
+            "show preference memory" to "preference",
+            "show project memory" to "project",
+            "show people memory" to "person",
+            "show fact memory" to "fact",
+            "ترجیحات دکھاؤ" to "preference",
+            "منصوبوں کی یادداشت دکھاؤ" to "project",
+            "لوگوں کی یادداشت دکھاؤ" to "person",
+            "محفوظ حقائق دکھاؤ" to "fact"
+        )
+        val requestedCategory = categoryViews[normalized]
+        if (requestedCategory != null) {
+            val memories = memoryStore.byCategory(requestedCategory)
+            return if (memories.isEmpty()) "اس قسم کی کوئی میموری محفوظ نہیں۔"
+            else memories.joinToString("\n\n") { "• [${it.category}] ${it.content}" }
+        }
+
+        val categorySearch = Regex(
+            "^(?:search|find) (preference|project|person|fact) memory for (.+)$",
+            RegexOption.IGNORE_CASE
+        ).find(command)
+        if (categorySearch != null) {
+            val category = categorySearch.groupValues[1].lowercase(Locale.ROOT)
+            val query = categorySearch.groupValues[2].trim()
+            val matches = memoryStore.byCategory(category).filter {
+                it.content.contains(query, ignoreCase = true)
+            }
+            return if (matches.isEmpty()) "اس قسم میں اس عبارت سے ملتی میموری نہیں ملی۔"
+            else matches.joinToString("\n\n") { "• ${it.content}" }
         }
 
         val searchPrefix = listOf(
