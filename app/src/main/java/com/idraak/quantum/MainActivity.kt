@@ -55,6 +55,8 @@ class MainActivity : FragmentActivity() {
     private var speechOutput: TextToSpeech? = null
     private var speechOutputReady = false
     private var startBackgroundAfterPermission = false
+    private var isLocked = false
+    private var lockOnReturn = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,7 +67,23 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onStop() {
+        super.onStop()
+        if (!isFinishing && com.idraak.quantum.core.AppLockManager(this).isEnabled()) {
+            lockOnReturn = true
+        }
+    }
+
+    override fun onRestart() {
+        super.onRestart()
+        if (lockOnReturn && com.idraak.quantum.core.AppLockManager(this).isEnabled()) {
+            lockOnReturn = false
+            showAppUnlockScreen()
+        }
+    }
+
     private fun showAppUnlockScreen() {
+        isLocked = true
         val preferences = getSharedPreferences("idraak_settings", MODE_PRIVATE)
         val background = preferences.getInt("background", Color.rgb(5, 10, 23))
         val accent = preferences.getInt("accent", Color.rgb(67, 218, 255))
@@ -231,6 +249,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun initializeIdraak() {
+        isLocked = false
         actionExecutor = AndroidActionExecutor(this)
         voiceController = OnDeviceVoiceController(
             this,
@@ -865,7 +884,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::responseView.isInitialized) buildDashboard()
+        if (!isLocked && ::responseView.isInitialized) buildDashboard()
     }
 
     override fun onDestroy() {
