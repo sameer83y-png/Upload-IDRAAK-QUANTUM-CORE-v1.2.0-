@@ -229,7 +229,7 @@ class OfflineCommandEngineTest {
     fun asksForNameWhenAnotherAppIsRequestedWithoutNamingIt() {
         val result = engine.process("koi dusra app kholo")
         assertEquals(CommandAction.None, result.action)
-        assertTrue(result.response.contains("کون سی ایپ"))
+        assertTrue(result.message.contains("کون سی ایپ"))
     }
 
     @Test
