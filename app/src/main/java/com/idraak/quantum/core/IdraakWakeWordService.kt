@@ -15,6 +15,7 @@ import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.core.app.NotificationCompat
 import com.idraak.quantum.MainActivity
 import com.k2fsa.sherpa.onnx.FeatureConfig
@@ -38,6 +39,8 @@ class IdraakWakeWordService : Service() {
     @Volatile private var voiceController: OnDeviceVoiceController? = null
     private var tts: TextToSpeech? = null
     @Volatile private var ttsReady = false
+    private val speechPending = AtomicBoolean(false)
+    private val restartRequested = AtomicBoolean(false)
 
     override fun onCreate() {
         super.onCreate()
@@ -60,7 +63,25 @@ class IdraakWakeWordService : Service() {
                         break
                     }
                 }
-                if (!ttsReady) updateNotification("Speech voice unavailable. Install a supported Urdu, Hindi, or English TTS voice.")
+                if (!ttsReady) {
+                    updateNotification("Speech voice unavailable. Install a supported Urdu, Hindi, or English TTS voice.")
+                }
+                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) = Unit
+
+                    override fun onDone(utteranceId: String?) {
+                        finishSpeechAndResumeListening()
+                    }
+
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        finishSpeechAndResumeListening()
+                    }
+
+                    override fun onError(utteranceId: String?, errorCode: Int) {
+                        finishSpeechAndResumeListening()
+                    }
+                })
             } else {
                 ttsReady = false
                 updateNotification("Text-to-speech is unavailable on this device.")
@@ -223,7 +244,8 @@ class IdraakWakeWordService : Service() {
                 voiceController?.destroy()
                 voiceController = null
                 if (!stopping.get()) {
-                    Thread({ listenForWakeWord() }, "idraak-wake-restart").start()
+                    restartRequested.set(true)
+                    if (!speechPending.get()) restartWakeWordListening()
                 }
             }
         )
@@ -232,7 +254,27 @@ class IdraakWakeWordService : Service() {
     }
 
     private fun speak(message: String) {
-        if (ttsReady) tts?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "idraak-background-reply")
+        val engine = tts
+        if (!ttsReady || engine == null || stopping.get()) {
+            speechPending.set(false)
+            return
+        }
+        speechPending.set(true)
+        val result = engine.speak(message, TextToSpeech.QUEUE_FLUSH, null, "idraak-background-reply")
+        if (result == TextToSpeech.ERROR) finishSpeechAndResumeListening()
+    }
+
+    private fun finishSpeechAndResumeListening() {
+        speechPending.set(false)
+        if (restartRequested.get() && !stopping.get()) {
+            restartWakeWordListening()
+        }
+    }
+
+    private fun restartWakeWordListening() {
+        if (stopping.get() || !active || speechPending.get()) return
+        if (!restartRequested.compareAndSet(true, false)) return
+        Thread({ listenForWakeWord() }, "idraak-wake-restart").start()
     }
 
     private fun stopAssistant() {
