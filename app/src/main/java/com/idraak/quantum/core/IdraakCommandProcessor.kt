@@ -343,11 +343,12 @@ class IdraakCommandProcessor(
         ).find(command)
         if (seekMatch != null) {
             val first = seekMatch.groupValues[1]
-            val second = seekMatch.groupValues[2]
-            val direction = if (first.all { it.isDigit() }) seekMatch.groupValues[3] else first
-            val amount = (if (first.all { it.isDigit() }) first else second).toLongOrNull()
+            val isAmountFirst = first.all { it.isDigit() }
+            val direction = if (isAmountFirst) seekMatch.groupValues[3] else first
+            val amountText = if (isAmountFirst) first else seekMatch.groupValues[2]
+            val unit = if (isAmountFirst) seekMatch.groupValues[2] else seekMatch.groupValues[3]
+            val amount = amountText.toLongOrNull()
                 ?: return "وقت کی مقدار سمجھ نہیں آئی۔"
-            val unit = if (first.all { it.isDigit() }) second else second
             val seconds = amount * if (unit.startsWith("min", true)) 60L else 1L
             val offset = if (direction.equals("forward", true) || direction.equals("ahead", true)) seconds else -seconds
             if (!IdraakAccessibilityService.isConnected()) return "ویڈیو کنٹرول کے لیے Idraak Accessibility فعال کریں۔"
