@@ -47,12 +47,15 @@ class HomeLauncherView(context: Context) : View(context) {
 
         val image = backgroundBitmap
         if (image != null && !image.isRecycled) {
-            val scale = maxOf(w / image.width, h / image.height)
+            // Keep the complete supplied portrait visible. Letterbox areas stay dark
+            // instead of zooming/cropping the person at the screen edges.
+            canvas.drawColor(0xFF050B14.toInt())
+            val scale = min(w / image.width, h / image.height)
             val dw = image.width * scale
             val dh = image.height * scale
             val dst = RectF((w - dw) / 2f, (h - dh) / 2f, (w + dw) / 2f, (h + dh) / 2f)
             canvas.drawBitmap(image, null, dst, paint)
-            paint.shader = LinearGradient(0f, 0f, 0f, h, 0x55020A18, 0x99020A18, Shader.TileMode.CLAMP)
+            paint.shader = LinearGradient(0f, 0f, 0f, h, 0x33020A18, 0x88020A18, Shader.TileMode.CLAMP)
             canvas.drawRect(0f, 0f, w, h, paint)
             paint.shader = null
         } else {

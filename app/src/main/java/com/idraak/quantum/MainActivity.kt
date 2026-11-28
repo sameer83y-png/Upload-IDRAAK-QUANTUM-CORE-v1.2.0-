@@ -14,6 +14,8 @@ import android.content.IntentFilter
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
@@ -372,7 +374,7 @@ class MainActivity : FragmentActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(28, 34, 28, 28)
-            setBackgroundColor(background)
+            setBackgroundColor(Color.TRANSPARENT)
         }
 
         root.addView(TextView(this).apply {
@@ -545,7 +547,22 @@ class MainActivity : FragmentActivity() {
             setBackgroundColor(Color.TRANSPARENT)
             addView(root)
         }
-        val frame = FrameLayout(this)
+        val contentFrame = FrameLayout(this)
+        var swipeStartY = 0f
+        scroll.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> swipeStartY = event.y
+                MotionEvent.ACTION_UP -> {
+                    val distance = swipeStartY - event.y
+                    if (distance > 90f * resources.displayMetrics.density) {
+                        showAppDrawer(frame = contentFrame)
+                        return@setOnTouchListener true
+                    }
+                }
+            }
+            false
+        }
+        val frame = contentFrame
         launcherSurface = HomeLauncherView(this)
         frame.addView(launcherSurface, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -558,6 +575,100 @@ class MainActivity : FragmentActivity() {
         setContentView(frame)
     }
 
+
+    /**
+     * Opens the installed-app drawer from an upward swipe on the launcher surface.
+     * Apps are discovered from Android's launcher activities; no fixed app list.
+     */
+    private fun showAppDrawer(frame: FrameLayout) {
+        if (frame.findViewWithTag<View>("idraak_app_drawer") != null) return
+
+        val overlay = LinearLayout(this).apply {
+            tag = "idraak_app_drawer"
+            orientation = LinearLayout.VERTICAL
+            setPadding(20, 28, 20, 20)
+            setBackgroundColor(Color.rgb(5, 12, 23))
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(TextView(this).apply {
+            text = "APP DRAWER"
+            textSize = 21f
+            setTextColor(Color.rgb(75, 255, 170))
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        header.addView(Button(this).apply {
+            text = "CLOSE  ✕"
+            setOnClickListener { frame.removeView(overlay) }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        overlay.addView(header)
+
+        val hint = TextView(this).apply {
+            text = "Installed apps on this phone"
+            textSize = 12f
+            setTextColor(Color.LTGRAY)
+            setPadding(2, 8, 2, 14)
+        }
+        overlay.addView(hint)
+
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val apps = try {
+            packageManager.queryIntentActivities(launcherIntent, 0)
+                .distinctBy { it.activityInfo.packageName }
+                .sortedBy { it.loadLabel(packageManager).toString().lowercase(Locale.ROOT) }
+        } catch (_: Exception) {
+            emptyList()
+        }
+        apps.forEach { info ->
+            val packageName = info.activityInfo.packageName
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(10, 9, 10, 9)
+                setBackgroundColor(Color.rgb(17, 30, 47))
+                setOnClickListener {
+                    val launch = packageManager.getLaunchIntentForPackage(packageName)
+                    if (launch != null) {
+                        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        try { startActivity(launch) } catch (_: Exception) {
+                            responseView.text = "یہ ایپ ابھی نہیں کھل سکی۔"
+                        }
+                    }
+                }
+            }
+            val icon = ImageView(this).apply {
+                try { setImageDrawable(info.loadIcon(packageManager)) } catch (_: Exception) { }
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }
+            row.addView(icon, LinearLayout.LayoutParams(42, 42).apply { rightMargin = 14 })
+            row.addView(TextView(this).apply {
+                text = info.loadLabel(packageManager).toString()
+                textSize = 15f
+                setTextColor(Color.WHITE)
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            list.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = 7
+            })
+        }
+        if (apps.isEmpty()) {
+            list.addView(TextView(this).apply {
+                text = "No launchable apps were found."
+                setTextColor(Color.WHITE)
+            })
+        }
+        val appScroll = ScrollView(this).apply {
+            isFillViewport = false
+            addView(list)
+        }
+        overlay.addView(appScroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
+        frame.addView(overlay, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+    }
 
     private fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= 33 &&
