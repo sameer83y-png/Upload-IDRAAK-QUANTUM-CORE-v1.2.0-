@@ -334,6 +334,19 @@ class IdraakCommandProcessor(
             }
         }
 
+        val cursorDirection = MoveCursorByCharacterCommandParser.parse(command)
+        if (cursorDirection != null) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "کرسر منتقل کرنے کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.moveCursorByCharacter(cursorDirection == CursorStep.FORWARD)) {
+                if (cursorDirection == CursorStep.FORWARD) "کرسر ایک حرف آگے کر دیا۔"
+                else "کرسر ایک حرف پیچھے کر دیا۔"
+            } else {
+                "کرسر نہیں ہلا؛ عام ٹیکسٹ فیلڈ میں غیر منتخب کرسر رکھیں۔ پاس ورڈ فیلڈ محفوظ رہے گی۔"
+            }
+        }
+
         val selectionEdge = SelectToEdgeCommandParser.parse(command)
         if (selectionEdge != null) {
             if (!IdraakAccessibilityService.isConnected()) {

@@ -409,6 +409,29 @@ class IdraakAccessibilityService : AccessibilityService() {
         return field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, arguments)
     }
 
+    /** Moves one Unicode code point from a collapsed cursor in a safe editable field. */
+    private fun moveFocusedCursorByCharacter(forward: Boolean): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focusedFields = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled && node.isEditable &&
+                node.isFocused && !node.isPassword
+        }
+        if (focusedFields.size != 1) return false
+        val field = focusedFields.single()
+        val text = field.text?.toString() ?: return false
+        val start = field.textSelectionStart
+        val end = field.textSelectionEnd
+        if (start < 0 || end != start || start > text.length) return false
+        if (forward && start == text.length || !forward && start == 0) return false
+
+        val next = Character.offsetByCodePoints(text, start, if (forward) 1 else -1)
+        val arguments = Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, next)
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, next)
+        }
+        return field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, arguments)
+    }
+
     private fun moveFocusedCursor(toEnd: Boolean): Boolean {
         val root = rootInActiveWindow ?: return false
         val focusedFields = allNodes(root).filter { node ->
@@ -574,6 +597,8 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun copySelectedText(): Boolean = activeService?.copySelectedFocusedText() == true
         fun cutSelectedText(): Boolean = activeService?.cutSelectedFocusedText() == true
         fun selectWordAtCursor(): Boolean = activeService?.selectWordAtCursor() == true
+        fun moveCursorByCharacter(forward: Boolean): Boolean =
+            activeService?.moveFocusedCursorByCharacter(forward) == true
         fun moveCursorToStart(): Boolean = activeService?.moveFocusedCursor(false) == true
         fun moveCursorToEnd(): Boolean = activeService?.moveFocusedCursor(true) == true
         fun selectFromCursorToStart(): Boolean = activeService?.selectFromCursorToEdge(false) == true
