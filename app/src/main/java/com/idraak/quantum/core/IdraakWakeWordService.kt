@@ -178,7 +178,10 @@ class IdraakWakeWordService : Service() {
             val buffer = ShortArray(SAMPLE_RATE / 10)
             while (!stopping.get()) {
                 val count = audio.read(buffer, 0, buffer.size)
-                if (count <= 0) continue
+                if (count < 0) {
+                    throw IllegalStateException("Microphone read failed (code $count).")
+                }
+                if (count == 0) continue
                 val samples = FloatArray(count) { buffer[it] / 32768.0f }
                 activeStream.acceptWaveform(samples, SAMPLE_RATE)
                 while (activeSpotter.isReady(activeStream)) {
