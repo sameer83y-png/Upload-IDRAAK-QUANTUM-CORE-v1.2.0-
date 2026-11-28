@@ -63,6 +63,9 @@
             </intent-filter>
         </receiver>
         <activity
+            android:name=".PluginManagerActivity"
+            android:exported="false" />
+        <activity
             android:name=".SettingsActivity"
             android:exported="false" />
         <activity
