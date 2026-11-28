@@ -439,11 +439,21 @@ class MainActivity : FragmentActivity() {
         } else {
             null
         }
+        val networkConnected = try {
+            val connectivity = getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            val activeNetwork = connectivity.activeNetwork
+            activeNetwork != null && connectivity.getNetworkCapabilities(activeNetwork)?.hasCapability(
+                android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET
+            ) == true
+        } catch (_: Exception) {
+            true
+        }
         val suggestionCategories = com.idraak.quantum.core.CommandSuggestionEngine.dashboardSuggestions(
             hour,
             IdraakAccessibilityService.isConnected(),
             connectedLabels,
-            batteryPercent
+            batteryPercent,
+            networkConnected
         )
         suggestionCategories.forEach { category ->
             root.addView(TextView(this).apply {
