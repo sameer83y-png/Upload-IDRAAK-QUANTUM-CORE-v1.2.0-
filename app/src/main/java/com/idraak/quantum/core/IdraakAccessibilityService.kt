@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import java.text.BreakIterator
 import java.util.Locale
 
 /**
@@ -447,7 +448,7 @@ class IdraakAccessibilityService : AccessibilityService() {
             cursor > text.length
         ) return false
 
-        val iterator = java.text.BreakIterator.getWordInstance(Locale.ROOT)
+        val iterator = BreakIterator.getWordInstance(Locale.ROOT)
         iterator.setText(text)
         fun isWordSegment(start: Int, end: Int): Boolean {
             var index = start
