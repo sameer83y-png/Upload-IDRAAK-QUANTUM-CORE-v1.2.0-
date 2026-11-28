@@ -200,12 +200,18 @@ class IdraakWakeWordService : Service() {
             this,
             onText = { text ->
                 if (text.isNotBlank() && !stopping.get()) {
-                    val result = OfflineCommandEngine().process(text)
-                    val reply = if (result.action == CommandAction.None) {
-                        ActionRecoveryPolicy.responseForUnknownCommand(text, result.message)
-                    } else {
-                        AndroidActionExecutor(this).execute(result.action)
+                    val processor = IdraakCommandProcessor(applicationContext)
+                    val processed = try {
+                        processor.process(text)
+                    } catch (error: Exception) {
+                        IdraakProcessingResult(
+                            false,
+                            "کمانڈ پروسیس نہیں ہو سکی: " + (error.localizedMessage ?: "unknown error")
+                        )
                     }
+                    val reply = processed.response
+                    if (!processed.handled) processor.recordExchange(text, reply)
+                    processor.close()
                     speak(reply)
                     updateNotification("Command processed. Listening for 'Idraak' again.")
                 }
