@@ -29,6 +29,17 @@ class OfflineCommandEngineTest {
     }
 
     @Test
+    fun parsesContactCallingCommandsWithoutDialingDirectly() {
+        val english = engine.process("call Ammi").action
+        val urdu = engine.process("امی کو کال کرو").action
+
+        assertTrue(english is CommandAction.DialContact)
+        assertEquals("Ammi", (english as CommandAction.DialContact).contactName)
+        assertTrue(urdu is CommandAction.DialContact)
+        assertEquals("امی", (urdu as CommandAction.DialContact).contactName)
+    }
+
+    @Test
     fun parsesCompositeEnglishYoutubeSearch() {
         val action = engine.process("open youtube and search for quantum computing").action
         assertTrue(action is CommandAction.OpenUrl)
