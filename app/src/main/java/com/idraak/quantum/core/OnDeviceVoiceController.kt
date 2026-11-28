@@ -23,6 +23,9 @@ class OnDeviceVoiceController(
 ) {
     private val appContext = context.applicationContext
     private val running = AtomicBoolean(false)
+    private val workerActive = AtomicBoolean(false)
+    private val destroyRequested = AtomicBoolean(false)
+    private val recognizerLock = Any()
     private val modelManager = OfflineWhisperModelManager(appContext)
     @Volatile private var audioRecord: AudioRecord? = null
     @Volatile private var recognizer: OfflineRecognizer? = null
@@ -32,6 +35,7 @@ class OnDeviceVoiceController(
             onStatus("آواز پہلے سے سنی جا رہی ہے۔")
             return false
         }
+        workerActive.set(true)
         Thread({
             try {
                 val files = modelManager.prepare { percent ->
@@ -68,6 +72,8 @@ class OnDeviceVoiceController(
             } finally {
                 releaseRecorder()
                 running.set(false)
+                workerActive.set(false)
+                if (destroyRequested.get()) releaseRecognizer()
                 try {
                     onComplete?.invoke()
                 } catch (_: Exception) {
@@ -169,11 +175,23 @@ class OnDeviceVoiceController(
     }
 
     fun destroy() {
+        destroyRequested.set(true)
         running.set(false)
         releaseRecorder()
-        // Do not release the native recognizer while a worker may still be decoding.
-        // Once the worker exits, the native wrapper can be reclaimed safely.
-        recognizer = null
+        // Native recognizer memory must be released, but never while decode() is using it.
+        if (!workerActive.get()) releaseRecognizer()
+    }
+
+    private fun releaseRecognizer() {
+        synchronized(recognizerLock) {
+            val active = recognizer
+            recognizer = null
+            try {
+                active?.release()
+            } catch (_: Exception) {
+                // Cleanup must not crash the activity or foreground voice service.
+            }
+        }
     }
 
     companion object {
