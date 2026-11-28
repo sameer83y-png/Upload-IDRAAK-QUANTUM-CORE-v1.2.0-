@@ -80,6 +80,9 @@ class MainActivity : FragmentActivity() {
             speechOutput?.shutdown()
             speechOutput = null
             speechOutputReady = false
+            // App Lock must stop the independent wake-word foreground service too;
+            // otherwise its microphone could remain active behind the locked UI.
+            stopService(Intent(this, com.idraak.quantum.core.IdraakWakeWordService::class.java))
         }
     }
 
