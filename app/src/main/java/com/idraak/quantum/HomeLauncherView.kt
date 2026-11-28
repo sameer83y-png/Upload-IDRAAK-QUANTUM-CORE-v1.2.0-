@@ -1,0 +1,136 @@
+package com.idraak.quantum
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Shader
+import android.graphics.Typeface
+import android.os.SystemClock
+import android.view.View
+import kotlin.math.min
+
+/**
+ * Animated command HUD for the Home Launcher.
+ * Place idraak_home_background.jpg in drawable-nodpi to show the supplied portrait.
+ * The fallback remains build-safe until that artwork is added to the repository.
+ */
+class HomeLauncherView(context: Context) : View(context) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val panel = RectF()
+    private var mode = "idle"
+    private var detail = ""
+    private var backgroundBitmap: Bitmap? = loadBackground()
+    private var phase = 0f
+
+    fun setState(nextMode: String, text: String) {
+        mode = nextMode.lowercase().take(20)
+        detail = text.take(110)
+        invalidate()
+    }
+
+    private fun loadBackground(): Bitmap? {
+        val id = resources.getIdentifier("idraak_home_background", "drawable", context.packageName)
+        if (id == 0) return null
+        return try { BitmapFactory.decodeResource(resources, id) } catch (_: Exception) { null }
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val w = width.toFloat()
+        val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+
+        val image = backgroundBitmap
+        if (image != null && !image.isRecycled) {
+            val scale = maxOf(w / image.width, h / image.height)
+            val dw = image.width * scale
+            val dh = image.height * scale
+            val dst = RectF((w - dw) / 2f, (h - dh) / 2f, (w + dw) / 2f, (h + dh) / 2f)
+            canvas.drawBitmap(image, null, dst, paint)
+            paint.shader = LinearGradient(0f, 0f, 0f, h, 0x55020A18, 0x99020A18, Shader.TileMode.CLAMP)
+            canvas.drawRect(0f, 0f, w, h, paint)
+            paint.shader = null
+        } else {
+            paint.shader = LinearGradient(0f, 0f, w, h, 0xFF06142B.toInt(), 0xFF120A27.toInt(), Shader.TileMode.CLAMP)
+            canvas.drawRect(0f, 0f, w, h, paint)
+            paint.shader = null
+            drawFallbackCity(canvas, w, h)
+        }
+
+        phase = (SystemClock.uptimeMillis() % 6000L) / 6000f
+        drawHud(canvas, w, h)
+        postInvalidateDelayed(40L)
+    }
+
+    private fun drawFallbackCity(canvas: Canvas, w: Float, h: Float) {
+        paint.color = 0x5530BFFF
+        paint.strokeWidth = 1.2f
+        val step = w / 12f
+        for (i in 0..11) {
+            val x = i * step
+            val top = h * (0.12f + ((i * 17) % 35) / 100f)
+            canvas.drawRect(x, top, x + step * 0.55f, h * 0.78f, paint)
+        }
+        paint.color = 0xAA12DFFF.toInt()
+        canvas.drawLine(0f, h * 0.52f, w, h * 0.48f, paint)
+    }
+
+    private fun drawHud(canvas: Canvas, w: Float, h: Float) {
+        val left = w * 0.09f
+        val right = w * 0.91f
+        val top = h * 0.60f
+        val bottom = h * 0.79f
+        panel.set(left, top, right, bottom)
+
+        paint.color = 0xB900241C.toInt()
+        canvas.drawRoundRect(panel, 16f, 16f, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2f
+        paint.color = 0xFF28FF9A.toInt()
+        canvas.drawRoundRect(panel, 16f, 16f, paint)
+        paint.style = Paint.Style.FILL
+
+        val titleSize = min(w * 0.042f, 17f)
+        paint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        paint.textSize = titleSize
+        paint.color = 0xFF75FFC0.toInt()
+        canvas.drawText("IDRAAK  //  QUANTUM CORE", left + 15f, top + 27f, paint)
+
+        val label = when (mode) {
+            "listening" -> "LISTENING  •  VOICE INPUT"
+            "speaking" -> "SPEAKING  •  URDU VOICE"
+            "processing" -> "PROCESSING  •  COMMAND"
+            else -> "SYSTEM ONLINE  •  READY"
+        }
+        paint.textSize = min(w * 0.035f, 14f)
+        canvas.drawText(label, left + 15f, top + 51f, paint)
+
+        paint.color = 0xFFB9FFD9.toInt()
+        paint.textSize = min(w * 0.031f, 12f)
+        val safeDetail = detail.replace('\n', ' ').take(52)
+        if (safeDetail.isNotBlank()) canvas.drawText(safeDetail, left + 15f, top + 73f, paint)
+
+        paint.color = 0xFF37FFAA.toInt()
+        paint.textSize = min(w * 0.027f, 10f)
+        val bits = buildString {
+            repeat(34) { i -> append(if (((i * 7 + (phase * 100).toInt()) % 3) == 0) '1' else '0') }
+        }
+        canvas.drawText(bits, left + 15f, bottom - 13f, paint)
+
+        val scanY = top + 5f + (bottom - top - 10f) * phase
+        paint.color = 0x773AFFB0
+        canvas.drawRect(left + 4f, scanY, right - 4f, scanY + 2f, paint)
+        paint.color = 0xFF36FFAA.toInt()
+        canvas.drawCircle(right - 18f, top + 20f, 4f + (phase * 3f), paint)
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        // No background thread or audio resource is owned by this view.
+    }
+}

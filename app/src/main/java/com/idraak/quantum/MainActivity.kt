@@ -21,6 +21,8 @@ import android.widget.LinearLayout
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.ScrollView
+import android.widget.FrameLayout
+import android.speech.tts.UtteranceProgressListener
 import com.idraak.quantum.core.AndroidActionExecutor
 import com.idraak.quantum.core.LocalMemoryStore
 import com.idraak.quantum.core.ConversationHistoryStore
@@ -54,6 +56,7 @@ class MainActivity : FragmentActivity() {
     private lateinit var responseView: TextView
     private lateinit var commandInput: EditText
     private var voiceController: OnDeviceVoiceController? = null
+    private var launcherSurface: HomeLauncherView? = null
     private var speechOutput: TextToSpeech? = null
     private var speechOutputReady = false
     private var startBackgroundAfterPermission = false
@@ -108,7 +111,7 @@ class MainActivity : FragmentActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(28, 32, 28, 32)
-            setBackgroundColor(background)
+            setBackgroundColor(Color.TRANSPARENT)
         }
         root.addView(TextView(this).apply {
             text = "IDRAAK LOCKED"
@@ -277,7 +280,11 @@ class MainActivity : FragmentActivity() {
             },
             onStatus = { status ->
                 runOnUiThread {
-                    if (!isLocked && ::responseView.isInitialized) responseView.text = status
+                    if (!isLocked && ::responseView.isInitialized) {
+                        responseView.text = status
+                        val lower = status.lowercase(Locale.ROOT)
+                        launcherSurface?.setState(if (lower.contains("listen") || lower.contains("سن رہا") || lower.contains("سن رہی")) "listening" else "idle", status)
+                    }
                 }
             }
         )
@@ -291,6 +298,18 @@ class MainActivity : FragmentActivity() {
                 val result = speechOutput?.setLanguage(Locale("ur", "PK"))
                 speechOutputReady = result != TextToSpeech.LANG_MISSING_DATA &&
                     result != TextToSpeech.LANG_NOT_SUPPORTED
+                speechOutput?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {
+                        runOnUiThread { launcherSurface?.setState("speaking", "") }
+                    }
+                    override fun onDone(utteranceId: String?) {
+                        runOnUiThread { launcherSurface?.setState("idle", "") }
+                    }
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        runOnUiThread { launcherSurface?.setState("idle", "") }
+                    }
+                })
             }
         }
         buildDashboard()
@@ -357,7 +376,7 @@ class MainActivity : FragmentActivity() {
         }
 
         root.addView(TextView(this).apply {
-            text = "IDRAAK"
+            text = "IDRAAK LIVE"
             textSize = 34f
             setTextColor(accent)
             gravity = Gravity.CENTER
@@ -365,7 +384,7 @@ class MainActivity : FragmentActivity() {
         }, matchWrap())
 
         root.addView(TextView(this).apply {
-            text = "Q U A N T U M   C O R E"
+            text = "QUANTUM CORE  •  PERSONAL AI"
             textSize = 10f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
@@ -381,21 +400,12 @@ class MainActivity : FragmentActivity() {
             }
         }, matchWrap().apply { topMargin = 8; bottomMargin = 14 })
 
-        root.addView(ImageView(this).apply {
-            setImageResource(com.idraak.quantum.R.drawable.idraak_core_logo)
-            contentDescription = "Idraak Quantum Core logo"
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            setPadding(0, 2, 0, 10)
-        }, LinearLayout.LayoutParams(176, 176).apply {
-            gravity = Gravity.CENTER
-        })
-
         root.addView(TextView(this).apply {
-            text = "LOCAL CORE  •  MEMORY READY"
-            textSize = 12f
+            text = "LOCAL CORE  •  LIVE HUD  •  MEMORY READY"
+            textSize = 10f
             setTextColor(Color.rgb(105, 235, 178))
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 26)
+            setPadding(0, 4, 0, 14)
         }, matchWrap())
 
         commandInput = EditText(this).apply {
@@ -417,7 +427,7 @@ class MainActivity : FragmentActivity() {
         }, matchWrap().apply { topMargin = 12 })
 
         root.addView(Button(this).apply {
-            text = "🎙  OFFLINE VOICE  •  اردو + हिन्दी"
+            text = "🎙  OFFLINE VOICE  •  اردو"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.rgb(25, 54, 82))
             setOnClickListener { startVoiceInput() }
@@ -532,9 +542,20 @@ class MainActivity : FragmentActivity() {
 
         val scroll = ScrollView(this).apply {
             isFillViewport = true
+            setBackgroundColor(Color.TRANSPARENT)
             addView(root)
         }
-        setContentView(scroll)
+        val frame = FrameLayout(this)
+        launcherSurface = HomeLauncherView(this)
+        frame.addView(launcherSurface, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+        frame.addView(scroll, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+        setContentView(frame)
     }
 
 
@@ -612,6 +633,7 @@ class MainActivity : FragmentActivity() {
 
     private fun executeCommand(rawCommand: String) {
         val command = rawCommand.trim()
+        launcherSurface?.setState("processing", command)
         if (command.isBlank()) {
             responseView.text = "براہ کرم اپنا حکم لکھیں یا بولیں۔"
             return
@@ -841,7 +863,10 @@ class MainActivity : FragmentActivity() {
 
     private fun speakUrdu(message: String) {
         if (speechOutputReady) {
+            launcherSurface?.setState("speaking", message)
             speechOutput?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "idraak-response")
+        } else {
+            launcherSurface?.setState("idle", message)
         }
     }
 
