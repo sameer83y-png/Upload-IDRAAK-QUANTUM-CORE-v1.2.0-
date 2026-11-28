@@ -155,7 +155,7 @@ class OfflineCommandEngine {
             )
         }
 
-        val phoneMatch = Regex("(?:call|dial|phone|کال کرو|فون کرو|نمبر ملاؤ)\\s*([+0-9][+0-9() -]{5,})", RegexOption.IGNORE_CASE).find(numericText)
+        val phoneMatch = Regex("(?:call|dial|phone|کال کرو|فون کرو|نمبر ملاؤ|नंबर मिलाओ|नम्बर मिलाओ|फोन मिलाओ|कॉल करो)\\s*([+0-9][+0-9() -]{5,})", RegexOption.IGNORE_CASE).find(numericText)
         if (phoneMatch != null) {
             val number = phoneMatch.groupValues[1].filter { it.isDigit() || it == '+' }
             if (number.count(Char::isDigit) in 6..15) return CommandResult(

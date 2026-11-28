@@ -271,4 +271,19 @@ class OfflineCommandEngineTest {
         assertEquals("9123456789", (action as CommandAction.DialNumber).number)
     }
 
+
+    @Test
+    fun parsesHindiPhoneNumberUsingDevanagariDigits() {
+        val action = engine.process("नंबर मिलाओ ९१२३४५६७८९").action
+        assertTrue(action is CommandAction.DialNumber)
+        assertEquals("9123456789", (action as CommandAction.DialNumber).number)
+    }
+
+    @Test
+    fun parsesHindiReminderUsingHours() {
+        val action = engine.process("मुझे २ घंटे बाद दवा लेने की याद दिलाना").action
+        assertTrue(action is CommandAction.ScheduleReminder)
+        assertEquals("दवा लेने की", (action as CommandAction.ScheduleReminder).message)
+    }
+
 }
