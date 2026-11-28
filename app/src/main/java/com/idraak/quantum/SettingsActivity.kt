@@ -205,11 +205,28 @@ class SettingsActivity : Activity() {
         root.addView(Button(this).apply {
             text = "SAVE GEMINI SETTINGS"
             setOnClickListener {
-                GeminiKeyStore(this@SettingsActivity).save(geminiKeyInput.text.toString())
                 val model = geminiModelInput.text.toString().trim().ifBlank { GeminiBrainClient.DEFAULT_MODEL }
-                preferences.edit().putString("gemini_model", model).apply()
-                android.widget.Toast.makeText(this@SettingsActivity, "Gemini settings saved securely on this device.", android.widget.Toast.LENGTH_LONG).show()
-                geminiKeyInput.text.clear()
+                if (!model.matches(Regex("[A-Za-z0-9._-]{1,80}"))) {
+                    geminiModelInput.error = "Use a valid Gemini model name."
+                    return@setOnClickListener
+                }
+                try {
+                    GeminiKeyStore(this@SettingsActivity).save(geminiKeyInput.text.toString())
+                    preferences.edit().putString("gemini_model", model).apply()
+                    android.widget.Toast.makeText(
+                        this@SettingsActivity,
+                        "Gemini settings saved securely on this device.",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                    geminiKeyInput.text.clear()
+                    geminiModelInput.error = null
+                } catch (error: Exception) {
+                    android.widget.Toast.makeText(
+                        this@SettingsActivity,
+                        error.message ?: "Could not save Gemini settings securely.",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
             }
         }, matchWrap().apply { topMargin = 8 })
         root.addView(Button(this).apply {
