@@ -18,6 +18,7 @@ class IdraakCommandProcessor(context: Context) {
     private val commandEngine = OfflineCommandEngine()
     private val memoryStore = LocalMemoryStore(appContext)
     private val historyStore = ConversationHistoryStore(appContext)
+    private val errorStore = CommandErrorStore(appContext)
     private val learnedStore = LearnedCommandStore(appContext)
     private val codingEngine = CodeLearningEngine()
     private val actionExecutor = AndroidActionExecutor(appContext)
@@ -35,6 +36,9 @@ class IdraakCommandProcessor(context: Context) {
         val learning = handleLearning(command)
         if (learning != null) return completed(command, learning)
 
+        val diagnostics = handleDiagnostics(command)
+        if (diagnostics != null) return completed(command, diagnostics)
+
         val coding = codingEngine.handle(command)
         if (coding != null) return completed(command, coding)
 
@@ -48,12 +52,15 @@ class IdraakCommandProcessor(context: Context) {
         }
 
         val execution = actionExecutor.execute(result.action)
-        val response = if (
-            execution.contains("compatible") ||
+        val failed = execution.contains("compatible") ||
             execution.contains("ایپ نہیں ملی") ||
             execution.contains("Android نے مطلوبہ اجازت") ||
+            execution.contains("permission", ignoreCase = true) ||
+            execution.contains("رابطے تلاش نہیں ہو سکے") ||
+            execution.contains("رابطے تلاش کرنے کے لیے") ||
             execution.contains("یہ کام مکمل نہیں ہو سکا")
-        ) {
+        if (failed) errorStore.record(command, execution)
+        val response = if (failed) {
             ActionRecoveryPolicy.responseForExecutionFailure(command, execution)
         } else {
             result.message + "\n" + execution
@@ -74,6 +81,23 @@ class IdraakCommandProcessor(context: Context) {
     private fun completed(command: String, response: String): IdraakProcessingResult {
         recordExchange(command, response)
         return IdraakProcessingResult(true, response)
+    }
+
+    private fun handleDiagnostics(raw: String): String? {
+        return when (raw.trim().lowercase(Locale.ROOT)) {
+            "show command errors", "show error log", "غلطیوں کی تاریخ دکھاؤ", "کمانڈ کی غلطیاں دکھاؤ" -> {
+                val entries = errorStore.recent(10)
+                if (entries.isEmpty()) "ابھی کوئی کمانڈ خرابی محفوظ نہیں۔"
+                else entries.joinToString("\\n\\n") {
+                    "کمانڈ: ${it.command}\\nخرابی: ${it.error}"
+                }
+            }
+            "clear command errors", "clear error log", "غلطیوں کی تاریخ صاف کرو", "کمانڈ کی غلطیاں حذف کرو" -> {
+                errorStore.clear()
+                "محفوظ شدہ کمانڈ خرابیوں کی تاریخ صاف کر دی گئی۔"
+            }
+            else -> null
+        }
     }
 
     private fun handleMemory(raw: String): String? {
