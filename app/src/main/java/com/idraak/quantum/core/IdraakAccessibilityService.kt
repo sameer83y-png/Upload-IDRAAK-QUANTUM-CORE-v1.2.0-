@@ -215,6 +215,17 @@ class IdraakAccessibilityService : AccessibilityService() {
         return true
     }
 
+    private fun controlMedia(action: String): Boolean {
+        val labels = when (action) {
+            "play" -> listOf("play", "resume", "پلے", "چلائیں", "ویڈیو چلاؤ")
+            "pause" -> listOf("pause", "پاز", "روکیں", "ویڈیو روکیں")
+            "next" -> listOf("next", "next video", "اگلا", "اگلی ویڈیو")
+            "previous" -> listOf("previous", "previous video", "پچھلا", "پچھلی ویڈیو")
+            else -> emptyList()
+        }
+        return labels.any { label -> clickVisibleText(label) }
+    }
+
     private fun seekBySeconds(offsetSeconds: Long): Boolean {
         val root = rootInActiveWindow ?: return false
         val seekBars = allNodes(root).filter { node ->
@@ -269,6 +280,8 @@ class IdraakAccessibilityService : AccessibilityService() {
             activeService?.setTextInField(fieldLabel.trim(), value) == true
         fun searchCurrentApp(query: String): Boolean =
             activeService?.searchVisibleApp(query.trim()) == true
+        fun controlMedia(action: String): Boolean =
+            activeService?.controlMedia(action) == true
         fun seekBySeconds(offsetSeconds: Long): Boolean =
             activeService?.seekBySeconds(offsetSeconds) == true
         fun longPressText(text: String): Boolean = activeService?.longPressVisibleText(text.trim()) == true
