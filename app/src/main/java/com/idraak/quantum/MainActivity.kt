@@ -31,6 +31,7 @@ import com.idraak.quantum.core.GeminiBrainClient
 import com.idraak.quantum.core.GeminiKeyStore
 import com.idraak.quantum.core.LearnedCommandStore
 import com.idraak.quantum.core.CodeLearningEngine
+import com.idraak.quantum.core.IdraakCommandProcessor
 import java.util.concurrent.Executors
 import java.util.Locale
 import java.util.Calendar
@@ -529,56 +530,53 @@ class MainActivity : FragmentActivity() {
             responseView.text = "براہ کرم اپنا حکم لکھیں یا بولیں۔"
             return
         }
-        val accessibilityResponse = handleDirectAccessibilityCommand(command)
-        val memoryResponse = if (accessibilityResponse == null) handleMemoryCommand(command) else null
-        val learningResponse = if (accessibilityResponse == null && memoryResponse == null) handleLearningCommand(command) else null
-        val codingResponse = if (accessibilityResponse == null && memoryResponse == null && learningResponse == null) codingEngine.handle(command) else null
-        val response = accessibilityResponse ?: memoryResponse ?: learningResponse ?: codingResponse ?: run {
-            val effectiveCommand = learnedCommandStore.resolve(command) ?: command
-            val result = commandEngine.process(effectiveCommand)
-            if (result.action == com.idraak.quantum.core.CommandAction.None) {
-                val apiKey = GeminiKeyStore(this).read()
-                if (!apiKey.isNullOrBlank()) {
-                    responseView.text = "Gemini سے جواب حاصل کر رہا ہوں…"
-                    historyStore.add("user", command)
-                    val model = getSharedPreferences("idraak_settings", MODE_PRIVATE)
-                        .getString("gemini_model", GeminiBrainClient.DEFAULT_MODEL)
-                        ?: GeminiBrainClient.DEFAULT_MODEL
-                    geminiExecutor.execute {
-                        val reply = try {
-                            GeminiBrainClient(apiKey, model).reply(command)
-                        } catch (error: Exception) {
-                            "Gemini سے جواب نہیں ملا: " + (error.message ?: "network یا API کی خرابی") +
-                                "\n\n" + ActionRecoveryPolicy.responseForUnknownCommand(command, result.message)
-                        }
-                        runOnUiThread {
-                            if (!isFinishing && !isDestroyed) {
-                                responseView.text = reply
-                                historyStore.add("assistant", reply)
-                                speakUrdu(reply)
-                            }
-                        }
-                    }
-                    return
+
+        val processor = IdraakCommandProcessor(applicationContext)
+        val processed = try {
+            processor.process(command)
+        } catch (error: Exception) {
+            processor.close()
+            responseView.text = "کمانڈ پروسیس نہیں ہو سکی: " + (error.localizedMessage ?: "unknown error")
+            return
+        }
+
+        if (processed.handled) {
+            responseView.text = processed.response
+            speakUrdu(processed.response)
+            processor.close()
+            return
+        }
+
+        val apiKey = GeminiKeyStore(this).read()
+        if (!apiKey.isNullOrBlank()) {
+            responseView.text = "Gemini سے جواب حاصل کر رہا ہوں…"
+            historyStore.add("user", command)
+            val model = getSharedPreferences("idraak_settings", MODE_PRIVATE)
+                .getString("gemini_model", GeminiBrainClient.DEFAULT_MODEL)
+                ?: GeminiBrainClient.DEFAULT_MODEL
+            processor.close()
+            geminiExecutor.execute {
+                val reply = try {
+                    GeminiBrainClient(apiKey, model).reply(command)
+                } catch (error: Exception) {
+                    "Gemini سے جواب نہیں ملا: " + (error.message ?: "network یا API کی خرابی") +
+                        "\\n\\n" + processed.response
                 }
-                ActionRecoveryPolicy.responseForUnknownCommand(command, result.message)
-            } else {
-                val execution = actionExecutor.execute(result.action)
-                if (execution.contains("compatible") ||
-                    execution.contains("ایپ نہیں ملی") ||
-                    execution.contains("Android نے مطلوبہ اجازت") ||
-                    execution.contains("یہ کام مکمل نہیں ہو سکا")
-                ) {
-                    ActionRecoveryPolicy.responseForExecutionFailure(command, execution)
-                } else {
-                    result.message + "\n" + execution
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        responseView.text = reply
+                        historyStore.add("assistant", reply)
+                        speakUrdu(reply)
+                    }
                 }
             }
+            return
         }
-        responseView.text = response
-        historyStore.add("user", command)
-        historyStore.add("assistant", response)
-        speakUrdu(response)
+
+        processor.recordExchange(command, processed.response)
+        responseView.text = processed.response
+        speakUrdu(processed.response)
+        processor.close()
     }
 
     /** Learns only explicit aliases that point to a command already supported offline. */
