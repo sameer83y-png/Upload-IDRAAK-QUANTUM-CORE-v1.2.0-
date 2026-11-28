@@ -152,7 +152,7 @@ class IdraakAccessibilityService : AccessibilityService() {
             }
             if (output.sumOf { it.length } >= 4000) break
         }
-        return output.joinToString("\\n").take(4000)
+        return output.joinToString("\n").take(4000)
     }
 
     private fun global(action: Int): Boolean = performGlobalAction(action)
