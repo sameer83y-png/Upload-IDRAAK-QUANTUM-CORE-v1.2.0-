@@ -148,6 +148,22 @@ class OfflineCommandEngine {
             return CommandResult("یوٹیوب پر کیا تلاش کروں؟")
         }
 
+        val shareCommandPrefix = listOf("share this ", "send this ", "share ", "send ")
+            .firstOrNull { text.startsWith(it) }
+        val connectedAppSuffix = listOf("whatsapp", "telegram", "instagram", "facebook", "gmail")
+            .firstNotNullOfOrNull { app ->
+                listOf(" on $app", " to $app", " via $app").firstOrNull { text.endsWith(it) }
+                    ?.let { suffix -> app to suffix }
+            }
+        if (shareCommandPrefix != null && connectedAppSuffix != null) {
+            val message = original.drop(shareCommandPrefix.length)
+                .dropLast(connectedAppSuffix.second.length).trim()
+            if (message.isNotBlank()) return CommandResult(
+                "متعلقہ ایپ کا شیئر مینو کھول رہا ہوں۔ بھیجنے سے پہلے پیغام چیک کریں۔",
+                CommandAction.ShareTextToApp(message, connectedAppSuffix.first)
+            )
+        }
+
         val targetedSharePatterns = listOf(
             Regex("^(?:share|send)(?:\\s+this)?\\s+(.+?)\\s+(?:on|to|via)\\s+(whatsapp|telegram|instagram|facebook|gmail)$", RegexOption.IGNORE_CASE),
             Regex("^(whatsapp|telegram|instagram|facebook|gmail)\\s+par\\s+(.+?)\\s+(?:bhejo|share karo)$", RegexOption.IGNORE_CASE),
