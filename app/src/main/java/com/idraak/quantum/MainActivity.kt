@@ -61,6 +61,8 @@ class MainActivity : FragmentActivity() {
     private var launcherSurface: HomeLauncherView? = null
     private var speechOutput: TextToSpeech? = null
     private var speechOutputReady = false
+    // Keep the command result visible after Urdu speech finishes.
+    @Volatile private var responseHudState = "idle"
     private var startBackgroundAfterPermission = false
     private var isLocked = false
     private var lockOnReturn = false
@@ -316,11 +318,11 @@ class MainActivity : FragmentActivity() {
                         runOnUiThread { launcherSurface?.setState("speaking", "") }
                     }
                     override fun onDone(utteranceId: String?) {
-                        runOnUiThread { launcherSurface?.setState("idle", "") }
+                        runOnUiThread { launcherSurface?.setState(responseHudState, "") }
                     }
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {
-                        runOnUiThread { launcherSurface?.setState("idle", "") }
+                        runOnUiThread { launcherSurface?.setState(responseHudState, "") }
                     }
                 })
             }
@@ -755,15 +757,18 @@ class MainActivity : FragmentActivity() {
 
     private fun executeCommand(rawCommand: String) {
         val command = rawCommand.trim()
+        responseHudState = "idle"
         launcherSurface?.setState("processing", command)
         if (command.isBlank()) {
             responseView.text = "براہ کرم اپنا حکم لکھیں یا بولیں۔"
+            launcherSurface?.setState("idle", responseView.text.toString())
             return
         }
 
         val processor = IdraakCommandProcessor(applicationContext) { state, detail ->
             runOnUiThread {
                 if (!isFinishing && !isDestroyed) {
+                    responseHudState = state
                     launcherSurface?.setState(state, detail)
                 }
             }
@@ -772,6 +777,8 @@ class MainActivity : FragmentActivity() {
             processor.process(command)
         } catch (error: Exception) {
             processor.close()
+            responseHudState = "error"
+            launcherSurface?.setState("error", command)
             responseView.text = "کمانڈ پروسیس نہیں ہو سکی: " + (error.localizedMessage ?: "unknown error")
             return
         }
@@ -994,7 +1001,7 @@ class MainActivity : FragmentActivity() {
             launcherSurface?.setState("speaking", message)
             speechOutput?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "idraak-response")
         } else {
-            launcherSurface?.setState("idle", message)
+            launcherSurface?.setState(responseHudState, message)
         }
     }
 
