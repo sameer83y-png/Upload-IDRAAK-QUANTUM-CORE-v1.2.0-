@@ -127,13 +127,14 @@ class OfflineWhisperModelManager(context: Context) {
                 }
             }
 
-            val files = findModelFiles(extractTemp)
-                ?: throw IllegalStateException("ڈاؤن لوڈ شدہ وائس ماڈل میں ضروری فائلیں نہیں ملیں۔")
+            if (findModelFiles(extractTemp) == null) {
+                throw IllegalStateException("ڈاؤن لوڈ شدہ وائس ماڈل میں ضروری فائلیں نہیں ملیں۔")
+            }
             modelDir.deleteRecursively()
             if (!extractTemp.renameTo(modelDir)) {
                 throw IllegalStateException("وائس ماڈل انسٹال نہیں ہو سکا۔")
             }
-            if (!files.encoder.exists()) {
+            if (findModelFiles() == null) {
                 throw IllegalStateException("وائس ماڈل انسٹالیشن مکمل نہیں ہوئی۔")
             }
             archiveFile.delete()
