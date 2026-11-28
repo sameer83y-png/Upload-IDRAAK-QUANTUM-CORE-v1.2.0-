@@ -360,6 +360,19 @@ class IdraakCommandProcessor(
             }
         }
 
+        val deleteWordDirection = DeleteWordCommandParser.parse(command)
+        if (deleteWordDirection != null) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "لفظ حذف کرنے کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.deleteWord(deleteWordDirection == DeleteDirection.FORWARD)) {
+                if (deleteWordDirection == DeleteDirection.FORWARD) "کرسر کے آگے والا لفظ حذف کر دیا۔"
+                else "کرسر کے پیچھے والا لفظ حذف کر دیا۔"
+            } else {
+                "لفظ حذف نہیں ہوا؛ عام ٹیکسٹ فیلڈ میں غیر منتخب کرسر رکھیں۔ پاس ورڈ فیلڈ اور منتخب متن محفوظ رہیں گے۔"
+            }
+        }
+
         val deleteDirection = DeleteCharacterCommandParser.parse(command)
         if (deleteDirection != null) {
             if (!IdraakAccessibilityService.isConnected()) {

@@ -497,6 +497,83 @@ class IdraakAccessibilityService : AccessibilityService() {
         return field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, arguments)
     }
 
+    /** Deletes the previous/next word portion at a collapsed cursor in one safe field. */
+    private fun deleteFocusedWord(forward: Boolean): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focusedFields = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled && node.isEditable &&
+                node.isFocused && !node.isPassword
+        }
+        if (focusedFields.size != 1) return false
+        val field = focusedFields.single()
+        val text = field.text?.toString() ?: return false
+        val cursor = field.textSelectionStart
+        if (text.isEmpty() || cursor < 0 || field.textSelectionEnd != cursor ||
+            cursor > text.length
+        ) return false
+
+        val iterator = BreakIterator.getWordInstance(Locale.ROOT)
+        iterator.setText(text)
+        fun isWordSegment(start: Int, end: Int): Boolean {
+            var index = start
+            while (index < end) {
+                val codePoint = text.codePointAt(index)
+                val type = Character.getType(codePoint)
+                if (Character.isLetterOrDigit(codePoint) || codePoint == '_'.code ||
+                    type == Character.NON_SPACING_MARK.toInt() ||
+                    type == Character.COMBINING_SPACING_MARK.toInt() ||
+                    type == Character.ENCLOSING_MARK.toInt()
+                ) return true
+                index += Character.charCount(codePoint)
+            }
+            return false
+        }
+
+        var deleteStart = -1
+        var deleteEnd = -1
+        if (forward) {
+            var start = iterator.isBoundary(cursor).let {
+                if (it) cursor else iterator.preceding(cursor)
+            }
+            if (start == BreakIterator.DONE) start = 0
+            var end = iterator.following(start)
+            while (end != BreakIterator.DONE) {
+                if (end > cursor && isWordSegment(start, end)) {
+                    deleteStart = maxOf(start, cursor)
+                    deleteEnd = end
+                    break
+                }
+                start = end
+                end = iterator.following(start)
+            }
+        } else {
+            var end = if (iterator.isBoundary(cursor)) cursor else iterator.following(cursor)
+            if (end == BreakIterator.DONE) end = text.length
+            var start = iterator.preceding(end)
+            while (start != BreakIterator.DONE) {
+                if (start < cursor && isWordSegment(start, end)) {
+                    deleteStart = start
+                    deleteEnd = minOf(end, cursor)
+                    break
+                }
+                end = start
+                start = iterator.preceding(end)
+            }
+        }
+        if (deleteStart < 0 || deleteEnd <= deleteStart) return false
+        val updatedText = text.removeRange(deleteStart, deleteEnd)
+        val setTextArguments = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, updatedText)
+        }
+        if (!field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, setTextArguments)) return false
+        val selectionArguments = Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, deleteStart)
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, deleteStart)
+        }
+        field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selectionArguments)
+        return true
+    }
+
     /** Deletes one Unicode code point beside a collapsed cursor; never deletes a selection. */
     private fun deleteFocusedCharacter(forward: Boolean): Boolean {
         val root = rootInActiveWindow ?: return false
@@ -694,6 +771,8 @@ class IdraakAccessibilityService : AccessibilityService() {
             activeService?.moveFocusedCursorByCharacter(forward) == true
         fun deleteCharacter(forward: Boolean): Boolean =
             activeService?.deleteFocusedCharacter(forward) == true
+        fun deleteWord(forward: Boolean): Boolean =
+            activeService?.deleteFocusedWord(forward) == true
         fun moveCursorByWord(forward: Boolean): Boolean =
             activeService?.moveFocusedCursorByWord(forward) == true
         fun moveCursorToStart(): Boolean = activeService?.moveFocusedCursor(false) == true
