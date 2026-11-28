@@ -25,6 +25,7 @@ class IdraakCommandProcessor(
     private val learnedStore = LearnedCommandStore(appContext)
     private val codingEngine = CodeLearningEngine()
     private val actionExecutor = AndroidActionExecutor(appContext)
+    private var pendingSensitiveClick: String? = null
 
     fun process(rawCommand: String): IdraakProcessingResult {
         val command = rawCommand.trim()
@@ -302,6 +303,26 @@ class IdraakCommandProcessor(
         val command = raw.trim()
         val lower = command.lowercase(Locale.ROOT)
 
+        val pendingClick = pendingSensitiveClick
+        if (pendingClick != null) {
+            if (lower in listOf("yes", "confirm", "do it", "ہاں", "جی ہاں", "تصدیق کرتا ہوں", "کر دو")) {
+                pendingSensitiveClick = null
+                if (!IdraakAccessibilityService.isConnected()) {
+                    return "Accessibility ابھی فعال نہیں؛ پہلے اسے فعال کریں، پھر دوبارہ کہیں۔"
+                }
+                return if (IdraakAccessibilityService.clickText(pendingClick)) {
+                    "ٹھیک ہے، “$pendingClick” پر عمل کر دیا۔"
+                } else {
+                    "یہ بٹن اس وقت نہیں ملا؛ اسکرین دیکھ کر دوبارہ کوشش کرتے ہیں۔"
+                }
+            }
+            if (lower in listOf("no", "cancel", "نہیں", "منسوخ", "رہنے دو", "چھوڑ دو")) {
+                pendingSensitiveClick = null
+                return "ٹھیک ہے، یہ عمل منسوخ کر دیا۔"
+            }
+            return "اس عمل کی تصدیق درکار ہے۔ آگے بڑھنے کے لیے “ہاں” یا روکنے کے لیے “نہیں” کہیں۔"
+        }
+
         val searchQuery = when {
             lower.startsWith("search for ") -> command.substringAfter("search for ").trim()
             lower.startsWith("search ") && !lower.startsWith("search memory ") &&
@@ -385,6 +406,16 @@ class IdraakCommandProcessor(
         }
         if (clickTarget.isNotBlank()) {
             if (!IdraakAccessibilityService.isConnected()) return "اسکرین کنٹرول کے لیے Idraak Accessibility فعال کریں۔"
+            val sensitiveAction = Regex(
+                "(?i)\\b(like|subscribe|follow|send|post|publish|delete|remove|block|report|buy|purchase|pay|unsubscribe)\\b"
+            ).containsMatchIn(clickTarget) || listOf(
+                "پسند", "لائک", "سبسکرائب", "فالو", "بھیج", "شائع", "حذف", "مٹاؤ",
+                "خرید", "ادائیگی", "بلاک", "رپورٹ"
+            ).any { clickTarget.contains(it, ignoreCase = true) }
+            if (sensitiveAction) {
+                pendingSensitiveClick = clickTarget
+                return "یہ عمل آپ کے اکاؤنٹ یا مواد کو بدل سکتا ہے۔ کیا میں “$clickTarget” دباؤں؟ تصدیق کے لیے “ہاں” کہیں، یا روکنے کے لیے “نہیں”۔"
+            }
             return if (IdraakAccessibilityService.clickText(clickTarget)) "اسکرین پر “$clickTarget” ٹیپ کر دیا۔"
             else "اسکرین پر “$clickTarget” نام کا قابلِ رسائی کنٹرول نہیں ملا۔"
         }
