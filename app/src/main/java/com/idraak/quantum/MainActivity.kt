@@ -3,6 +3,7 @@ package com.idraak.quantum
 import android.Manifest
 import android.os.Build
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.content.Intent
@@ -18,6 +19,7 @@ import android.widget.TextView
 import android.widget.ScrollView
 import com.idraak.quantum.core.AndroidActionExecutor
 import com.idraak.quantum.core.LocalMemoryStore
+import com.idraak.quantum.core.ConversationHistoryStore
 import com.idraak.quantum.core.OfflineCommandEngine
 import com.idraak.quantum.core.OnDeviceVoiceController
 import java.util.Locale
@@ -30,6 +32,7 @@ class MainActivity : Activity() {
 
     private val commandEngine = OfflineCommandEngine()
     private val memoryStore by lazy { LocalMemoryStore(applicationContext) }
+    private val historyStore by lazy { ConversationHistoryStore(applicationContext) }
     private lateinit var actionExecutor: AndroidActionExecutor
     private lateinit var responseView: TextView
     private lateinit var commandInput: EditText
@@ -138,6 +141,12 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(25, 54, 82))
             setOnClickListener { startVoiceInput() }
         }, matchWrap().apply { topMargin = 10 })
+        root.addView(Button(this).apply {
+            text = "CHAT HISTORY  /  پچھلی گفتگو"
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(35, 48, 70))
+            setOnClickListener { showConversationHistory() }
+        }, matchWrap().apply { topMargin = 8 })
 
         responseView = TextView(this).apply {
             text = "السلام علیکم۔ اپنا حکم لکھیں یا دستیاب آف لائن وائس انجن سے بولیں۔"
@@ -244,7 +253,26 @@ class MainActivity : Activity() {
             result.message + "\n" + execution
         }
         responseView.text = response
+        historyStore.add("user", command)
+        historyStore.add("assistant", response)
         speakUrdu(response)
+    }
+
+    private fun showConversationHistory() {
+        val entries = historyStore.recent(100)
+        val content = if (entries.isEmpty()) {
+            "ابھی کوئی گفتگو محفوظ نہیں ہے۔"
+        } else {
+            entries.asReversed().joinToString("\\n\\n") { entry ->
+                val speaker = if (entry.role == "user") "آپ" else "Idraak"
+                "$speaker: ${entry.message}"
+            }
+        }
+        AlertDialog.Builder(this)
+            .setTitle("CHAT HISTORY")
+            .setMessage(content)
+            .setPositiveButton("بند کریں", null)
+            .show()
     }
 
     private fun speakUrdu(message: String) {
@@ -333,7 +361,10 @@ class MainActivity : Activity() {
         voiceController?.destroy()
         speechOutput?.stop()
         speechOutput?.shutdown()
-        if (::responseView.isInitialized) memoryStore.close()
+        if (::responseView.isInitialized) {
+            memoryStore.close()
+            historyStore.close()
+        }
         super.onDestroy()
     }
 
