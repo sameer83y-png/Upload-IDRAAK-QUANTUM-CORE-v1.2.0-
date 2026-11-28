@@ -14,6 +14,27 @@ class OfflineCommandEngine {
         val text = original.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
         if (text.isBlank()) return CommandResult("براہ کرم اپنا حکم بتائیں۔")
 
+        // Deterministic app-targeted sharing: always hands off to Android's review UI.
+        val directSharePrefix = listOf("share this ", "send this ", "share ", "send ")
+            .firstOrNull { text.startsWith(it) }
+        if (directSharePrefix != null) {
+            val targetApps = listOf("whatsapp", "telegram", "instagram", "facebook", "gmail")
+            val matchedSuffix = targetApps.firstNotNullOfOrNull { app ->
+                listOf(" on ", " to ", " via ").firstNotNullOfOrNull { separator ->
+                    val suffix = separator + app
+                    if (text.endsWith(suffix)) suffix else null
+                }?.let { suffix -> app to suffix }
+            }
+            if (matchedSuffix != null) {
+                val messageEnd = original.length - matchedSuffix.second.length
+                val message = original.substring(directSharePrefix.length, messageEnd).trim()
+                if (message.isNotBlank()) return CommandResult(
+                    "متعلقہ ایپ کا شیئر مینو کھول رہا ہوں۔ بھیجنے سے پہلے پیغام چیک کریں۔",
+                    CommandAction.ShareTextToApp(message, matchedSuffix.first)
+                )
+            }
+        }
+
         val englishGreeting = Regex("(^|\\s)(hello|hi|hey|salam|assalam)(\\s|$)", RegexOption.IGNORE_CASE)
         if (englishGreeting.containsMatchIn(text) || text == "سلام" || text == "السلام" || text.contains("السلام علیکم") || text.contains("وعلیکم السلام")) {
             return CommandResult("وعلیکم السلام۔ ادراک حاضر ہے۔")
