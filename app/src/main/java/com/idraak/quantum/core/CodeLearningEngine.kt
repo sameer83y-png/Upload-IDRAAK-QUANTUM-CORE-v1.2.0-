@@ -55,7 +55,7 @@ class CodeLearningEngine {
             Function ایسا code block ہے جسے نام دے کر دوبارہ استعمال کیا جا سکتا ہے۔
 
             fun greet(name: String): String {
-                return "Assalam-o-alaikum, $name"
+                return "Assalam-o-alaikum, ${'"
             }
 
             println(greet("Idraak"))
@@ -79,6 +79,135 @@ class CodeLearningEngine {
             class Assistant(val name: String) {
                 fun introduce(): String {
                     return "I am $name"
+                }
+            }
+
+            val idraak = Assistant("Idraak")
+            println(idraak.introduce())
+            """.trimIndent()
+        topic.contains("android") || topic.contains("activity") ->
+            """
+            Android میں Activity ایک screen کی نمائندگی کرتی ہے۔
+            onCreate() screen بننے پر چلتا ہے۔
+
+            override fun onCreate(savedInstanceState: Bundle?) {
+                super.onCreate(savedInstanceState)
+                // یہاں screen تیار کریں
+            }
+
+            Android permissions اور lifecycle کا خیال رکھیں۔
+            """.trimIndent()
+        else ->
+            """
+            Kotlin ایک modern programming language ہے جو Android apps میں استعمال ہوتی ہے۔
+
+            مثال:
+            fun main() {
+                val message = "Hello Idraak"
+                println(message)
+            }
+
+            خاص موضوع: explain kotlin variables / functions / loops / classes / android
+            """.trimIndent()
+    }
+
+    private fun review(source: String): String {
+        if (source.length > 20000) return "یہ code بہت لمبا ہے۔ اسے چھوٹے حصوں میں بھیجیں (زیادہ سے زیادہ 20,000 characters فی جائزہ)۔"
+        if (source.isBlank()) return "کوڈ خالی ہے۔"
+        val findings = mutableListOf<String>()
+        if (source.count { it == '{' } != source.count { it == '}' }) findings += "Curly braces { } کی تعداد برابر نہیں؛ blocks چیک کریں۔"
+        if (source.count { it == '(' } != source.count { it == ')' }) findings += "Parentheses ( ) کی تعداد برابر نہیں؛ function calls اور conditions چیک کریں۔"
+        if (Regex("\\bvar\\s+\\w+").containsMatchIn(source) && !Regex("\\bvar\\s+\\w+\\s*=").containsMatchIn(source)) {
+            findings += "کسی var declaration میں '=' یا ابتدائی value غائب ہو سکتی ہے۔"
+        }
+        if (source.contains("!!")) findings += "!! استعمال ہوا ہے؛ null ہونے پر crash ہو سکتا ہے۔ Safe call ?. یا null check پر غور کریں۔"
+        if (source.contains("Thread.sleep")) findings += "Thread.sleep نظر آیا؛ Android main thread پر UI freeze ہو سکتی ہے۔"
+        if (source.contains("TODO(")) findings += "TODO() موجود ہے؛ چلانے پر exception دے سکتا ہے۔"
+        return if (findings.isEmpty()) {
+            "ابتدائی جانچ میں کوئی عام مسئلہ نہیں ملا۔ یہ compile success کا ثبوت نہیں؛ Gradle build اور tests سے تصدیق ہوگی۔"
+        } else {
+            "ابتدائی Code Review:\n" + findings.mapIndexed { index, item -> "${index + 1}. $item" }.joinToString("\n") +
+                "\n\nیہ static hints ہیں، مکمل Kotlin compiler نہیں۔ اصل build سے تصدیق ضروری ہے۔"
+        }
+    }
+}
+}name"
+            }
+
+            println(greet("Idraak"))
+
+            fun function بناتا ہے، name اس کا input ہے، اور String return type ہے۔
+            """.trimIndent()
+        topic.contains("loop") || topic.contains("for") || topic.contains("while") ->
+            """
+            Loop کسی کام کو بار بار چلاتا ہے۔
+
+            for (number in 1..3) {
+                println(number)
+            }
+
+            یہ 1، 2 اور 3 پر عمل کرے گا۔ غیر ضروری infinite loops سے بچیں۔
+            """.trimIndent()
+        topic.contains("class") || topic.contains("object") ->
+            """
+            Class ایک blueprint ہے جس سے objects بنتے ہیں۔
+
+            class Assistant(val name: String) {
+                fun introduce(): String {
+                    return "I am ${'"
+                }
+            }
+
+            val idraak = Assistant("Idraak")
+            println(idraak.introduce())
+            """.trimIndent()
+        topic.contains("android") || topic.contains("activity") ->
+            """
+            Android میں Activity ایک screen کی نمائندگی کرتی ہے۔
+            onCreate() screen بننے پر چلتا ہے۔
+
+            override fun onCreate(savedInstanceState: Bundle?) {
+                super.onCreate(savedInstanceState)
+                // یہاں screen تیار کریں
+            }
+
+            Android permissions اور lifecycle کا خیال رکھیں۔
+            """.trimIndent()
+        else ->
+            """
+            Kotlin ایک modern programming language ہے جو Android apps میں استعمال ہوتی ہے۔
+
+            مثال:
+            fun main() {
+                val message = "Hello Idraak"
+                println(message)
+            }
+
+            خاص موضوع: explain kotlin variables / functions / loops / classes / android
+            """.trimIndent()
+    }
+
+    private fun review(source: String): String {
+        if (source.length > 20000) return "یہ code بہت لمبا ہے۔ اسے چھوٹے حصوں میں بھیجیں (زیادہ سے زیادہ 20,000 characters فی جائزہ)۔"
+        if (source.isBlank()) return "کوڈ خالی ہے۔"
+        val findings = mutableListOf<String>()
+        if (source.count { it == '{' } != source.count { it == '}' }) findings += "Curly braces { } کی تعداد برابر نہیں؛ blocks چیک کریں۔"
+        if (source.count { it == '(' } != source.count { it == ')' }) findings += "Parentheses ( ) کی تعداد برابر نہیں؛ function calls اور conditions چیک کریں۔"
+        if (Regex("\\bvar\\s+\\w+").containsMatchIn(source) && !Regex("\\bvar\\s+\\w+\\s*=").containsMatchIn(source)) {
+            findings += "کسی var declaration میں '=' یا ابتدائی value غائب ہو سکتی ہے۔"
+        }
+        if (source.contains("!!")) findings += "!! استعمال ہوا ہے؛ null ہونے پر crash ہو سکتا ہے۔ Safe call ?. یا null check پر غور کریں۔"
+        if (source.contains("Thread.sleep")) findings += "Thread.sleep نظر آیا؛ Android main thread پر UI freeze ہو سکتی ہے۔"
+        if (source.contains("TODO(")) findings += "TODO() موجود ہے؛ چلانے پر exception دے سکتا ہے۔"
+        return if (findings.isEmpty()) {
+            "ابتدائی جانچ میں کوئی عام مسئلہ نہیں ملا۔ یہ compile success کا ثبوت نہیں؛ Gradle build اور tests سے تصدیق ہوگی۔"
+        } else {
+            "ابتدائی Code Review:\n" + findings.mapIndexed { index, item -> "${index + 1}. $item" }.joinToString("\n") +
+                "\n\nیہ static hints ہیں، مکمل Kotlin compiler نہیں۔ اصل build سے تصدیق ضروری ہے۔"
+        }
+    }
+}
+}name"
                 }
             }
 
