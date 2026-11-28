@@ -285,7 +285,18 @@ class MainActivity : FragmentActivity() {
                     if (!isLocked && ::responseView.isInitialized) {
                         responseView.text = status
                         val lower = status.lowercase(Locale.ROOT)
-                        launcherSurface?.setState(if (lower.contains("listen") || lower.contains("سن رہا") || lower.contains("سن رہی")) "listening" else "idle", status)
+                        val hudState = when {
+                            lower.contains("سمجھ رہا") || lower.contains("processing") -> "processing"
+                            lower.contains("اب بولیں") ||
+                                lower.contains("وائس تیار") ||
+                                lower.contains("پہلے سے سنی جا رہی") ||
+                                lower.contains("سن رہا") ||
+                                lower.contains("سن رہی") ||
+                                lower.contains("listening") -> "listening"
+                            lower.contains("خرابی") || lower.contains("نہیں ہو سکی") -> "error"
+                            else -> "idle"
+                        }
+                        launcherSurface?.setState(hudState, status)
                     }
                 }
             }
