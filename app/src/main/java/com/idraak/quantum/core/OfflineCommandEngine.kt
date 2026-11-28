@@ -147,7 +147,9 @@ class OfflineCommandEngine {
             Regex("^(?:call|dial|phone)\\s+(.+)$", RegexOption.IGNORE_CASE),
             Regex("^(.+?)\\s+(?:ko\\s+)?(?:call|phone)\\s+karo$", RegexOption.IGNORE_CASE),
             Regex("^(?:کال کرو|فون کرو|رابطہ کرو)\\s+(.+)$"),
-            Regex("^(.+?)\\s+(?:کو\\s+)?(?:کال کرو|فون کرو)$")
+            Regex("^(.+?)\\s+(?:کو\\s+)?(?:کال کرو|فون کرو)$"),
+            Regex("^(?:कॉल करो|फोन करो)\\s+(.+)$"),
+            Regex("^(.+?)\\s+(?:को\\s+)?(?:कॉल करो|फोन करो)$")
         ).firstNotNullOfOrNull { it.find(original)?.groupValues?.get(1)?.trim() }
             ?.takeIf { it.isNotBlank() && it.length <= 80 && it.any { char -> char.isLetter() } }
         if (contactName != null) return CommandResult(
