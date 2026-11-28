@@ -109,7 +109,7 @@ class MainActivity : FragmentActivity() {
             setOnClickListener {
                 val entered = passwordInput.text.toString().toCharArray()
                 val valid = try { lockManager.verify(entered) }
-                finally { entered.fill('\\u0000') }
+                finally { entered.fill('\u0000') }
                 if (valid) initializeIdraak()
                 else {
                     passwordInput.text.clear()
@@ -215,7 +215,7 @@ class MainActivity : FragmentActivity() {
                     else -> {
                         val chars = one.toCharArray()
                         val saved = manager.setPassword(chars)
-                        chars.fill('\\u0000')
+                        chars.fill('\u0000')
                         if (saved) {
                             dialog.dismiss()
                             initializeIdraak()
