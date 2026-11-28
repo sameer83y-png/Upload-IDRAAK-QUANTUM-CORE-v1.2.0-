@@ -5,6 +5,8 @@ import android.content.Context
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.Manifest
+import android.provider.ContactsContract
 import android.media.AudioManager
 import android.net.Uri
 import android.provider.AlarmClock
@@ -57,6 +59,7 @@ class AndroidActionExecutor(private val context: Context) {
                 context.startActivity(intent)
                 "فون ڈائلر کھول دیا گیا ہے۔ کال کرنے سے پہلے نمبر چیک کریں۔"
             }
+            is CommandAction.DialContact -> dialContact(action.contactName)
             is CommandAction.SetAlarm -> {
                 val intent = Intent(AlarmClock.ACTION_SET_ALARM)
                     .putExtra(AlarmClock.EXTRA_HOUR, action.hour)
@@ -112,6 +115,60 @@ class AndroidActionExecutor(private val context: Context) {
     } catch (error: Exception) {
         "یہ کام مکمل نہیں ہو سکا: " + (error.localizedMessage ?: "نامعلوم خرابی")
     }
+
+    private fun dialContact(requestedName: String): String {
+        if (context.checkSelfPermission(Manifest.permission.READ_CONTACTS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            return "رابطے تلاش کرنے کے لیے Idraak کو Contacts permission دیں، پھر یہی حکم دوبارہ کہیں۔"
+        }
+        val wanted = normalizeContactName(requestedName)
+        val projection = arrayOf(
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            ContactsContract.CommonDataKinds.Phone.NUMBER
+        )
+        val matches = linkedMapOf<String, String>()
+        try {
+            context.contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                projection,
+                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
+                arrayOf("%$requestedName%"),
+                null
+            )?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                if (nameIndex >= 0 && numberIndex >= 0) {
+                    while (cursor.moveToNext()) {
+                        val name = cursor.getString(nameIndex).orEmpty()
+                        val number = cursor.getString(numberIndex).orEmpty()
+                        if (normalizeContactName(name) == wanted && number.isNotBlank()) {
+                            matches[number] = name
+                        }
+                    }
+                }
+            }
+        } catch (_: SecurityException) {
+            return "Android نے Contacts permission روک دی۔ Settings میں اجازت فعال کرکے دوبارہ کہیں۔"
+        } catch (error: Exception) {
+            return "رابطے تلاش نہیں ہو سکے: " + (error.localizedMessage ?: "نامعلوم خرابی")
+        }
+        return when {
+            matches.isEmpty() -> "اس نام کا رابطہ نہیں ملا۔ نام واضح بتائیں یا Contacts permission چیک کریں۔"
+            matches.size > 1 -> "اس رابطے کے ایک سے زیادہ نمبر ہیں۔ براہ کرم نمبر واضح کرکے دوبارہ کہیں۔"
+            else -> {
+                val number = matches.keys.first()
+                context.startActivity(
+                    Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number)))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+                "رابطے کا نمبر ڈائلر میں کھول دیا ہے۔ کال کرنے سے پہلے نمبر چیک کریں۔"
+            }
+        }
+    }
+
+    private fun normalizeContactName(value: String): String =
+        value.trim().lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
 
     private fun openSettingsPage(action: String, label: String): String {
         context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
