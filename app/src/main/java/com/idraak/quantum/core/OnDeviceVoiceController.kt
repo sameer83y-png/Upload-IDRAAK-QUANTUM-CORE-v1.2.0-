@@ -177,7 +177,8 @@ class OnDeviceVoiceController(
     fun destroy() {
         destroyRequested.set(true)
         running.set(false)
-        releaseRecorder()
+        // Wake a blocking read; the worker's finally block remains the sole owner of release().
+        try { audioRecord?.stop() } catch (_: Exception) { }
         // Native recognizer memory must be released, but never while decode() is using it.
         if (!workerActive.get()) releaseRecognizer()
     }
