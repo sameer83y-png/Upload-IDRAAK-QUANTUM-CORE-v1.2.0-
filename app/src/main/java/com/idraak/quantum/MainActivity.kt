@@ -22,6 +22,7 @@ import com.idraak.quantum.core.LocalMemoryStore
 import com.idraak.quantum.core.ConversationHistoryStore
 import com.idraak.quantum.core.OfflineCommandEngine
 import com.idraak.quantum.core.OnDeviceVoiceController
+import com.idraak.quantum.core.IdraakAccessibilityService
 import java.util.Locale
 import java.util.Calendar
 
@@ -244,8 +245,9 @@ class MainActivity : Activity() {
             responseView.text = "براہ کرم اپنا حکم لکھیں یا بولیں۔"
             return
         }
-        val memoryResponse = handleMemoryCommand(command)
-        val response = if (memoryResponse != null) {
+        val accessibilityResponse = handleDirectAccessibilityCommand(command)
+        val memoryResponse = if (accessibilityResponse == null) handleMemoryCommand(command) else null
+        val response = accessibilityResponse ?: if (memoryResponse != null) {
             memoryResponse
         } else {
             val result = commandEngine.process(command)
@@ -256,6 +258,57 @@ class MainActivity : Activity() {
         historyStore.add("user", command)
         historyStore.add("assistant", response)
         speakUrdu(response)
+    }
+
+    /**
+     * Executes only explicit, single-step screen actions requested by the user.
+     * It does not run hidden loops or tap unknown controls automatically.
+     */
+    private fun handleDirectAccessibilityCommand(raw: String): String? {
+        val command = raw.trim()
+        val lower = command.lowercase(Locale.ROOT)
+
+        val clickTarget = when {
+            lower.matches(Regex("^(tap|click)( on)? .+")) ->
+                command.replaceFirst(Regex("^(?i)(tap|click)( on)?\\s+"), "").trim()
+            lower.matches(Regex("^.+(ٹیپ کرو|کلک کرو)$")) ->
+                command.replace(Regex("(ٹیپ کرو|کلک کرو)$"), "")
+                    .replace(Regex("^(اسکرین پر|screen)\\s*"), "")
+                    .replace(Regex("\\s+کو$"), "").trim()
+            else -> ""
+        }
+        if (clickTarget.isNotBlank()) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "اسکرین کنٹرول کے لیے پہلے Settings میں جا کر Idraak Accessibility کو فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.clickText(clickTarget)) {
+                "اسکرین پر '$clickTarget' والا دستیاب بٹن ٹیپ کر دیا۔"
+            } else {
+                "اسکرین پر '$clickTarget' کے نام سے قابلِ رسائی بٹن نہیں ملا۔ ممکن ہے یہ چیز تصویر یا گیم کینوس میں ہو۔"
+            }
+        }
+
+        val isBack = lower in listOf("back", "go back", "واپس جاؤ", "پیچھے جاؤ", "واپس")
+        if (isBack) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "Back کنٹرول کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.goBack()) "Back کر دیا۔"
+            else "اس وقت Back ایکشن دستیاب نہیں۔"
+        }
+
+        val isScrollDown = lower in listOf("scroll down", "نیچے اسکرول کرو", "نیچے کرو")
+        val isScrollUp = lower in listOf("scroll up", "اوپر اسکرول کرو", "اوپر کرو")
+        if (isScrollDown || isScrollUp) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "اسکرول کنٹرول کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            val moved = if (isScrollDown) IdraakAccessibilityService.scrollForward()
+                else IdraakAccessibilityService.scrollBackward()
+            return if (moved) "اسکرین اسکرول کر دی۔"
+            else "اس اسکرین پر اسکرول ہونے والا حصہ نہیں ملا۔"
+        }
+        return null
     }
 
     private fun showConversationHistory() {
