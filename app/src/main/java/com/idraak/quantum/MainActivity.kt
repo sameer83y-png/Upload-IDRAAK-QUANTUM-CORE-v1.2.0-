@@ -52,6 +52,7 @@ class MainActivity : FragmentActivity() {
     private var voiceController: OnDeviceVoiceController? = null
     private var speechOutput: TextToSpeech? = null
     private var speechOutputReady = false
+    private var startBackgroundAfterPermission = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -382,6 +383,18 @@ class MainActivity : FragmentActivity() {
             setOnClickListener { startVoiceInput() }
         }, matchWrap().apply { topMargin = 10 })
         root.addView(Button(this).apply {
+            text = "🎧  START BACKGROUND IDRAAK"
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(24, 76, 64))
+            setOnClickListener { startBackgroundVoice() }
+        }, matchWrap().apply { topMargin = 8 })
+        root.addView(Button(this).apply {
+            text = "STOP BACKGROUND LISTENING"
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(82, 42, 48))
+            setOnClickListener { stopBackgroundVoice() }
+        }, matchWrap().apply { topMargin = 6 })
+        root.addView(Button(this).apply {
             text = "CHAT HISTORY  /  پچھلی گفتگو"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.rgb(35, 48, 70))
@@ -463,6 +476,32 @@ class MainActivity : FragmentActivity() {
         voiceController?.start()
     }
 
+    private fun startBackgroundVoice() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            startBackgroundAfterPermission = true
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_MICROPHONE)
+            return
+        }
+        try {
+            val serviceIntent = Intent(this, com.idraak.quantum.core.IdraakWakeWordService::class.java)
+                .setAction(com.idraak.quantum.core.IdraakWakeWordService.ACTION_START)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent)
+            else startService(serviceIntent)
+            responseView.text = "پس منظر آواز فعال کرنے کی درخواست بھیج دی گئی۔ نوٹیفکیشن میں مائیکروفون کی حالت دیکھیں۔"
+        } catch (error: Exception) {
+            responseView.text = "پس منظر وائس شروع نہیں ہو سکی: " + (error.message ?: "Android restriction")
+        }
+    }
+
+    private fun stopBackgroundVoice() {
+        try {
+            stopService(Intent(this, com.idraak.quantum.core.IdraakWakeWordService::class.java))
+            responseView.text = "پس منظر میں سننا بند کرنے کی درخواست بھیج دی گئی۔"
+        } catch (error: Exception) {
+            responseView.text = "وائس سروس بند نہیں ہو سکی: " + (error.message ?: "نامعلوم خرابی")
+        }
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -471,8 +510,14 @@ class MainActivity : FragmentActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_MICROPHONE) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                voiceController?.start()
+                if (startBackgroundAfterPermission) {
+                    startBackgroundAfterPermission = false
+                    startBackgroundVoice()
+                } else {
+                    voiceController?.start()
+                }
             } else {
+                startBackgroundAfterPermission = false
                 responseView.text = "مائیکروفون کی اجازت کے بغیر آواز نہیں سن سکتا۔"
             }
         }
