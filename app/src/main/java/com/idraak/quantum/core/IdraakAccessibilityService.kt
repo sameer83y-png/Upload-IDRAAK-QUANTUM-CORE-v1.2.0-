@@ -351,6 +351,21 @@ class IdraakAccessibilityService : AccessibilityService() {
         return field.performAction(AccessibilityNodeInfo.ACTION_COPY)
     }
 
+    /** Cuts only an explicitly selected range in the focused non-password field. */
+    private fun cutSelectedFocusedText(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val focusedFields = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled && node.isEditable &&
+                node.isFocused && !node.isPassword
+        }
+        if (focusedFields.size != 1) return false
+        val field = focusedFields.single()
+        val selectionStart = field.textSelectionStart
+        val selectionEnd = field.textSelectionEnd
+        if (selectionStart < 0 || selectionEnd <= selectionStart) return false
+        return field.performAction(AccessibilityNodeInfo.ACTION_CUT)
+    }
+
     private fun clearFocusedTextField(): Boolean {
         val root = rootInActiveWindow ?: return false
         val focusedFields = allNodes(root).filter { node ->
@@ -475,6 +490,7 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun clearFocusedTextField(): Boolean = activeService?.clearFocusedTextField() == true
         fun selectAllFocusedText(): Boolean = activeService?.selectAllFocusedText() == true
         fun copySelectedText(): Boolean = activeService?.copySelectedFocusedText() == true
+        fun cutSelectedText(): Boolean = activeService?.cutSelectedFocusedText() == true
         fun goHome(): Boolean = activeService?.global(GLOBAL_ACTION_HOME) == true
         fun showNotifications(): Boolean = activeService?.global(GLOBAL_ACTION_NOTIFICATIONS) == true
         fun showQuickSettings(): Boolean = activeService?.global(GLOBAL_ACTION_QUICK_SETTINGS) == true

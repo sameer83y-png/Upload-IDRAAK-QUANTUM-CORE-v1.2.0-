@@ -406,6 +406,17 @@ class IdraakCommandProcessor(
             }
         }
 
+        if (CutSelectedTextCommandParser.matches(command)) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "منتخب متن کاٹنے کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.cutSelectedText()) {
+                "منتخب متن کلپ بورڈ میں کاٹ کر محفوظ کر دیا۔"
+            } else {
+                "متن کاٹنے کے لیے پہلے کسی عام ٹیکسٹ فیلڈ میں عبارت منتخب کریں؛ پاس ورڈ فیلڈ محفوظ رہے گی۔"
+            }
+        }
+
         if (CopySelectedTextCommandParser.matches(command)) {
             if (!IdraakAccessibilityService.isConnected()) {
                 return "منتخب متن کاپی کرنے کے لیے Idraak Accessibility فعال کریں۔"
