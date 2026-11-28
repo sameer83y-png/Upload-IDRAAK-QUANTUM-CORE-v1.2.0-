@@ -40,7 +40,9 @@ class OfflineCommandEngineTest {
     fun parsesUrduYoutubeSearch() {
         val action = engine.process("یوٹیوب پر آج کی خبریں تلاش کرو").action
         assertTrue(action is CommandAction.OpenUrl)
-        assertTrue((action as CommandAction.OpenUrl).url.contains("youtube.com/results"))
+        val url = (action as CommandAction.OpenUrl).url
+        assertTrue(url.contains("youtube.com/results"))
+        assertFalse(url.contains("%D8%AA%D9%84%D8%A7%D8%B4"))
     }
 
     @Test
