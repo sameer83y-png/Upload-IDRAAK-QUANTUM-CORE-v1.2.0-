@@ -286,4 +286,25 @@ class OfflineCommandEngineTest {
         assertEquals("दवा लेने की", (action as CommandAction.ScheduleReminder).message)
     }
 
+
+    @Test
+    fun parsesCompositeHindiYoutubeSearch() {
+        val action = engine.process("यूट्यूब खोलो और क्रिकेट हाइलाइट्स खोजो").action
+        assertTrue(action is CommandAction.OpenUrl)
+        assertTrue((action as CommandAction.OpenUrl).url.contains("youtube.com/results"))
+        assertTrue(action.url.contains("cricket") || action.url.contains("%E0%A4"))
+    }
+
+    @Test
+    fun parsesHindiYoutubeOpenCommand() {
+        assertEquals(CommandAction.OpenApp("youtube"), engine.process("यूट्यूब खोलो").action)
+    }
+
+    @Test
+    fun parsesHindiYoutubeSearchMarker() {
+        val action = engine.process("यूट्यूब पर क्रिकेट खोजो").action
+        assertTrue(action is CommandAction.OpenUrl)
+        assertTrue((action as CommandAction.OpenUrl).url.contains("youtube.com/results"))
+    }
+
 }

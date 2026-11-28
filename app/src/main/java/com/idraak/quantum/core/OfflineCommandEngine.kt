@@ -182,7 +182,8 @@ class OfflineCommandEngine {
             Regex("^(?:open|launch)\\s+youtube\\s+and\\s+search(?:\\s+youtube)?\\s+for\\s+(.+)$", RegexOption.IGNORE_CASE),
             Regex("^youtube\\s+(?:kholo|open)\\s+aur\\s+(.+?)\\s+(?:search|talaash)\\s+(?:karo|kar do)$", RegexOption.IGNORE_CASE),
             Regex("^یوٹیوب\\s+کھولو\\s+اور\\s+(.+?)\\s+(?:تلاش\\s+کرو|سرچ\\s+کرو|ڈھونڈو)$"),
-            Regex("^یوٹیوب\\s+کھول\\s+کر\\s+(.+?)\\s+(?:تلاش\\s+کرو|سرچ\\s+کرو)$")
+            Regex("^یوٹیوب\\s+کھول\\s+کر\\s+(.+?)\\s+(?:تلاش\\s+کرو|سرچ\\s+کرو)$"),
+            Regex("^यूट्यूब\\s+खोलो\\s+और\\s+(.+?)\\s+(?:खोजो|सर्च\\s+करो)$", RegexOption.IGNORE_CASE)
         )
         val compositeYoutubeQuery = compositeYoutubePatterns.firstNotNullOfOrNull { it.find(original)?.groupValues?.get(1)?.trim() }
         if (!compositeYoutubeQuery.isNullOrBlank()) {
@@ -192,14 +193,14 @@ class OfflineCommandEngine {
             )
         }
 
-        val youtubeMarkers = listOf("search youtube for", "youtube par", "youtube pe", "یوتیوب پر", "یوٹیوب پر", "یوٹیوب میں", "یوٹیوب پہ", "یوٹیوب پر تلاش کرو", "یوٹیوب پر سرچ کرو")
+        val youtubeMarkers = listOf("search youtube for", "youtube par", "youtube pe", "یوتیوب پر", "یوٹیوب پر", "یوٹیوب میں", "یوٹیوب پہ", "यूट्यूब पर", "यूट्यूब में", "یوٹیوب پر تلاش کرو", "یوٹیوب پر سرچ کرو")
         val youtubeMarker = youtubeMarkers.firstOrNull { text.contains(it) }
         if (youtubeMarker != null) {
             val query = extractAfterMarker(original, youtubeMarker)
                 .removePrefixes("search", "تلاش کرو", "سرچ کرو", "دکھاؤ", "چلاؤ")
                 .removeSuffixes(
                     "search karo", "search", "talaash karo", "talaash",
-                    "تلاش کرو", "سرچ کرو", "ڈھونڈو", "دکھاؤ", "چلاؤ"
+                    "تلاش کرو", "سرچ کرو", "ڈھونڈو", "दिखाओ", "खोजो", "सर्च करो", "दिखाओ", "چلاؤ"
                 )
                 .trim()
             if (query.isNotBlank()) return CommandResult(
@@ -274,7 +275,7 @@ class OfflineCommandEngine {
         }
 
         val openAppRules = listOf(
-            listOf("open youtube", "youtube kholo", "یوٹیوب کھولو") to "youtube",
+            listOf("open youtube", "youtube kholo", "یوٹیوب کھولو", "यूट्यूब खोलो") to "youtube",
             listOf("open chrome", "chrome kholo", "کروم کھولو", "براوزر کھولو", "براؤزر کھولو") to "chrome",
             listOf("open chatgpt", "chatgpt kholo", "چیٹ جی پی ٹی کھولو", "چیٹ جی پی ٹی") to "chatgpt",
             listOf("open gemini", "gemini kholo", "جیمنائی کھولو", "جیمنی کھولو") to "gemini",
