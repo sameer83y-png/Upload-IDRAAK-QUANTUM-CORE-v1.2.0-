@@ -511,6 +511,18 @@ class IdraakCommandProcessor(
             }
         }
 
+        val replacementText = ReplaceSelectedTextCommandParser.parse(command)
+        if (replacementText != null) {
+            if (!IdraakAccessibilityService.isConnected()) {
+                return "منتخب متن بدلنے کے لیے Idraak Accessibility فعال کریں۔"
+            }
+            return if (IdraakAccessibilityService.replaceSelectedText(replacementText)) {
+                "منتخب عبارت کو نئے متن سے بدل دیا۔"
+            } else {
+                "متن نہیں بدلا؛ پہلے کسی عام editable فیلڈ میں عبارت منتخب کریں۔ پاس ورڈ فیلڈ محفوظ رہے گی۔"
+            }
+        }
+
         if (CutSelectedTextCommandParser.matches(command)) {
             if (!IdraakAccessibilityService.isConnected()) {
                 return "منتخب متن کاٹنے کے لیے Idraak Accessibility فعال کریں۔"

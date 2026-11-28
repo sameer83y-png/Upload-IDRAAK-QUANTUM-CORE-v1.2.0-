@@ -574,6 +574,39 @@ class IdraakAccessibilityService : AccessibilityService() {
         return true
     }
 
+    /** Replaces only an explicit selection in one visible, focused, non-password field. */
+    private fun replaceSelectedFocusedText(replacement: String): Boolean {
+        if (replacement.isEmpty()) return false
+        val root = rootInActiveWindow ?: return false
+        val focusedFields = allNodes(root).filter { node ->
+            node.isVisibleToUser && node.isEnabled && node.isEditable &&
+                node.isFocused && !node.isPassword
+        }
+        if (focusedFields.size != 1) return false
+        val field = focusedFields.single()
+        val text = field.text?.toString() ?: return false
+        val start = field.textSelectionStart
+        val end = field.textSelectionEnd
+        if (start < 0 || end <= start || end > text.length) return false
+
+        val updatedText = text.replaceRange(start, end, replacement)
+        val setTextArguments = Bundle().apply {
+            putCharSequence(
+                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                updatedText
+            )
+        }
+        if (!field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, setTextArguments)) return false
+
+        val newCursor = start + replacement.length
+        val selectionArguments = Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, newCursor)
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, newCursor)
+        }
+        field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selectionArguments)
+        return true
+    }
+
     /** Deletes one Unicode code point beside a collapsed cursor; never deletes a selection. */
     private fun deleteFocusedCharacter(forward: Boolean): Boolean {
         val root = rootInActiveWindow ?: return false
@@ -766,6 +799,8 @@ class IdraakAccessibilityService : AccessibilityService() {
         fun selectAllFocusedText(): Boolean = activeService?.selectAllFocusedText() == true
         fun copySelectedText(): Boolean = activeService?.copySelectedFocusedText() == true
         fun cutSelectedText(): Boolean = activeService?.cutSelectedFocusedText() == true
+        fun replaceSelectedText(replacement: String): Boolean =
+            activeService?.replaceSelectedFocusedText(replacement) == true
         fun selectWordAtCursor(): Boolean = activeService?.selectWordAtCursor() == true
         fun moveCursorByCharacter(forward: Boolean): Boolean =
             activeService?.moveFocusedCursorByCharacter(forward) == true
