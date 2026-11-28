@@ -19,7 +19,8 @@ class RepeatedScrollCommandParserTest {
 
     @Test fun rejectsUnsafeOrUnclearCounts() {
         assertNull(RepeatedScrollCommandParser.parse("scroll down 99 times"))
-        assertNull(RepeatedScrollCommandParser.parse("نیچے اسکرول کرو"))
+        assertEquals(RepeatedScrollCommand(true, 1), RepeatedScrollCommandParser.parse("نیچے اسکرول کرو"))
         assertNull(RepeatedScrollCommandParser.parse("scroll sideways 2 times"))
+        assertNull(RepeatedScrollCommandParser.parse("scroll down 6 times"))
     }
 }
