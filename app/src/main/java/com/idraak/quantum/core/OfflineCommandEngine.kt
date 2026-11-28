@@ -180,6 +180,21 @@ class OfflineCommandEngine {
             )
         }
 
+        // Flexible Urdu and Roman-Urdu web search phrasing.
+        val flexibleWebPatterns = listOf(
+            Regex("^(?:google|internet|web)\\s+(?:par|pe)\\s+(.+?)\\s+(?:search\\s+karo|talaash\\s+karo|dhundo)$", RegexOption.IGNORE_CASE),
+            Regex("^(.+?)\\s+(?:google|internet|web)\\s+(?:par|pe)\\s+(?:search\\s+karo|talaash\\s+karo|dhundo)$", RegexOption.IGNORE_CASE),
+            Regex("^(?:گوگل|انٹرنیٹ|ویب)\\s+پر\\s+(.+?)\\s+(?:تلاش\\s+کرو|سرچ\\s+کرو|ڈھونڈو)$"),
+            Regex("^(.+?)\\s+(?:گوگل|انٹرنیٹ|ویب)\\s+پر\\s+(?:تلاش\\s+کرو|سرچ\\s+کرو|ڈھونڈو)$")
+        )
+        val flexibleWebQuery = flexibleWebPatterns.firstNotNullOfOrNull {
+            it.find(original)?.groupValues?.get(1)?.trim()
+        }
+        if (!flexibleWebQuery.isNullOrBlank()) return CommandResult(
+            "ویب پر تلاش کر رہا ہوں: $flexibleWebQuery",
+            CommandAction.OpenUrl("https://www.google.com/search?q=" + encode(flexibleWebQuery))
+        )
+
         val webMarkers = listOf("search web for", "search google for", "google search", "google پر", "ویب پر تلاش کرو", "گوگل پر تلاش کرو", "انٹرنیٹ پر تلاش کرو", "تلاش کرو")
         val webMarker = webMarkers.firstOrNull { text.startsWith(it) }
         if (webMarker != null) {
