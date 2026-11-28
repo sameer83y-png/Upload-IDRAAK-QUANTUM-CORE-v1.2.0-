@@ -18,7 +18,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class OnDeviceVoiceController(
     context: Context,
     private val onText: (String) -> Unit,
-    private val onStatus: (String) -> Unit
+    private val onStatus: (String) -> Unit,
+    private val onComplete: (() -> Unit)? = null
 ) {
     private val appContext = context.applicationContext
     private val running = AtomicBoolean(false)
@@ -67,6 +68,11 @@ class OnDeviceVoiceController(
             } finally {
                 releaseRecorder()
                 running.set(false)
+                try {
+                    onComplete?.invoke()
+                } catch (_: Exception) {
+                    // Completion notification must not crash the voice worker.
+                }
             }
         }, "idraak-offline-whisper").start()
         return true
