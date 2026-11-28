@@ -282,15 +282,10 @@ class IdraakWakeWordService : Service() {
         active = false
         voiceController?.destroy()
         voiceController = null
-        recorder?.let {
-            try { it.stop() } catch (_: Exception) { }
-            try { it.release() } catch (_: Exception) { }
-        }
-        recorder = null
-        wakeStream?.let { try { it.release() } catch (_: Exception) { } }
-        wakeStream = null
-        spotter?.let { try { it.release() } catch (_: Exception) { } }
-        spotter = null
+        // The wake-word worker owns AudioRecord, OnlineStream, and KeywordSpotter.
+        // Stop the blocking read here, but let the worker's finally block release native
+        // resources exactly once after it has exited the decode/read loop.
+        try { recorder?.stop() } catch (_: Exception) { }
         tts?.stop()
         stopForeground(true)
         stopSelf()
