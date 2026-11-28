@@ -301,7 +301,7 @@ class SettingsActivity : Activity() {
                 val newText = first.text.toString()
                 val confirmText = second.text.toString()
                 val oldValid = oldChars == null || manager.verify(oldChars)
-                oldChars?.fill('\\u0000')
+                oldChars?.fill('\u0000')
                 when {
                     !oldValid -> android.widget.Toast.makeText(this, "Current password is incorrect.", android.widget.Toast.LENGTH_LONG).show()
                     newText.length !in 6..64 -> android.widget.Toast.makeText(this, "Use 6–64 characters.", android.widget.Toast.LENGTH_LONG).show()
@@ -309,7 +309,7 @@ class SettingsActivity : Activity() {
                     else -> {
                         val chars = newText.toCharArray()
                         val saved = manager.setPassword(chars)
-                        chars.fill('\\u0000')
+                        chars.fill('\u0000')
                         if (saved) {
                             android.widget.Toast.makeText(this, "App password saved on this device.", android.widget.Toast.LENGTH_LONG).show()
                             dialog.dismiss()
@@ -341,7 +341,7 @@ class SettingsActivity : Activity() {
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val chars = input.text.toString().toCharArray()
                 val valid = manager.verify(chars)
-                chars.fill('\\u0000')
+                chars.fill('\u0000')
                 if (valid) {
                     manager.disable()
                     dialog.dismiss()
