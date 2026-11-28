@@ -210,15 +210,8 @@ class IdraakAccessibilityService : AccessibilityService() {
         }
         if (searchButtons.size == 1 && performClick(searchButtons.single())) return true
 
-        // If the app exposes no separate search button, submit through the
-        // focused field's IME action on Android 11+. Never tap an arbitrary
-        // nearby control just because a search field was found.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            target.performAction(AccessibilityNodeInfo.ACTION_IME_ENTER)
-        ) return true
-
-        // Text was entered, but the app did not expose a safe submit action.
-        // The caller can tell the user to press Search/Enter themselves.
+        // Some apps submit immediately after ACTION_SET_TEXT; otherwise
+        // leave the query in the field without guessing at an unrelated control.
         return true
     }
 
