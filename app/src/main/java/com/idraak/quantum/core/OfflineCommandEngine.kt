@@ -149,10 +149,10 @@ class OfflineCommandEngine {
         }
 
         val targetedSharePatterns = listOf(
-            Regex("^(?:share|send)(?:\\\\s+this)?\\\\s+(.+?)\\\\s+(?:on|to|via)\\\\s+(whatsapp|telegram|instagram|facebook|gmail)$", RegexOption.IGNORE_CASE),
-            Regex("^(whatsapp|telegram|instagram|facebook|gmail)\\\\s+par\\\\s+(.+?)\\\\s+(?:bhejo|share karo)$", RegexOption.IGNORE_CASE),
-            Regex("^(.+?)\\\\s+(?:کو\\\\s+)?(whatsapp|telegram|instagram|facebook|gmail)\\\\s+(?:پر|میں)\\\\s+(?:بھیجو|شیئر کرو)$", RegexOption.IGNORE_CASE),
-            Regex("^(whatsapp|telegram|instagram|facebook|gmail)\\\\s+پر\\\\s+(.+?)\\\\s+(?:بھیجو|شیئر کرو)$", RegexOption.IGNORE_CASE)
+            Regex("^(?:share|send)(?:\\s+this)?\\s+(.+?)\\s+(?:on|to|via)\\s+(whatsapp|telegram|instagram|facebook|gmail)$", RegexOption.IGNORE_CASE),
+            Regex("^(whatsapp|telegram|instagram|facebook|gmail)\\s+par\\s+(.+?)\\s+(?:bhejo|share karo)$", RegexOption.IGNORE_CASE),
+            Regex("^(.+?)\\s+(?:کو\\s+)?(whatsapp|telegram|instagram|facebook|gmail)\\s+(?:پر|میں)\\s+(?:بھیجو|شیئر کرو)$", RegexOption.IGNORE_CASE),
+            Regex("^(whatsapp|telegram|instagram|facebook|gmail)\\s+پر\\s+(.+?)\\s+(?:بھیجو|شیئر کرو)$", RegexOption.IGNORE_CASE)
         )
         val targetedShare = targetedSharePatterns.firstNotNullOfOrNull { it.find(original) }
         if (targetedShare != null) {
